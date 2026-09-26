@@ -11,11 +11,10 @@
         ;
 };
 
-&trackpad_split_L {
+&trackpad_listener_L {
     status = "okay";
     device = <&iqs9151>;
 };
-&trackpad_split_R {
-    status = "disabled";
-    device = <&iqs9151>;
+&trackpad_listener_R {
+    status = "okay";
 };
