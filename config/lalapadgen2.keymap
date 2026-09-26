@@ -85,24 +85,12 @@
         CONBO_ESC {
             bindings = <&kp ESCAPE>;
             key-positions = <0 1>;
+            layers = <DEFAULT_LAYER SECONDARY_LAYER TERTIARY_LAYER SYSTEM_LAYER MOUSE_LAYER>;
         };
         COMBO_TAB {
             bindings = <&kp TAB>;
             key-positions = <10 11>;
-        };
-
-        // テスト用: 左下3キー (LCTRL・LWIN・LALT) 同時押しでかな配列モードをオン／オフ
-        COMBO_KANA_ON {
-            bindings = <&kana_on>;
-            key-positions = <30 31 32>;
-            timeout-ms = <80>;
-            layers = <DEFAULT_LAYER MOUSE_LAYER>;
-        };
-        COMBO_KANA_OFF {
-            bindings = <&kana_off>;
-            key-positions = <30 31 32>;
-            timeout-ms = <80>;
-            layers = <KANA_LAYER KANA_L_LAYER KANA_R_LAYER>;
+            layers = <DEFAULT_LAYER SECONDARY_LAYER TERTIARY_LAYER SYSTEM_LAYER MOUSE_LAYER>;
         };
     };
 
@@ -116,7 +104,7 @@
             &kp A  &kp S  &kp D  &kp F  &kp G  &kp H  &kp J  &kp K  &kp L  &mt2 EQUAL MINUS
             &mt2 LEFT_SHIFT Z  &kp X  &kp C  &kp V  &kp B  &kp N  &kp M  &kp COMMA  &kp PERIOD  &kp SLASH
             &kp LCTRL  &kp LWIN  &kp LEFT_ALT  &mo 1  &kp SPACE  &kp LEFT_SHIFT  &kp BACKSPACE  &kp ENTER  &mo 2  &kp LANGUAGE_2  &kp LANGUAGE_1  &kp BACKSLASH
-            &none  &kp RIGHT  &kp DOWN  &kp LEFT  &kp UP  &kp UP  &kp LEFT  &kp DOWN  &kp RIGHT  &none
+            &none  &kp RIGHT  &kp DOWN  &kp LEFT  &kp UP  &kp UP  &kp LEFT  &kp DOWN  &kp RIGHT  &kana_on
             &mkp LCLK  &mkp RCLK  &mkp MCLK  &mkp LCLK  &mkp RCLK  &mkp MCLK
             &mkp MB5  &mkp MB4  &kp LG(TAB)  &kp LG(D)  &kp LCTRL  &mkp MB5  &mkp MB4  &kp LG(TAB)  &kp LG(D)  &kp LCTRL
             >;
@@ -181,7 +169,7 @@
             &kana KN_SA  &kana KN_SI  &kana KN_SU  &kana KN_SE  &kana KN_SO  &kana KN_TA  &kana KN_TI  &kana KN_TU  &kana KN_TE  &kana KN_TO
             &kana KN_NA  &kana KN_NI  &kana KN_NU  &kana KN_NE  &kana KN_NO  &kana KN_HA  &kana KN_HI  &kana KN_HU  &kana KN_HE  &kana KN_HO
             &none  &none  &none  &none  &kana_thumb KANA_L_LAYER SPACE  &none  &none  &kana_thumb KANA_R_LAYER ENTER  &none  &none  &none  &none
-            &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
+            &none  &none  &none  &none  &none  &none  &none  &none  &none  &kana_off
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             >;
