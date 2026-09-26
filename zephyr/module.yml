@@ -1,3 +1,6 @@
 build:
+  cmake: kana
+  kconfig: kana/Kconfig
   settings:
     board_root: .
+    dts_root: kana

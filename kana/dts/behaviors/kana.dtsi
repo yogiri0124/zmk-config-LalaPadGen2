@@ -1,0 +1,24 @@
+#include <dt-bindings/kana/kana.h>
+
+/ {
+    behaviors {
+        /omit-if-no-ref/ kana: kana {
+            compatible = "zmk,behavior-kana";
+            #binding-cells = <1>;
+            display-name = "Kana";
+        };
+
+        // layer は keymap 側で &kana_mode { layer = <かな単打面の番号>; }; と指定する
+        /omit-if-no-ref/ kana_mode: kana_mode {
+            compatible = "zmk,behavior-kana-mode";
+            #binding-cells = <1>;
+            display-name = "Kana Mode";
+        };
+
+        // 内部用（keymap には書かない）: 送信キューの処理完了の合図。C から参照するので omit しない
+        kana_sync: kana_sync {
+            compatible = "zmk,behavior-kana-sync";
+            #binding-cells = <1>;
+        };
+    };
+};
