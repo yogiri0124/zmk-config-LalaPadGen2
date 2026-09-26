@@ -26,20 +26,22 @@ CLAUDE.md と AGENTS.md のルールに従い、以下を確認なしで最後�
 - CLAUDE.md の「Codex によるレビューの呼び出し方」のコマンドで実行し、`.review/latest.md` を読む。
 
 ## 4. 修正ループ（最大3往復）
-- 「必須修正」があれば修正してコミット → 再レビュー。
-- 3回目のレビュー後も必須修正が残れば、**ここで作業を止めて**ブランチ名・残った指摘を報告する（push しない）。
+- 「必須修正」または「マージを妨げる確認事項」があれば修正してコミット → 再レビュー。ユーザーの判断が必要な確認事項なら止めて報告する。
+- レビューは初回を含め最大3回。3回目のレビューでも合格しなければ、**ここで作業を止めて**ブランチ名・未解決の事項を報告する（push しない）。
 
-## 5. push とビルド確認
+## 5. push とビルド確認（合格＝必須修正なし かつ マージを妨げる確認事項なし）
 - `git push -u origin <branch>`（force は禁止）。
-- `gh run list --branch <branch> --limit 1 --json databaseId,headSha` で今回のコミットの run を特定し、`gh run watch <id> --exit-status` で待つ。
+- CLAUDE.md「GitHub Actions / Artifacts」の手順で、対象コミット SHA に一致する run を特定し、全ビルド対象の成功を確認する。
 - 失敗したら `gh run view <id> --log-failed` を確認して修正 → 手順3へ（往復回数に含める）。
 
 ## 6. マージと .uf2 取得
-- `git checkout main && git pull --ff-only && git merge --no-ff <branch> -m "<日本語メッセージ>"` → `git push origin main`。
-- `gh run download <id> -D firmware/<branch>` でビルド成果物を取得し、`.uf2` の一覧を確認する。
+- `git checkout main && git pull --ff-only` で main が進んでいないか確認（進んでいたらブランチに取り込み、手順3からやり直す）。
+- `git merge --no-ff <branch> -m "<日本語メッセージ>"` → `git push origin main`。
+- マージコミット SHA の CI 成功を確認し、その run から `firmware/<マージコミットSHA>/` に取得する。左・右・settings_reset の3種類がそろっていることを確認する。
 
 ## 7. 報告
 以下を日本語で報告する：
 - 変更内容（ファイルと要点）
 - レビュー要約（往復回数、最終的な推奨・確認事項）
-- `.uf2` の場所（左右・settings_reset それぞれのパス）
+- `.uf2` の場所（左右・settings_reset それぞれのパス）と元の run URL・コミット SHA
+- 実機で確認すべき項目（CI 合格と実機未確認を分けて書く）。キーマップ変更時は Studio の「Restore Stock Settings」が必要な場合があることを添える
