@@ -176,7 +176,6 @@
                            <&zip_scroll_scaler 1 12>,
                            <&zip_dynamic_xy_scaler>,
                            <&zip_dynamic_scroll_scaler>,
-                           <&zip_scroll_snap_R>,
                            <&zip_scroll_transform (INPUT_TRANSFORM_X_INVERT | INPUT_TRANSFORM_Y_INVERT)>,
                            <&zip_auto_mouse_layer 4 700>;
         lowspeedmode {
@@ -186,7 +185,6 @@
                                 <&zip_scroll_scaler 1 40>,
                                 <&zip_dynamic_xy_scaler>,
                                 <&zip_dynamic_scroll_scaler>,
-                                <&zip_scroll_snap_R>,
                                 <&zip_scroll_transform (INPUT_TRANSFORM_X_INVERT | INPUT_TRANSFORM_Y_INVERT)>;
         };
     };
@@ -199,7 +197,6 @@
                            <&zip_scroll_scaler 1 12>,
                            <&zip_dynamic_xy_scaler>,
                            <&zip_dynamic_scroll_scaler>,
-                           <&zip_scroll_snap_L>,
                            <&zip_scroll_transform (INPUT_TRANSFORM_X_INVERT | INPUT_TRANSFORM_Y_INVERT)>,
                            <&zip_auto_mouse_layer 4 700>;
         lowspeedmode {
@@ -209,7 +206,6 @@
                                 <&zip_scroll_scaler 1 40>,
                                 <&zip_dynamic_xy_scaler>,
                                 <&zip_dynamic_scroll_scaler>,
-                                <&zip_scroll_snap_L>,
                                 <&zip_scroll_transform (INPUT_TRANSFORM_X_INVERT | INPUT_TRANSFORM_Y_INVERT)>;
         };
     };
@@ -255,6 +251,20 @@ status = "okay";
 };
 
 // スクロールスナップ (kot149/zmk-scroll-snap): 2本指スクロールを近いほうの軸 (X/Y) に揃える。
+// 既定では使わない（斜めスクロールできるように、どのリスナーからも参照していない）。
+// 特定のレイヤーでだけ有効にするときは、各リスナー（trackpad_listener_R / _L）に次のような子ノードを
+// lowspeedmode より前に追加する（先に書いた子ノードが優先される。<N> はレイヤー番号、_R / _L は左右で合わせる）:
+//     snapmode {
+//         layers = <N>;
+//         input-processors = <&trackpad_key_behaviors_R>,
+//                            <&zip_xy_scaler 1 5>,
+//                            <&zip_scroll_scaler 1 12>,
+//                            <&zip_dynamic_xy_scaler>,
+//                            <&zip_dynamic_scroll_scaler>,
+//                            <&zip_scroll_snap_R>,
+//                            <&zip_scroll_transform (INPUT_TRANSFORM_X_INVERT | INPUT_TRANSFORM_Y_INVERT)>,
+//                            <&zip_auto_mouse_layer 4 700>;
+//     };
 // 判定状態（サンプル・軸ロック）は左右のトラックパッドで独立させるため、インスタンスを分ける。
 // y-threshold <1 1>: |y| > |x| なら Y 軸。x-threshold <101 100>: |y| < 1.01|x| なら X 軸
 // （同量のときも X 軸に決まり、出力が 0 にならない）。斜め判定は未実装で出力 0 になるため使わない。
