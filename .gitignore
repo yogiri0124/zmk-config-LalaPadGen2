@@ -1,3 +1,4 @@
 .review/
 firmware/
+.worktrees/
 .claude/settings.local.json

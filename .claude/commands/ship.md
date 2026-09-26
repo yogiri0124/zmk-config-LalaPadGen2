@@ -12,10 +12,11 @@ CLAUDE.md と AGENTS.md のルールに従い、以下を確認なしで最後�
 ## 0. 事前確認
 - `git status` を確認。未コミットの変更があれば報告してから進める（破棄しない）。
 - `.review/latest.md` があれば読む。
-- main にいて最新であることを確認（`git checkout main && git pull --ff-only`）。
+- メインのフォルダが main で最新であることを確認（`git pull --ff-only`）。
 
-## 1. ブランチ作成
-- 依頼内容から短い英語スラッグを作り `git checkout -b feat/<slug>`（不具合修正なら `fix/<slug>`）。
+## 1. ブランチ作成（作業用フォルダ）
+- 依頼内容から短い英語スラッグを作り、CLAUDE.md「作業用フォルダ（git worktree）」の手順で `git worktree add .worktrees/feat-<slug> -b feat/<slug> main`（不具合修正なら `fix/<slug>`）。
+- 以降の編集・コミット・レビュー・push は作業用フォルダで行う。
 
 ## 2. 編集してコミット
 - AGENTS.md の「編集範囲」内だけを編集する。依頼以外の変更・空白整形は入れない。
@@ -35,9 +36,10 @@ CLAUDE.md と AGENTS.md のルールに従い、以下を確認なしで最後�
 - 失敗したら `gh run view <id> --log-failed` を確認して修正 → 手順3へ（往復回数に含める）。
 
 ## 6. マージと .uf2 取得
-- `git checkout main && git pull --ff-only` で main が進んでいないか確認（進んでいたらブランチに取り込み、手順3からやり直す）。
-- `git merge --no-ff <branch> -m "<日本語メッセージ>"` → `git push origin main`。
-- マージコミット SHA の CI 成功を確認し、その run から `firmware/<マージコミットSHA>/` に取得する。左・右・settings_reset の3種類がそろっていることを確認する。
+- メインのフォルダで `git status` を確認し、`git pull --ff-only` で main が進んでいないか確認（進んでいたら作業用フォルダで `git merge main` して手順3からやり直す）。
+- メインのフォルダで `git merge --no-ff <branch> -m "<日本語メッセージ>"` → `git push origin main`。
+- マージコミット SHA の CI 成功を確認し、その run から `firmware/<マージコミットSHA>/`（メインのフォルダ）に取得する。左・右・settings_reset の3種類がそろっていることを確認する。
+- `git worktree remove .worktrees/<名前>` で作業用フォルダを削除する。
 
 ## 7. 報告
 以下を日本語で報告する：
