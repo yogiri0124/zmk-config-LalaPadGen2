@@ -180,8 +180,8 @@
             &kana KN_A  &kana KN_I  &kana KN_U  &kana KN_E  &kana KN_O  &kana KN_KA  &kana KN_KI  &kana KN_KU  &kana KN_KE  &kana KN_KO
             &kana KN_SA  &kana KN_SI  &kana KN_SU  &kana KN_SE  &kana KN_SO  &kana KN_TA  &kana KN_TI  &kana KN_TU  &kana KN_TE  &kana KN_TO
             &kana KN_NA  &kana KN_NI  &kana KN_NU  &kana KN_NE  &kana KN_NO  &kana KN_HA  &kana KN_HI  &kana KN_HU  &kana KN_HE  &kana KN_HO
-            &trans  &trans  &trans  &trans  &kana_thumb KANA_L_LAYER SPACE  &trans  &trans  &kana_thumb KANA_R_LAYER ENTER  &trans  &trans  &trans  &trans
-            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
+            &none  &none  &none  &none  &kana_thumb KANA_L_LAYER SPACE  &none  &none  &kana_thumb KANA_R_LAYER ENTER  &none  &none  &none  &none
+            &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             >;
