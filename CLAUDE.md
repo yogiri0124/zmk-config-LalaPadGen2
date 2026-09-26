@@ -17,7 +17,8 @@
 mkdir -p .review
 BASE=$(git rev-parse main); HEAD_SHA=$(git rev-parse HEAD); MB=$(git merge-base main HEAD)
 N=1   # レビュー回数（1〜3）
-RUN=${HEAD_SHA:0:12}-r$N-$(date +%Y%m%d-%H%M%S)   # 再試行ごとに別名になる
+T=1; while [ -e ".review/${HEAD_SHA:0:12}-r$N-t$T.md" ] || [ -e ".review/${HEAD_SHA:0:12}-r$N-t$T.log" ]; do T=$((T+1)); done
+RUN=${HEAD_SHA:0:12}-r$N-t$T   # 試行番号 t は既存ファイルと衝突しない番号
 OUT=.review/$RUN.md
 codex exec -s read-only -C . --ephemeral --color never -o "$OUT" - <<EOF > ".review/$RUN.log" 2>&1
 AGENTS.mdのレビュー観点に沿ってmainとの差分をレビューせよ。
@@ -27,15 +28,20 @@ AGENTS.mdのレビュー観点に沿ってmainとの差分をレビューせよ�
 ファイルは一切変更しないこと。
 最終回答は AGENTS.md の「レビュー出力の書式」に従い、日本語で書くこと。対象 HEAD と基準の SHA を必ず記載すること。
 EOF
-RC=$?; echo "exit=$RC"
-if [ $RC -eq 0 ] && [ -s "$OUT" ]; then cp "$OUT" .review/latest.md; else echo "未レビュー（codex 失敗または出力なし）"; fi
+RC=$?; echo "exit=$RC out=$OUT"
+```
+
+採用判定（すべて満たしたときだけ `latest.md` を更新する）：
+
+```bash
+[ $RC -eq 0 ] && [ -s "$OUT" ] \n  && grep -q '^## 必須修正' "$OUT" && grep -q '^## 推奨' "$OUT" \n  && grep -q '^## 確認事項' "$OUT" && grep -q '^## 要約' "$OUT" \n  && grep -q "対象 HEAD: *$HEAD_SHA" "$OUT" \n  && [ "$(git rev-parse HEAD)" = "$HEAD_SHA" ] \n  && cp "$OUT" .review/latest.md && echo 採用 || echo "未レビュー（採用条件を満たさない）"
 ```
 
 - `-s read-only`：読み取り専用サンドボックス（Codex はファイルを書き換えられない）。
 - `-o`：Codex の**最終メッセージだけ**をファイルに書き出す（書き込みは codex CLI 自身が行う）。
 - `--ephemeral`：セッションファイルを残さない。途中経過のログは結果と同名の `.log`。結果・ログとも実行ごとに別ファイルになり上書きされない（`.review/` は git 管理外）。
 - ヒアドキュメントは変数展開のため `<<EOF`（クォートなし）にする。依頼内容に `$` やバッククォートが含まれる場合はエスケープする。
-- 採用前に AGENTS.md「結果の採用条件」を確認する（終了コード0、非空、4見出し、記載 SHA＝現在の HEAD）。満たさなければ未レビュー扱い。
+- 採用判定は AGENTS.md「結果の採用条件」に対応する。満たさなければ未レビュー扱いとし、`latest.md` は更新しない（前回の採用結果を残す）。
 - 合格は「## 必須修正」が「なし」**かつ**「確認事項」に「マージを妨げるか：はい」が残っていないこと。妨げる確認事項があれば、解消できるものは解消して再レビューし、ユーザーの判断が必要なものは止めて報告する。レビューは初回を含め最大3回。
 
 ## GitHub Actions / Artifacts
