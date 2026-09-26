@@ -14,5 +14,11 @@
             #binding-cells = <1>;
             display-name = "Kana Mode";
         };
+
+        // 内部用（keymap には書かない）: 送信キューの処理完了の合図。C から参照するので omit しない
+        kana_sync: kana_sync {
+            compatible = "zmk,behavior-kana-sync";
+            #binding-cells = <1>;
+        };
     };
 };

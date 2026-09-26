@@ -3,8 +3,9 @@
  *
  * - 送信はすべて ZMK の behavior queue（マクロと同じ仕組み）に &kp として並べ、順番を保つ。
  * - キューが満杯で「離す」を登録できなかったときは、登録できるまで再試行する（押しっぱなし防止）。
- * - かな配列モードのオフは「受付停止 → IME オフを並べる → キューが空になるのを待つ → レイヤー解除」
- *   の順で行い、解除前後の入力がローマ字のまま送られたり、残りのかなを追い越したりしないようにする。
+ * - かな配列モードのオフは「受付停止 → IME オフを並べる → 完了の合図 (&kana_sync) を並べる →
+ *   合図がキューで実際に処理されたらレイヤー解除」の順で行う。時間の見積もりには頼らないので、
+ *   処理が遅れても、解除前後の入力がローマ字のまま送られたり、残りのかなを追い越したりしない。
  *
  * behavior のコールバックと k_work はどちらもシステムワークキューで動くので、状態の排他は不要。
  */
@@ -25,27 +26,15 @@
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #define KP_BEHAVIOR_NAME DEVICE_DT_NAME(DT_NODELABEL(kp))
+#define SYNC_BEHAVIOR_NAME DEVICE_DT_NAME(DT_NODELABEL(kana_sync))
 #define RETRY_INTERVAL_MS 10
-/* キューの実際の処理はスケジューリングで少し遅れることがあるので、見積もりに余裕を足す */
-#define DRAIN_MARGIN_MS 30
 
 /* ---- 送信キュー ---- */
-
-/* このモジュールが並べた送信がすべて終わる見込み時刻 (k_uptime_get 基準) */
-static int64_t busy_until_ms;
 
 static bool release_pending;
 static struct zmk_behavior_binding pending_release_binding;
 static struct zmk_behavior_binding_event pending_release_event;
 static uint32_t pending_release_wait;
-
-static void note_busy(uint32_t ms) {
-    const int64_t now = k_uptime_get();
-    if (busy_until_ms < now) {
-        busy_until_ms = now;
-    }
-    busy_until_ms += ms;
-}
 
 static void retry_release_work_handler(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(retry_release_work, retry_release_work_handler);
@@ -59,7 +48,6 @@ static void retry_release_work_handler(struct k_work *work) {
         k_work_schedule(&retry_release_work, K_MSEC(RETRY_INTERVAL_MS));
         return;
     }
-    note_busy(pending_release_wait);
     release_pending = false;
 }
 
@@ -77,7 +65,6 @@ int kana_output_tap(const struct zmk_behavior_binding_event *event, uint32_t key
     if (zmk_behavior_queue_add(event, kp, true, tap_ms) < 0) {
         return -ENOSPC;
     }
-    note_busy(tap_ms);
 
     if (zmk_behavior_queue_add(event, kp, false, wait_ms) < 0) {
         release_pending = true;
@@ -87,7 +74,6 @@ int kana_output_tap(const struct zmk_behavior_binding_event *event, uint32_t key
         k_work_schedule(&retry_release_work, K_MSEC(RETRY_INTERVAL_MS));
         return -EAGAIN;
     }
-    note_busy(wait_ms);
 
     return 0;
 }
@@ -100,13 +86,15 @@ static zmk_keymap_layer_id_t kana_layer;
 enum kana_off_stage {
     KANA_OFF_NONE,
     KANA_OFF_SEND_IME_OFF, /* IME オフ (LANGUAGE_2) をキューに並べる */
-    KANA_OFF_DRAIN,        /* キューの送信が終わるのを待ってからレイヤーを解除する */
+    KANA_OFF_SEND_SYNC,    /* その後ろに完了の合図 (&kana_sync) を並べる */
+    KANA_OFF_WAIT_SYNC,    /* 合図がキューで処理されるのを待つ（処理されたらレイヤー解除） */
 };
 
 static enum kana_off_stage off_stage = KANA_OFF_NONE;
 static struct zmk_behavior_binding_event off_event;
 static uint32_t off_tap_ms;
 static uint32_t off_wait_ms;
+static uint32_t sync_token;
 
 static void kana_off_work_handler(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(kana_off_work, kana_off_work_handler);
@@ -118,19 +106,36 @@ static void kana_off_work_handler(struct k_work *work) {
             k_work_schedule(&kana_off_work, K_MSEC(RETRY_INTERVAL_MS));
             return;
         }
-        off_stage = KANA_OFF_DRAIN;
+        off_stage = KANA_OFF_SEND_SYNC;
     }
 
-    if (off_stage != KANA_OFF_DRAIN) {
+    if (off_stage == KANA_OFF_SEND_SYNC) {
+        // IME オフの「離す」を再試行中なら、その登録が済んでから合図を並べる
+        if (release_pending) {
+            k_work_schedule(&kana_off_work, K_MSEC(RETRY_INTERVAL_MS));
+            return;
+        }
+        sync_token++;
+        struct zmk_behavior_binding sync = {
+            .behavior_dev = SYNC_BEHAVIOR_NAME,
+            .param1 = sync_token,
+        };
+        // キューが空だと zmk_behavior_queue_add の中で合図がすぐ処理されるので、先に待ち状態にする
+        off_stage = KANA_OFF_WAIT_SYNC;
+        if (zmk_behavior_queue_add(&off_event, sync, true, 0) < 0) {
+            off_stage = KANA_OFF_SEND_SYNC;
+            k_work_schedule(&kana_off_work, K_MSEC(RETRY_INTERVAL_MS));
+            return;
+        }
+    }
+}
+
+void kana_output_on_sync(uint32_t token) {
+    if (off_stage != KANA_OFF_WAIT_SYNC || token != sync_token) {
         return;
     }
 
-    const int64_t remaining = busy_until_ms + DRAIN_MARGIN_MS - k_uptime_get();
-    if (release_pending || remaining > 0) {
-        k_work_schedule(&kana_off_work, K_MSEC(remaining > 0 ? remaining : RETRY_INTERVAL_MS));
-        return;
-    }
-
+    // ここに来た時点で、合図より前に並べた送信（かな・IME オフ）はすべて実行済み
     zmk_keymap_layer_deactivate(kana_layer);
     kana_active = false;
     off_stage = KANA_OFF_NONE;

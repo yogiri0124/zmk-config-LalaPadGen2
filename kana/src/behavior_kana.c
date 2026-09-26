@@ -26,7 +26,7 @@
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
-#define KANA_MAX_KEYS 4
+#define KANA_MAX_KEYS 5
 
 struct kana_entry {
     uint8_t len;
@@ -37,6 +37,7 @@ struct kana_entry {
 #define K2(a, b) {.len = 2, .keys = {a, b}}
 #define K3(a, b, c) {.len = 3, .keys = {a, b, c}}
 #define K4(a, b, c, d) {.len = 4, .keys = {a, b, c, d}}
+#define K5(a, b, c, d, e) {.len = 5, .keys = {a, b, c, d, e}}
 
 /* 文字 ID → 送るキー列（英語配列・ローマ字入力） */
 static const struct kana_entry kana_table[KN_MAX_ID + 1] = {
@@ -72,9 +73,9 @@ static const struct kana_entry kana_table[KN_MAX_ID + 1] = {
     [KN_SANTEN] = K2(Z, DOT),        /* … （Google 日本語入力: z.） */
     [KN_EXCL] = K1(EXCLAMATION),     /* ！ */
     [KN_QUES] = K1(QUESTION),        /* ？ */
-    [KN_KAGI] = K2(LBKT, RBKT),      /* 「」 */
-    [KN_NIJUKAGI] = K4(Z, LBKT, Z, RBKT), /* 『』 （Google 日本語入力: z[ z]） */
-    [KN_PAREN] = K2(LPAR, RPAR),     /* （） */
+    [KN_KAGI] = K3(LBKT, RBKT, LEFT),              /* 「」 → ← でカーソルを中へ */
+    [KN_NIJUKAGI] = K5(Z, LBKT, Z, RBKT, LEFT),    /* 『』 （Google 日本語入力: z[ z]）→ ← */
+    [KN_PAREN] = K3(LPAR, RPAR, LEFT),             /* （） → ← でカーソルを中へ */
 
     [KN_SPACE] = K1(SPACE),
     [KN_ENTER] = K1(ENTER),

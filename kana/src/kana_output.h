@@ -25,7 +25,10 @@ bool kana_input_enabled(void);
 void kana_mode_on(const struct zmk_behavior_binding_event *event, uint8_t layer_index,
                   uint32_t tap_ms, uint32_t wait_ms);
 
-/* かな配列モードをオフにする: 即座に &kana の受付を止め、IME オフ (LANGUAGE_2) をキューに並べ、
- * キューに並んだ送信がすべて終わってからかなレイヤーを解除する */
+/* かな配列モードをオフにする: 即座に &kana の受付を止め、IME オフ (LANGUAGE_2) と完了の合図を
+ * キューに並べ、合図が処理された（それより前の送信がすべて実行された）時点でかなレイヤーを解除する */
 void kana_mode_off(const struct zmk_behavior_binding_event *event, uint32_t tap_ms,
                    uint32_t wait_ms);
+
+/* 完了の合図 (&kana_sync) がキューで処理されたときに behavior_kana_sync.c から呼ばれる */
+void kana_output_on_sync(uint32_t token);

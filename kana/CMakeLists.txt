@@ -7,6 +7,7 @@ if(CONFIG_ZMK_BEHAVIOR_KANA)
       src/kana_output.c
       src/behavior_kana.c
       src/behavior_kana_mode.c
+      src/behavior_kana_sync.c
     )
   endif()
 endif()
