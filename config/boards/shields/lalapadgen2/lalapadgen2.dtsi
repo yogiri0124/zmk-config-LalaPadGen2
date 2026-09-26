@@ -5,7 +5,6 @@
 #include <zephyr/dt-bindings/input/input-event-codes.h>
 #include <input/processors.dtsi>
 #include "lalapadgen2-layouts.dtsi"
-#include <scroll-snap.dtsi>
 
 #define POS_TP_LCLK_L  52
 #define POS_TP_RCLK_L  53
@@ -175,7 +174,7 @@
                            <&zip_scroll_scaler 1 12>,
                            <&zip_dynamic_xy_scaler>,
                            <&zip_dynamic_scroll_scaler>,
-                           <&zip_scroll_snap>,
+                           <&zip_scroll_snap_R>,
                            <&zip_auto_mouse_layer 4 700>;
         lowspeedmode {
             layers = <1>,<2>;
@@ -184,7 +183,7 @@
                                 <&zip_scroll_scaler 1 40>,
                                 <&zip_dynamic_xy_scaler>,
                                 <&zip_dynamic_scroll_scaler>,
-                                <&zip_scroll_snap>;
+                                <&zip_scroll_snap_R>;
         };
     };
     trackpad_listener_L: trackpad_listener_L {
@@ -196,7 +195,7 @@
                            <&zip_scroll_scaler 1 12>,
                            <&zip_dynamic_xy_scaler>,
                            <&zip_dynamic_scroll_scaler>,
-                           <&zip_scroll_snap>,
+                           <&zip_scroll_snap_L>,
                            <&zip_auto_mouse_layer 4 700>;
         lowspeedmode {
             layers = <1>,<2>;
@@ -205,7 +204,7 @@
                                 <&zip_scroll_scaler 1 40>,
                                 <&zip_dynamic_xy_scaler>,
                                 <&zip_dynamic_scroll_scaler>,
-                                <&zip_scroll_snap>;
+                                <&zip_scroll_snap_L>;
         };
     };
 
@@ -250,15 +249,33 @@ status = "okay";
 };
 
 // スクロールスナップ (kot149/zmk-scroll-snap): 2本指スクロールを近いほうの軸 (X/Y) に揃える。
-// x/y-threshold を <1 1> にして常に X か Y へスナップさせる（斜め判定は未実装で出力が 0 になるため使わない）。
-&zip_scroll_snap {
-    x-threshold = <1 1>;
-    y-threshold = <1 1>;
-    xy-threshold = <0 0>;
+// 判定状態（サンプル・軸ロック）は左右のトラックパッドで独立させるため、インスタンスを分ける。
+// y-threshold <1 1>: |y| > |x| なら Y 軸。x-threshold <101 100>: |y| < 1.01|x| なら X 軸
+// （同量のときも X 軸に決まり、出力が 0 にならない）。斜め判定は未実装で出力 0 になるため使わない。
+/ {
+    zip_scroll_snap_R: zip_scroll_snap_R {
+        compatible = "zmk,input-processor-scroll-snap";
+        #input-processor-cells = <0>;
+        x-threshold = <101 100>;
+        y-threshold = <1 1>;
+        xy-threshold = <0 0>;
+        require-n-samples = <10>;
+        immediate-snap-threshold = <1500>;
+        lock-duration-ms = <200>;
+        lock-for-next-n-events = <10>;
+        idle-reset-timeout-ms = <200>;
+    };
 
-    require-n-samples = <10>;
-    immediate-snap-threshold = <1500>;
-    lock-duration-ms = <200>;
-    lock-for-next-n-events = <10>;
-    idle-reset-timeout-ms = <200>;
+    zip_scroll_snap_L: zip_scroll_snap_L {
+        compatible = "zmk,input-processor-scroll-snap";
+        #input-processor-cells = <0>;
+        x-threshold = <101 100>;
+        y-threshold = <1 1>;
+        xy-threshold = <0 0>;
+        require-n-samples = <10>;
+        immediate-snap-threshold = <1500>;
+        lock-duration-ms = <200>;
+        lock-for-next-n-events = <10>;
+        idle-reset-timeout-ms = <200>;
+    };
 };
