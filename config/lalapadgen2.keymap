@@ -55,9 +55,9 @@
         // かな配列の親指キー: 押している間は親指面レイヤー、単独タップはスペース／エンター。
         // タップ側も &kana（KN_SPACE / KN_ENTER）で送り、かなのローマ字列を追い越さないようにする。
         // quick-tap-ms は付けない（直前にタップしていても、押し続ければ必ず親指面になるように）。
+        // display-name は付けない（LaLapad-Gen2-Editor がレイヤーと誤認するため）。
         kana_thumb: kana_thumb {
             compatible = "zmk,behavior-hold-tap";
-            display-name = "Kana Thumb";
             #binding-cells = <2>;
             flavor = "hold-preferred";
             tapping-term-ms = <200>;
