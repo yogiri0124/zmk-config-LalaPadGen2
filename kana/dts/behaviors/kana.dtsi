@@ -7,5 +7,12 @@
             #binding-cells = <1>;
             display-name = "Kana";
         };
+
+        // layer は keymap 側で &kana_mode { layer = <かな単打面の番号>; }; と指定する
+        /omit-if-no-ref/ kana_mode: kana_mode {
+            compatible = "zmk,behavior-kana-mode";
+            #binding-cells = <1>;
+            display-name = "Kana Mode";
+        };
     };
 };

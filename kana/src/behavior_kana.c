@@ -7,21 +7,22 @@
  * ホストのキーボード配列は英語配列 (US) を前提にしている。
  * 記号の一部（… 『』）は Google 日本語入力の標準ローマ字テーブル（z. z[ z]）を前提にしている。
  * 親指キーのタップ（スペース／エンター）も同じキューで送り、かな列を追い越さないようにする。
- * キューが満杯で「離す」を登録できなかったときは、登録できるまで再試行してキーの押しっぱなしを防ぐ。
+ * キューへの登録・押しっぱなし防止・かな配列モードの状態は kana_output.c にまとめている。
  */
 
 #define DT_DRV_COMPAT zmk_behavior_kana
 
+#include <errno.h>
 #include <zephyr/device.h>
-#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <drivers/behavior.h>
 
 #include <zmk/behavior.h>
-#include <zmk/behavior_queue.h>
 
 #include <dt-bindings/kana/kana.h>
 #include <dt-bindings/zmk/keys.h>
+
+#include "kana_output.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -84,8 +85,6 @@ struct behavior_kana_config {
     uint32_t wait_ms;
 };
 
-#define KP_BEHAVIOR_NAME DEVICE_DT_NAME(DT_NODELABEL(kp))
-
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 
 #define KV(id, name)                                                                               \
@@ -128,33 +127,6 @@ static const struct behavior_parameter_metadata metadata = {
 
 #endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 
-/*
- * 「押す」を登録済みで「離す」を登録できなかったキー。
- * 登録できるまで retry_work で再試行する（キーが押されたままになるのを防ぐ）。
- * behavior のコールバックと k_work はどちらもシステムワークキューで動くので排他は不要。
- */
-static bool release_pending;
-static struct zmk_behavior_binding pending_release_binding;
-static struct zmk_behavior_binding_event pending_release_event;
-static uint32_t pending_release_wait;
-
-static void retry_pending_release(struct k_work *work);
-static K_WORK_DELAYABLE_DEFINE(retry_work, retry_pending_release);
-
-#define RETRY_INTERVAL_MS 10
-
-static void retry_pending_release(struct k_work *work) {
-    if (!release_pending) {
-        return;
-    }
-    if (zmk_behavior_queue_add(&pending_release_event, pending_release_binding, false,
-                               pending_release_wait) < 0) {
-        k_work_schedule(&retry_work, K_MSEC(RETRY_INTERVAL_MS));
-        return;
-    }
-    release_pending = false;
-}
-
 static int on_kana_binding_pressed(struct zmk_behavior_binding *binding,
                                    struct zmk_behavior_binding_event event) {
     const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
@@ -166,33 +138,19 @@ static int on_kana_binding_pressed(struct zmk_behavior_binding *binding,
         return ZMK_BEHAVIOR_OPAQUE;
     }
 
-    if (release_pending) {
-        // 前のキーの「離す」が未登録のうちは、順番が崩れないよう新しい入力を捨てる
-        LOG_WRN("Behavior queue busy, dropped kana id %d", id);
+    if (!kana_input_enabled()) {
+        // かな配列モードでない、または解除処理中（IME オフの後にローマ字が出ないよう捨てる）
+        LOG_DBG("Kana input disabled, dropped kana id %d", id);
         return ZMK_BEHAVIOR_OPAQUE;
     }
 
     const struct kana_entry *entry = &kana_table[id];
     for (int i = 0; i < entry->len; i++) {
-        struct zmk_behavior_binding kp = {
-            .behavior_dev = KP_BEHAVIOR_NAME,
-            .param1 = entry->keys[i],
-        };
-
-        if (zmk_behavior_queue_add(&event, kp, true, cfg->tap_ms) < 0) {
-            // 「押す」を登録できなかった: 何も押されないので、ここで打ち切るだけでよい
-            LOG_ERR("Behavior queue full, dropped rest of kana id %d", id);
-            break;
-        }
-
-        if (zmk_behavior_queue_add(&event, kp, false, cfg->wait_ms) < 0) {
-            // 「押す」だけ登録された: 「離す」を登録できるまで再試行する
-            LOG_ERR("Behavior queue full, retrying release for kana id %d", id);
-            release_pending = true;
-            pending_release_binding = kp;
-            pending_release_event = event;
-            pending_release_wait = cfg->wait_ms;
-            k_work_schedule(&retry_work, K_MSEC(RETRY_INTERVAL_MS));
+        const int ret = kana_output_tap(&event, entry->keys[i], cfg->tap_ms, cfg->wait_ms);
+        if (ret < 0) {
+            // -EBUSY / -ENOSPC: 何も登録していない。-EAGAIN: 「離す」は自動で再試行される。
+            // いずれも同じ文字の残りは送らない（順番が崩れないように）
+            LOG_WRN("Behavior queue busy/full (err %d), dropped rest of kana id %d", ret, id);
             break;
         }
     }

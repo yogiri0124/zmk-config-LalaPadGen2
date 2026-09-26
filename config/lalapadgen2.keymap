@@ -20,6 +20,9 @@
 
 &lt { quick-tap-ms = <200>; };
 
+// かな配列モードのオン／オフ（&kana_mode）で有効にするかな単打面
+&kana_mode { layer = <KANA_LAYER>; };
+
 / {
     behaviors {
         zip_dyn_scale: zip_dyn_scale {
@@ -62,23 +65,6 @@
         };
     };
 
-    macros {
-        // かな配列モード オン: IME オン (LANGUAGE_1) + かな単打面を有効化
-        kana_on: kana_on {
-            compatible = "zmk,behavior-macro";
-            display-name = "Kana On";
-            #binding-cells = <0>;
-            bindings = <&macro_tap &kp LANGUAGE_1 &tog KANA_LAYER>;
-        };
-
-        // かな配列モード オフ: IME オフ (LANGUAGE_2) + かな単打面を無効化
-        kana_off: kana_off {
-            compatible = "zmk,behavior-macro";
-            display-name = "Kana Off";
-            #binding-cells = <0>;
-            bindings = <&macro_tap &kp LANGUAGE_2 &tog KANA_LAYER>;
-        };
-    };
 
     combos {
         compatible = "zmk,combos";
@@ -105,7 +91,7 @@
             &kp A  &kp S  &kp D  &kp F  &kp G  &kp H  &kp J  &kp K  &kp L  &mt2 EQUAL MINUS
             &mt2 LEFT_SHIFT Z  &kp X  &kp C  &kp V  &kp B  &kp N  &kp M  &kp COMMA  &kp PERIOD  &kp SLASH
             &kp LCTRL  &kp LWIN  &kp LEFT_ALT  &mo 1  &kp SPACE  &kp LEFT_SHIFT  &kp BACKSPACE  &kp ENTER  &mo 2  &kp LANGUAGE_2  &kp LANGUAGE_1  &kp BACKSLASH
-            &none  &kp RIGHT  &kp DOWN  &kp LEFT  &kp UP  &kp UP  &kp LEFT  &kp DOWN  &kp RIGHT  &kana_on
+            &none  &kp RIGHT  &kp DOWN  &kp LEFT  &kp UP  &kp UP  &kp LEFT  &kp DOWN  &kp RIGHT  &kana_mode KANA_MODE_ON
             &mkp LCLK  &mkp RCLK  &mkp MCLK  &mkp LCLK  &mkp RCLK  &mkp MCLK
             &mkp MB5  &mkp MB4  &kp LG(TAB)  &kp LG(D)  &kp LCTRL  &mkp MB5  &mkp MB4  &kp LG(TAB)  &kp LG(D)  &kp LCTRL
             >;
@@ -170,7 +156,7 @@
             &kana KN_SA  &kana KN_SI  &kana KN_SU  &kana KN_SE  &kana KN_SO  &kana KN_TA  &kana KN_TI  &kana KN_TU  &kana KN_TE  &kana KN_TO
             &kana KN_NA  &kana KN_NI  &kana KN_NU  &kana KN_NE  &kana KN_NO  &kana KN_HA  &kana KN_HI  &kana KN_HU  &kana KN_HE  &kana KN_HO
             &none  &none  &none  &none  &kana_thumb KANA_L_LAYER KN_SPACE  &none  &none  &kana_thumb KANA_R_LAYER KN_ENTER  &none  &none  &none  &none
-            &none  &none  &none  &none  &none  &none  &none  &none  &none  &kana_off
+            &none  &none  &none  &none  &none  &none  &none  &none  &none  &kana_mode KANA_MODE_OFF
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             >;

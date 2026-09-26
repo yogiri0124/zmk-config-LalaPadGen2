@@ -1,4 +1,4 @@
 config ZMK_BEHAVIOR_KANA
-    bool "Kana romaji output behavior"
+    bool "Kana romaji output behaviors (&kana, &kana_mode)"
     default y
-    depends on DT_HAS_ZMK_BEHAVIOR_KANA_ENABLED
+    depends on DT_HAS_ZMK_BEHAVIOR_KANA_ENABLED || DT_HAS_ZMK_BEHAVIOR_KANA_MODE_ENABLED

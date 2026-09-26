@@ -111,3 +111,7 @@
 #define KN_ENTER 92
 
 #define KN_MAX_ID 92
+
+/* &kana_mode のパラメータ */
+#define KANA_MODE_ON 1
+#define KANA_MODE_OFF 2

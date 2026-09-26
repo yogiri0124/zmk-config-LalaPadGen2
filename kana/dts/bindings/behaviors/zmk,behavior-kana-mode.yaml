@@ -1,0 +1,21 @@
+# かな配列モードのオン／オフ behavior (&kana_mode KANA_MODE_ON / KANA_MODE_OFF)。
+
+description: Kana input mode on/off behavior
+
+compatible: "zmk,behavior-kana-mode"
+
+include: one_param.yaml
+
+properties:
+  layer:
+    type: int
+    required: true
+    description: かな単打面のレイヤー番号（keymap で &kana_mode { layer = <...>; }; と指定する）
+  tap-ms:
+    type: int
+    default: 10
+    description: IME キーを押してから離すまでの時間 (ms)
+  wait-ms:
+    type: int
+    default: 10
+    description: IME キーを離してから次の送信までの時間 (ms)
