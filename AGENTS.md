@@ -35,6 +35,19 @@ Claude Code（編集担当）と Codex（レビュー担当）の両者がこの
 - GUIツール「LaLapad-Gen2-Editor」と併用している。エディタ管理のマクロ（`&mc0`〜）とタップダンス（`&td0`〜）は、定義・参照・番号の対応を一体で扱い、頼まれない限り書き換えない。
 - 依頼にない変更（空白整形、並べ替え、コメント削除を含む）は入れない。
 
+## 参照資料
+
+キーマップ・`.conf` を編集またはレビューするときは、推測で書かずに次の資料で名前・引数・値の範囲を確認する。
+いずれもこのリポジトリが固定している版（ZMK v0.3.0、zmk-driver-iqs9151 v1.0.0）に合わせてある。
+
+- [docs/reference/zmk-keycodes.md](docs/reference/zmk-keycodes.md)：`&kp` などに使えるキーコード名（別名を含む）と、JIS 配列ホストでの注意点
+- [docs/reference/zmk-behaviors.md](docs/reference/zmk-behaviors.md)：`&xxx` の書き方・引数・既定値、自作 behavior・combos のプロパティ、このリポジトリ独自の behavior
+- [docs/reference/lalapadgen2-config.md](docs/reference/lalapadgen2-config.md)：トラックパッド（IQS9151）の Kconfig 名・既定値・入力範囲と、書く場所
+
+- 資料にない名前や、固定している版より新しい機能を使う場合は、公式ドキュメントとソースで存在を確かめ、確認事項として報告する。
+- `west.yml` の版を上げたときは、資料も更新する（キーコード一覧は `docs/reference/gen_zmk_keycodes.py` で再生成できる）。
+- `docs/reference/` は資料なので、頼まれない限り編集しない。
+
 ## 禁止
 
 - `git push --force`（`-f`、`--force-with-lease`、`+refspec` を含む）
