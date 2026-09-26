@@ -169,13 +169,27 @@
         compatible = "zmk,input-listener";
         status = "disabled";
         device = <&trackpad_split_R>;
+        // スクロール方向: 下にスワイプ→下へ、右にスワイプ→右へ（ドライバ既定のナチュラルスクロールを反転）
         input-processors = <&trackpad_key_behaviors_R>,
                            <&zip_xy_scaler 1 5>,
                            <&zip_scroll_scaler 1 12>,
                            <&zip_dynamic_xy_scaler>,
                            <&zip_dynamic_scroll_scaler>,
                            <&zip_scroll_snap_R>,
+                           <&zip_scroll_transform (INPUT_TRANSFORM_X_INVERT | INPUT_TRANSFORM_Y_INVERT)>,
                            <&zip_auto_mouse_layer 4 700>;
+        // ピンチ中（レイヤー8 = PINCH_LAYER、keymap の &pinch_ctrl）はホイールを反転せず、拡大・縮小の向きを保つ。
+        // 先に書いた子ノードが優先されるので lowspeedmode より前に置く
+        pinchmode {
+            layers = <8>;
+            input-processors = <&trackpad_key_behaviors_R>,
+                               <&zip_xy_scaler 1 5>,
+                               <&zip_scroll_scaler 1 12>,
+                               <&zip_dynamic_xy_scaler>,
+                               <&zip_dynamic_scroll_scaler>,
+                               <&zip_scroll_snap_R>,
+                               <&zip_auto_mouse_layer 4 700>;
+        };
         lowspeedmode {
             layers = <1>,<2>;
             input-processors =  <&trackpad_key_behaviors_R>,
@@ -183,20 +197,35 @@
                                 <&zip_scroll_scaler 1 40>,
                                 <&zip_dynamic_xy_scaler>,
                                 <&zip_dynamic_scroll_scaler>,
-                                <&zip_scroll_snap_R>;
+                                <&zip_scroll_snap_R>,
+                                <&zip_scroll_transform (INPUT_TRANSFORM_X_INVERT | INPUT_TRANSFORM_Y_INVERT)>;
         };
     };
     trackpad_listener_L: trackpad_listener_L {
         compatible = "zmk,input-listener";
         status = "disabled";
         device = <&trackpad_split_L>;
+        // スクロール方向: 下にスワイプ→下へ、右にスワイプ→右へ（ドライバ既定のナチュラルスクロールを反転）
         input-processors = <&trackpad_key_behaviors_L>,
                            <&zip_xy_scaler 1 5>,
                            <&zip_scroll_scaler 1 12>,
                            <&zip_dynamic_xy_scaler>,
                            <&zip_dynamic_scroll_scaler>,
                            <&zip_scroll_snap_L>,
+                           <&zip_scroll_transform (INPUT_TRANSFORM_X_INVERT | INPUT_TRANSFORM_Y_INVERT)>,
                            <&zip_auto_mouse_layer 4 700>;
+        // ピンチ中（レイヤー8 = PINCH_LAYER、keymap の &pinch_ctrl）はホイールを反転せず、拡大・縮小の向きを保つ。
+        // 先に書いた子ノードが優先されるので lowspeedmode より前に置く
+        pinchmode {
+            layers = <8>;
+            input-processors = <&trackpad_key_behaviors_L>,
+                               <&zip_xy_scaler 1 5>,
+                               <&zip_scroll_scaler 1 12>,
+                               <&zip_dynamic_xy_scaler>,
+                               <&zip_dynamic_scroll_scaler>,
+                               <&zip_scroll_snap_L>,
+                               <&zip_auto_mouse_layer 4 700>;
+        };
         lowspeedmode {
             layers = <1>,<2>;
             input-processors =  <&trackpad_key_behaviors_L>,
@@ -204,7 +233,8 @@
                                 <&zip_scroll_scaler 1 40>,
                                 <&zip_dynamic_xy_scaler>,
                                 <&zip_dynamic_scroll_scaler>,
-                                <&zip_scroll_snap_L>;
+                                <&zip_scroll_snap_L>,
+                                <&zip_scroll_transform (INPUT_TRANSFORM_X_INVERT | INPUT_TRANSFORM_Y_INVERT)>;
         };
     };
 
