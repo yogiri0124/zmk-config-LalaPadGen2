@@ -15,7 +15,6 @@
 #define KANA_LAYER      5
 #define KANA_L_LAYER    6
 #define KANA_R_LAYER    7
-#define PINCH_LAYER     8
 
 &mt { quick-tap-ms = <200>; };
 
@@ -59,22 +58,6 @@
         };
     };
 
-    macros {
-        // ピンチ（位置62/67）: Ctrl を押しながらピンチ用レイヤーを有効にする。
-        // トラックパッドのリスナーはピンチ用レイヤーの間だけスクロール反転を外すので、拡大・縮小の向きは変わらない。
-        // display-name は付けない（LaLapad-Gen2-Editor がレイヤーと誤認するため）。
-        pinch_ctrl: pinch_ctrl {
-            compatible = "zmk,behavior-macro";
-            #binding-cells = <0>;
-            wait-ms = <0>;
-            tap-ms = <0>;
-            bindings
-                = <&macro_press &mo PINCH_LAYER &kp LCTRL>
-                , <&macro_pause_for_release>
-                , <&macro_release &kp LCTRL &mo PINCH_LAYER>
-                ;
-        };
-    };
 
     combos {
         compatible = "zmk,combos";
@@ -103,7 +86,7 @@
             &kp LCTRL  &kp LWIN  &kp LEFT_ALT  &mo 1  &kp SPACE  &kp LEFT_SHIFT  &kp BACKSPACE  &kp ENTER  &mo 2  &kp LANGUAGE_2  &kp LANGUAGE_1  &kp BACKSLASH
             &none  &kp RIGHT  &kp DOWN  &kp LEFT  &kp UP  &kp UP  &kp LEFT  &kp DOWN  &kp RIGHT  &kana_mode KANA_MODE_ON
             &mkp LCLK  &mkp RCLK  &mkp MCLK  &mkp LCLK  &mkp RCLK  &mkp MCLK
-            &mkp MB5  &mkp MB4  &kp LG(TAB)  &kp LG(D)  &pinch_ctrl  &mkp MB5  &mkp MB4  &kp LG(TAB)  &kp LG(D)  &pinch_ctrl
+            &mkp MB5  &mkp MB4  &kp LG(TAB)  &kp LG(D)  &kp LCTRL  &mkp MB5  &mkp MB4  &kp LG(TAB)  &kp LG(D)  &kp LCTRL
             >;
         };
 
@@ -191,20 +174,6 @@
             &kana KN_DO  &kana KN_BA  &kana KN_BI  &kana KN_BU  &kana KN_BE  &kana KN_BO  &kana KN_PA  &kana KN_PI  &kana KN_PU  &kana KN_PE
             &kana KN_PO  &kana KN_XYA  &kana KN_XYU  &kana KN_XYO  &kana KN_XA  &kana KN_XI  &kana KN_XU  &kana KN_XE  &kana KN_XO  &kana KN_XTU
             &kana KN_VU  &kana KN_TOUTEN  &kana KN_KUTEN  &kana KN_CHOUON  &kana KN_SANTEN  &kana KN_EXCL  &kana KN_QUES  &kana KN_KAGI  &kana KN_NIJUKAGI  &kana KN_PAREN
-            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
-            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
-            &trans  &trans  &trans  &trans  &trans  &trans
-            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
-            >;
-        };
-
-        // ピンチ中だけ有効（&pinch_ctrl）。キーは全て透過。リスナー側でスクロール反転を外すための目印
-        PINCH_LAYER {
-            display-name = "pinch";
-            bindings = <
-            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
-            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
-            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
