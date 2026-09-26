@@ -5,7 +5,8 @@
 説明は同ファイルのコメント（英語、USB HID の用語）をそのまま使っている。OS ごとの対応状況は公式の
 [List of Keycodes](https://zmk.dev/docs/keymaps/list-of-keycodes) を参照。
 
-- 同じ行の名前はすべて同じキー（別名）。どれを使ってもよいが、ファイル内の既存の書き方に合わせる。
+- 同じ行の名前はすべて同じキー（別名）。ファイル内の既存の書き方に合わせる。
+- `(非推奨)` が付いた名前は keys.h で `DEPRECATED (DO NOT USE)` とされているもの。v0.3.0 ではまだ使えるが、新しく書くときは使わない。
 - ここにない名前は存在しない（ビルドエラーになる）。v0.3.0 より新しい版で追加された名前は使えない。
 
 ## 修飾キー関数
@@ -66,53 +67,53 @@ JIS 配列として認識されている PC では、US 配列の名前と出る
 | Keyboard x and X | `X` |
 | Keyboard y and Y | `Y` |
 | Keyboard z and Z | `Z` |
-| Keyboard 1 and ! (Exclamation) | `NUMBER_1` `N1` `NUM_1` |
-| Keyboard ! (Exclamation) | `EXCLAMATION` `EXCL` `BANG` |
-| Keyboard 2 and @ (At sign) | `NUMBER_2` `N2` `NUM_2` |
-| Keyboard @ (At sign) | `AT_SIGN` `AT` `ATSN` |
-| Keyboard 3 and # (Hash/Number) | `NUMBER_3` `N3` `NUM_3` |
+| Keyboard 1 and ! (Exclamation) | `NUMBER_1` `N1` `NUM_1` (非推奨) |
+| Keyboard ! (Exclamation) | `EXCLAMATION` `EXCL` `BANG` (非推奨) |
+| Keyboard 2 and @ (At sign) | `NUMBER_2` `N2` `NUM_2` (非推奨) |
+| Keyboard @ (At sign) | `AT_SIGN` `AT` `ATSN` (非推奨) |
+| Keyboard 3 and # (Hash/Number) | `NUMBER_3` `N3` `NUM_3` (非推奨) |
 | Keyboard # (Hash/Number) | `HASH` `POUND` |
-| Keyboard 4 and $ (Dollar) | `NUMBER_4` `N4` `NUM_4` |
+| Keyboard 4 and $ (Dollar) | `NUMBER_4` `N4` `NUM_4` (非推奨) |
 | Keyboard $ (Dollar) | `DOLLAR` `DLLR` |
-| Keyboard 5 and % (Percent) | `NUMBER_5` `N5` `NUM_5` |
-| Keyboard % (Percent) | `PERCENT` `PRCNT` `PRCT` |
-| Keyboard 6 and ^ (Caret) | `NUMBER_6` `N6` `NUM_6` |
-| Keyboard ^ (Caret) | `CARET` `CRRT` |
-| Keyboard 7 and & (Ampersand) | `NUMBER_7` `N7` `NUM_7` |
+| Keyboard 5 and % (Percent) | `NUMBER_5` `N5` `NUM_5` (非推奨) |
+| Keyboard % (Percent) | `PERCENT` `PRCNT` `PRCT` (非推奨) |
+| Keyboard 6 and ^ (Caret) | `NUMBER_6` `N6` `NUM_6` (非推奨) |
+| Keyboard ^ (Caret) | `CARET` `CRRT` (非推奨) |
+| Keyboard 7 and & (Ampersand) | `NUMBER_7` `N7` `NUM_7` (非推奨) |
 | Keyboard & (Ampersand) | `AMPERSAND` `AMPS` |
-| Keyboard 8 and * (Asterisk) | `NUMBER_8` `N8` `NUM_8` |
+| Keyboard 8 and * (Asterisk) | `NUMBER_8` `N8` `NUM_8` (非推奨) |
 | Keyboard * (Asterisk) | `ASTERISK` `ASTRK` `STAR` |
-| Keyboard 9 and ( (Left Parenthesis) | `NUMBER_9` `N9` `NUM_9` |
-| Keyboard ( (Left Parenthesis) | `LEFT_PARENTHESIS` `LPAR` `LPRN` |
-| Keyboard 0 and ) (Right Parenthesis) | `NUMBER_0` `N0` `NUM_0` |
-| Keyboard ) (Right Parenthesis) | `RIGHT_PARENTHESIS` `RPAR` `RPRN` |
+| Keyboard 9 and ( (Left Parenthesis) | `NUMBER_9` `N9` `NUM_9` (非推奨) |
+| Keyboard ( (Left Parenthesis) | `LEFT_PARENTHESIS` `LPAR` `LPRN` (非推奨) |
+| Keyboard 0 and ) (Right Parenthesis) | `NUMBER_0` `N0` `NUM_0` (非推奨) |
+| Keyboard ) (Right Parenthesis) | `RIGHT_PARENTHESIS` `RPAR` `RPRN` (非推奨) |
 | Keyboard Return (Enter) | `RETURN` `ENTER` `RET` |
 | Keyboard Escape | `ESCAPE` `ESC` |
-| Keyboard Backspace | `BACKSPACE` `BSPC` `BKSP` |
+| Keyboard Backspace | `BACKSPACE` `BSPC` `BKSP` (非推奨) |
 | Keyboard Tab | `TAB` |
-| Keyboard Space | `SPACE` `SPC` |
+| Keyboard Space | `SPACE` `SPC` (非推奨) |
 | Keyboard - and _ (Minus and Underscore) | `MINUS` |
 | Keyboard _ (Underscore) | `UNDERSCORE` `UNDER` |
-| Keyboard = and + (Equal and Plus) | `EQUAL` `EQL` |
+| Keyboard = and + (Equal and Plus) | `EQUAL` `EQL` (非推奨) |
 | Keyboard + (Plus) | `PLUS` |
 | Keyboard [ and { (Left Bracket and Left Brace) | `LEFT_BRACKET` `LBKT` |
-| Keyboard { (Left Brace) | `LEFT_BRACE` `LBRC` `LCUR` |
+| Keyboard { (Left Brace) | `LEFT_BRACE` `LBRC` `LCUR` (非推奨) |
 | Keyboard ] and } (Right Bracket and Right Brace) | `RIGHT_BRACKET` `RBKT` |
-| Keyboard } (Right Brace) | `RIGHT_BRACE` `RBRC` `RCUR` |
+| Keyboard } (Right Brace) | `RIGHT_BRACE` `RBRC` `RCUR` (非推奨) |
 | Keyboard \ and \| (Backslash and Pipe) | `BACKSLASH` `BSLH` |
 | Keyboard \| (Pipe) | `PIPE` |
 | Keyboard Non-US # and ~ (Non-US Hash/Number and Tilde) | `NON_US_HASH` `NUHS` |
 | Keyboard ~ (Tilde) | `TILDE2` |
-| Keyboard ; and : (Semicolon and Colon) | `SEMICOLON` `SEMI` `SCLN` |
-| Keyboard : (Colon) | `COLON` `COLN` |
-| Keyboard ' and " (Apostrophe and Quote) | `SINGLE_QUOTE` `SQT` `APOSTROPHE` `APOS` `QUOT` |
+| Keyboard ; and : (Semicolon and Colon) | `SEMICOLON` `SEMI` `SCLN` (非推奨) |
+| Keyboard : (Colon) | `COLON` `COLN` (非推奨) |
+| Keyboard ' and " (Apostrophe and Quote) | `SINGLE_QUOTE` `SQT` `APOSTROPHE` `APOS` `QUOT` (非推奨) |
 | Keyboard " (Quote) | `DOUBLE_QUOTES` `DQT` |
-| Keyboard \` and ~ (Grave Accent and Tilde) | `GRAVE` `GRAV` |
-| Keyboard ~ (Tilde) | `TILDE` `TILD` |
-| Keyboard , and < (Comma and Less Than) | `COMMA` `CMMA` |
-| Keyboard < (Less Than) | `LESS_THAN` `LT` `LABT` |
+| Keyboard \` and ~ (Grave Accent and Tilde) | `GRAVE` `GRAV` (非推奨) |
+| Keyboard ~ (Tilde) | `TILDE` `TILD` (非推奨) |
+| Keyboard , and < (Comma and Less Than) | `COMMA` `CMMA` (非推奨) |
+| Keyboard < (Less Than) | `LESS_THAN` `LT` `LABT` (非推奨) |
 | Keyboard . and > (Period and Greater Than) | `PERIOD` `DOT` |
-| Keyboard > (Greater Than) | `GREATER_THAN` `GT` `RABT` |
+| Keyboard > (Greater Than) | `GREATER_THAN` `GT` `RABT` (非推奨) |
 | Keyboard / and ? (Forward Slash and Question) | `SLASH` `FSLH` |
 | Keyboard ? (Question) | `QUESTION` `QMARK` |
 | Keyboard Caps Lock | `CAPSLOCK` `CAPS` `CLCK` |
@@ -128,25 +129,25 @@ JIS 配列として認識されている PC では、US 配列の名前と出る
 | Keyboard F10 | `F10` |
 | Keyboard F11 | `F11` |
 | Keyboard F12 | `F12` |
-| Keyboard Print Screen | `PRINTSCREEN` `PSCRN` `PRSC` |
-| Keyboard Scroll Lock | `SCROLLLOCK` `SLCK` `SCLK` |
-| Keyboard Pause/Break | `PAUSE_BREAK` `PAUS` |
+| Keyboard Print Screen | `PRINTSCREEN` `PSCRN` `PRSC` (非推奨) |
+| Keyboard Scroll Lock | `SCROLLLOCK` `SLCK` `SCLK` (非推奨) |
+| Keyboard Pause/Break | `PAUSE_BREAK` `PAUS` (非推奨) |
 | Keyboard Insert | `INSERT` `INS` |
 | Keyboard Home | `HOME` |
-| Keyboard Page Up | `PAGE_UP` `PG_UP` `PGUP` |
+| Keyboard Page Up | `PAGE_UP` `PG_UP` `PGUP` (非推奨) |
 | Keyboard Delete | `DELETE` `DEL` |
 | Keyboard End | `END` |
-| Keyboard Page Down | `PAGE_DOWN` `PG_DN` `PGDN` |
-| Keyboard Right Arrow | `RIGHT_ARROW` `RIGHT` `RARW` |
-| Keyboard Left Arrow | `LEFT_ARROW` `LEFT` `LARW` |
-| Keyboard Down Arrow | `DOWN_ARROW` `DOWN` `DARW` |
-| Keyboard Up Arrow | `UP_ARROW` `UP` `UARW` |
+| Keyboard Page Down | `PAGE_DOWN` `PG_DN` `PGDN` (非推奨) |
+| Keyboard Right Arrow | `RIGHT_ARROW` `RIGHT` `RARW` (非推奨) |
+| Keyboard Left Arrow | `LEFT_ARROW` `LEFT` `LARW` (非推奨) |
+| Keyboard Down Arrow | `DOWN_ARROW` `DOWN` `DARW` (非推奨) |
+| Keyboard Up Arrow | `UP_ARROW` `UP` `UARW` (非推奨) |
 | Keypad Numlock and Clear | `KP_NUMLOCK` `KP_NUM` `KP_NLCK` |
 | Keypad Clear | `CLEAR2` |
-| Keypad / (Slash/Divide) | `KP_DIVIDE` `KP_SLASH` `KDIV` |
-| Keypad * (Multiply) | `KP_MULTIPLY` `KP_ASTERISK` `KMLT` |
-| Keypad - (Minus) | `KP_MINUS` `KP_SUBTRACT` `KMIN` |
-| Keypad + (Plus) | `KP_PLUS` `KPLS` |
+| Keypad / (Slash/Divide) | `KP_DIVIDE` `KP_SLASH` `KDIV` (非推奨) |
+| Keypad * (Multiply) | `KP_MULTIPLY` `KP_ASTERISK` `KMLT` (非推奨) |
+| Keypad - (Minus) | `KP_MINUS` `KP_SUBTRACT` `KMIN` (非推奨) |
+| Keypad + (Plus) | `KP_PLUS` `KPLS` (非推奨) |
 | Keypad Enter | `KP_ENTER` |
 | Keypad 1 | `KP_NUMBER_1` `KP_N1` |
 | Keypad 2 | `KP_NUMBER_2` `KP_N2` |
@@ -161,7 +162,7 @@ JIS 配列として認識されている PC では、US 配列の名前と出る
 | Keypad . (Dot) | `KP_DOT` |
 | Keyboard Non-US \ and \| (Non-us Backslash and Pipe) | `NON_US_BACKSLASH` `NON_US_BSLH` `NUBS` |
 | Keyboard Pipe | `PIPE2` |
-| Keyboard Application (Context Menu) | `K_APPLICATION` `K_APP` `K_CONTEXT_MENU` `K_CMENU` `GUI` |
+| Keyboard Application (Context Menu) | `K_APPLICATION` `K_APP` `K_CONTEXT_MENU` `K_CMENU` `GUI` (非推奨) |
 | Keyboard Power | `K_POWER` `K_PWR` |
 | Keypad = (Equal) | `KP_EQUAL` |
 | Keyboard F13 | `F13` |
@@ -182,14 +183,14 @@ JIS 配列として認識されている PC では、US 配列の名前と出る
 | Keyboard Select | `K_SELECT` |
 | Keyboard Stop | `K_STOP` |
 | Keyboard Again | `K_AGAIN` `K_REDO` |
-| Keyboard Undo | `K_UNDO` `UNDO` |
-| Keyboard Cut | `K_CUT` `CUT` |
-| Keyboard Copy | `K_COPY` `COPY` |
-| Keyboard Paste | `K_PASTE` `PSTE` |
+| Keyboard Undo | `K_UNDO` `UNDO` (非推奨) |
+| Keyboard Cut | `K_CUT` `CUT` (非推奨) |
+| Keyboard Copy | `K_COPY` `COPY` (非推奨) |
+| Keyboard Paste | `K_PASTE` `PSTE` (非推奨) |
 | Keyboard Find | `K_FIND` |
 | Keyboard Mute | `K_MUTE` |
-| Keyboard Volume Up | `K_VOLUME_UP` `K_VOL_UP` `VOLU` |
-| Keyboard Volume Down | `K_VOLUME_DOWN` `K_VOL_DN` `VOLD` |
+| Keyboard Volume Up | `K_VOLUME_UP` `K_VOL_UP` `VOLU` (非推奨) |
+| Keyboard Volume Down | `K_VOLUME_DOWN` `K_VOL_DN` `VOLD` (非推奨) |
 | Keyboard Locking Caps Lock | `LOCKING_CAPS` `LCAPS` |
 | Keyboard Locking Num Lock | `LOCKING_NUM` `LNLCK` |
 | Keyboard Locking Scroll Lock | `LOCKING_SCROLL` `LSLCK` |
@@ -230,12 +231,12 @@ JIS 配列として認識されている PC では、US 配列の名前と出る
 | Keypad ) (Right Parenthesis) | `KP_RIGHT_PARENTHESIS` `KP_RPAR` |
 | Keypad Space | `KSPC` |
 | Keypad Clear | `KP_CLEAR` |
-| Keyboard Left Control | `LEFT_CONTROL` `LCTRL` `LCTL` |
-| Keyboard Left Shift | `LEFT_SHIFT` `LSHIFT` `LSHFT` `LSFT` |
+| Keyboard Left Control | `LEFT_CONTROL` `LCTRL` `LCTL` (非推奨) |
+| Keyboard Left Shift | `LEFT_SHIFT` `LSHIFT` `LSHFT` `LSFT` (非推奨) |
 | Keyboard Left Alt | `LEFT_ALT` `LALT` |
 | Keyboard Left GUI (Windows / Command / Meta) | `LEFT_GUI` `LGUI` `LEFT_WIN` `LWIN` `LEFT_COMMAND` `LCMD` `LEFT_META` `LMETA` |
-| Keyboard Right Control | `RIGHT_CONTROL` `RCTRL` `RCTL` |
-| Keyboard Right Shift | `RIGHT_SHIFT` `RSHIFT` `RSHFT` `RSFT` |
+| Keyboard Right Control | `RIGHT_CONTROL` `RCTRL` `RCTL` (非推奨) |
+| Keyboard Right Shift | `RIGHT_SHIFT` `RSHIFT` `RSHFT` `RSFT` (非推奨) |
 | Keyboard Right Alt | `RIGHT_ALT` `RALT` |
 | Keyboard Right GUI (Windows / Command / Meta) | `RIGHT_GUI` `RGUI` `RIGHT_WIN` `RWIN` `RIGHT_COMMAND` `RCMD` `RIGHT_META` `RMETA` |
 | Keyboard Play/Pause | `K_PLAY_PAUSE` `K_PP` |
@@ -314,20 +315,20 @@ JIS 配列として認識されている PC では、US 配列の名前と出る
 | Consumer Record | `C_RECORD` `C_REC` |
 | Consumer Fast Forward | `C_FAST_FORWARD` `C_FF` |
 | Consumer Rewind | `C_REWIND` `C_RW` |
-| Consumer Scan Next Track | `C_NEXT` `M_NEXT` |
-| Consumer Scan Previous Track | `C_PREVIOUS` `C_PREV` `M_PREV` |
-| Consumer Stop | `C_STOP` `M_STOP` |
-| Consumer Eject | `C_EJECT` `M_EJCT` |
+| Consumer Scan Next Track | `C_NEXT` `M_NEXT` (非推奨) |
+| Consumer Scan Previous Track | `C_PREVIOUS` `C_PREV` `M_PREV` (非推奨) |
+| Consumer Stop | `C_STOP` `M_STOP` (非推奨) |
+| Consumer Eject | `C_EJECT` `M_EJCT` (非推奨) |
 | Consumer Random Play | `C_RANDOM_PLAY` `C_SHUFFLE` |
 | Consumer Repeat | `C_REPEAT` |
 | Consumer Slow Tracking | `C_SLOW_TRACKING` `C_SLOW2` |
 | Consumer Stop/Eject | `C_STOP_EJECT` |
-| Consumer Play/Pause | `C_PLAY_PAUSE` `C_PP` `M_PLAY` |
+| Consumer Play/Pause | `C_PLAY_PAUSE` `C_PP` `M_PLAY` (非推奨) |
 | Consumer Voice Command | `C_VOICE_COMMAND` |
-| Consumer Mute | `C_MUTE` `M_MUTE` |
+| Consumer Mute | `C_MUTE` `M_MUTE` (非推奨) |
 | Consumer Bass Boost | `C_BASS_BOOST` |
-| Consumer Volume Increment | `C_VOLUME_UP` `C_VOL_UP` `M_VOLU` |
-| Consumer Volume Decrement | `C_VOLUME_DOWN` `C_VOL_DN` `M_VOLD` |
+| Consumer Volume Increment | `C_VOLUME_UP` `C_VOL_UP` `M_VOLU` (非推奨) |
+| Consumer Volume Decrement | `C_VOLUME_DOWN` `C_VOL_DN` `M_VOLD` (非推奨) |
 | Consumer Slow | `C_SLOW` |
 | Consumer Alternate Audio Increment | `C_ALTERNATE_AUDIO_INCREMENT` `C_ALT_AUDIO_INC` |
 | Consumer AL Consumer Control Configuration | `C_AL_CCC` |

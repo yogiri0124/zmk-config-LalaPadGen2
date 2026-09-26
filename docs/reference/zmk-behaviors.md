@@ -11,6 +11,7 @@
 ## 基本ルール
 
 - 1つのキー位置 = `&behavior` 1個 + その引数。引数の数（binding-cells）は behavior ごとに決まっている。
+- 下の表の「引数」は**キーマップに書く値の数**。`BT_NXT` や `BL_ON` などの定数は中身が「コマンド 0」の2値に展開されるマクロなので、1つ書くだけで2セル分になる（`&bt` と `&bl` は2セル）。
 - レイヤー番号は `keymap` ノード内の**定義順**で 0 から数える。このリポジトリでは `DEFAULT_LAYER`=0、`SECONDARY_LAYER`=1、`TERTIARY_LAYER`=2、`SYSTEM_LAYER`=3 を `#define` している。
 - 引数に使う定数は include が必要：`bt.h`（`BT_*`）、`outputs.h`（`OUT_*`）、`pointing.h`（`LCLK`・`MOVE_*`・`SCRL_*`）、`keys.h`（キーコード）。このリポジトリの keymap は全部 include 済み。
 
@@ -23,7 +24,7 @@
 | `&kp キー` | 1 | キーを押す。`&kp LC(C)` のように修飾キー関数も使える |
 | `&mt 修飾 キー` | 2 | 押し続けで修飾キー、タップでキー。既定は `hold-preferred`、200ms |
 | `&kt キー` | 1 | キーの押下状態をトグルする |
-| `&sk キー` | 1 | 次のキーを押すまで押しっぱなし扱い（ワンショット）。既定 1000ms で解除 |
+| `&sk キー` | 1 | 次のキーと組み合わせて1回だけ効く（ワンショット）。既定 1000ms で解除 |
 | `&gresc` | 0 | Shift か GUI が押されていれば `` ` ``、それ以外は Esc |
 | `&caps_word` | 0 | 単語の間だけ Caps。`UNDERSCORE BACKSPACE DELETE` と英数字以外で解除 |
 | `&key_repeat` | 0 | 直前に送ったキーをもう一度送る |
@@ -75,7 +76,9 @@
 | `&soft_off` | 0 | 電源オフ。追加の有効化設定が必要（公式の Soft Off ページ参照） |
 | `&ext_power EP_ON` / `EP_OFF` / `EP_TOG` | 1 | 外部電源出力の制御。有効化設定が必要 |
 | `&studio_unlock` | 0 | ZMK Studio のロック解除（このリポジトリは `CONFIG_ZMK_STUDIO_LOCKING=n`） |
-| `&rgb_ug ...` / `&bl ...` | 1 | RGB アンダーグロー / バックライト。**このキーボードは未使用**（LED は rgbled_widget） |
+| `&bl BL_ON` / `BL_OFF` / `BL_TOG` / `BL_INC` / `BL_DEC` / `BL_CYCLE` | 1 | バックライト。**このキーボードは未使用** |
+| `&bl BL_SET 値` | 2 | バックライトの明るさを指定（値が必須）。**未使用** |
+| `&rgb_ug RGB_TOG` など | 1 | RGB アンダーグロー。**このキーボードは未使用**（LED は rgbled_widget） |
 
 誤操作が困るもの（`BT_CLR`、`BT_CLR_ALL`、`&bootloader`、`&sys_reset`、`&soft_off`）を割り当てる・移動するときは、報告に明記する。
 
@@ -120,7 +123,14 @@
 
 ### Sticky Key / Sticky Layer の調整
 
-- `&sk { release-after-ms = <2000>; };` のように既存ノードの値を変えられる。`quick-release`（既定 false）、`lazy`（false）、`ignore-modifiers`（true）。
+`&sk { release-after-ms = <2000>; };` のように既存ノードの値を変えられる。既定値は2つで異なる。
+
+| プロパティ | `&sk` の既定 | `&sl` の既定 |
+| --- | --- | --- |
+| `release-after-ms` | 1000 | 1000 |
+| `quick-release` | false（次のキーを**離したとき**に解除） | **true**（次のキーを**押したとき**に解除） |
+| `lazy` | false | false |
+| `ignore-modifiers` | true | true |
 
 ### Caps Word の調整
 

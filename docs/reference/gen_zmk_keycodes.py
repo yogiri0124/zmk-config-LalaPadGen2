@@ -6,7 +6,7 @@ for l in src:
     m=re.match(r'/\* (.*) \*/$',l.strip())
     if m: cur=[m.group(1),[]];groups.append(cur);continue
     m=re.match(r'#define (\w+) ',l)
-    if m and cur is not None: cur[1].append(m.group(1))
+    if m and cur is not None: cur[1].append(m.group(1)+(' (非推奨)' if 'DEPRECATED' in l else ''))
 out=[r'''# ZMK キーコード一覧（ZMK v0.3.0）
 
 `&kp` / `&sk` / `&kt` / `&mt` の引数に使える名前の一覧。**このリポジトリが固定している ZMK v0.3.0** の
@@ -14,7 +14,8 @@ out=[r'''# ZMK キーコード一覧（ZMK v0.3.0）
 説明は同ファイルのコメント（英語、USB HID の用語）をそのまま使っている。OS ごとの対応状況は公式の
 [List of Keycodes](https://zmk.dev/docs/keymaps/list-of-keycodes) を参照。
 
-- 同じ行の名前はすべて同じキー（別名）。どれを使ってもよいが、ファイル内の既存の書き方に合わせる。
+- 同じ行の名前はすべて同じキー（別名）。ファイル内の既存の書き方に合わせる。
+- `(非推奨)` が付いた名前は keys.h で `DEPRECATED (DO NOT USE)` とされているもの。v0.3.0 ではまだ使えるが、新しく書くときは使わない。
 - ここにない名前は存在しない（ビルドエラーになる）。v0.3.0 より新しい版で追加された名前は使えない。
 
 ## 修飾キー関数
@@ -48,5 +49,5 @@ JIS 配列として認識されている PC では、US 配列の名前と出る
 | --- | --- |''']
 def esc(t): return t.replace('|', chr(92)+'|').replace('`', chr(92)+'`')
 for c,names in groups:
-    if names: out.append('| %s | %s |'%(esc(c), ' '.join('`%s`'%n for n in names)))
+    if names: out.append('| %s | %s |'%(esc(c), ' '.join(('`%s` (非推奨)'%n[:-6]) if n.endswith(' (非推奨)') else '`%s`'%n for n in names)))
 open(sys.argv[2],'w',encoding='utf-8',newline=chr(10)).write(chr(10).join(out)+chr(10))
