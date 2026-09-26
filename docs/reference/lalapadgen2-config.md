@@ -12,11 +12,12 @@
 | `config/lalapadgen2.conf` | 左右両方 |
 | `config/boards/shields/lalapadgen2/lalapadgen2_left.conf` | 左のみ |
 | `config/boards/shields/lalapadgen2/lalapadgen2_right.conf` | 右のみ |
+| `config/lalapadgen2_left.conf` | 左のみ（親機専用の設定を置く。LaLapad-Gen2-Editor の管理外） |
 
 - 現状は、左右の `.conf` に同じ値を明示的に書いている。片側だけ変える依頼なら該当側だけを編集する。
   両側を変える依頼なら左右両方を同じように編集する（共通 `.conf` へ移すのは依頼があるときだけ）。
 - 同じ項目を共通と左右の両方に書くと、どちらが効くか分かりにくくなるので避ける。
-- 右が central（`Kconfig.defconfig`）。トラックパッドの設定は、そのトラックパッドが付いている側で効く。
+- 左が central（`Kconfig.defconfig`）。トラックパッドの設定は、そのトラックパッドが付いている側で効く。
 - `入力値` は bool が `y / n`、数値は `最小..最大`。`整数` は Kconfig に範囲制約がない項目。
 - **Rotation** は choice。4つのうち1つだけを `y` にする（他は書かないか `n`）。
 - 範囲外の値や存在しない名前は、ビルドの警告・エラーになる。変更後は CI ログの Kconfig 警告を確認する。

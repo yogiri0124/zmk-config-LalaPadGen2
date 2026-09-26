@@ -45,13 +45,6 @@
             bindings = <&kp>, <&kp>;
         };
 
-        tap_dance_layer_1and2: tap_dance_layer_1and2 {
-            compatible = "zmk,behavior-tap-dance";
-            label = "td_mo12";
-            #binding-cells = <0>;
-            bindings = <&mo 1>, <&mo 2>;
-        };
-
         // かな配列の親指キー: 押している間は親指面レイヤー、単独タップはスペース／エンター。
         // タップ側も &kana（KN_SPACE / KN_ENTER）で送り、かなのローマ字列を追い越さないようにする。
         // quick-tap-ms は付けない（直前にタップしていても、押し続ければ必ず親指面になるように）。

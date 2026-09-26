@@ -65,7 +65,7 @@
 | `&bt BT_DISC n` | 2 | プロファイル n を切断（接続中かつ非選択のとき） |
 | `&out OUT_USB` / `OUT_BLE` / `OUT_TOG` | 1 | 出力先を USB / BLE / 切替。選択はフラッシュに保存される |
 
-- このキーボードの `BT_MAX_CONN` は 5（右＝central の `Kconfig.defconfig`）。うち1つは左右の分割接続に使う。`BT_SEL` の番号を追加・変更するときは、使えるプロファイル数を確認事項として報告する。
+- このキーボードの `BT_MAX_CONN` は 5（左＝central の `Kconfig.defconfig`）。うち1つは左右の分割接続に使う。`BT_SEL` の番号を追加・変更するときは、使えるプロファイル数を確認事項として報告する。
 
 ### リセット・電源・その他
 
@@ -162,7 +162,6 @@
 | 名前 | 中身 | 書き方 |
 | --- | --- | --- |
 | `&mt2` | hold-tap（`tap-preferred`、200ms、quick-tap 200、require-prior-idle 125、`<&kp>, <&kp>`） | `&mt2 押し続けキー タップキー` |
-| `&tap_dance_layer_1and2` | tap-dance（1回：`&mo 1`、2回：`&mo 2`） | 引数なし |
 | `&zip_dyn_scale` | トラックパッドの倍率を増減・リセット（ドライバ v1.0.0） | `&zip_dyn_scale 対象 操作` |
 | `&zip_dyn_scale_set` | トラックパッドの倍率を直接指定 | `&zip_dyn_scale_set 対象 値` |
 
