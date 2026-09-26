@@ -1,0 +1,11 @@
+#include <dt-bindings/kana/kana.h>
+
+/ {
+    behaviors {
+        /omit-if-no-ref/ kana: kana {
+            compatible = "zmk,behavior-kana";
+            #binding-cells = <1>;
+            display-name = "Kana";
+        };
+    };
+};
