@@ -123,14 +123,14 @@
 
 ### Sticky Key / Sticky Layer の調整
 
-`&sk { release-after-ms = <2000>; };` のように既存ノードの値を変えられる。既定値は2つで異なる。
+`&sk { release-after-ms = <2000>; };` のように既存ノードの値を変えられる。既定値は2つで異なる（v0.3.0 の `app/dts/behaviors/sticky_key.dtsi` で確認）。
 
 | プロパティ | `&sk` の既定 | `&sl` の既定 |
 | --- | --- | --- |
 | `release-after-ms` | 1000 | 1000 |
 | `quick-release` | false（次のキーを**離したとき**に解除） | **true**（次のキーを**押したとき**に解除） |
 | `lazy` | false | false |
-| `ignore-modifiers` | true | true |
+| `ignore-modifiers` | true（修飾キーを押しても解除されない） | **false**（修飾キーを押すと解除される） |
 
 ### Caps Word の調整
 
