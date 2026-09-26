@@ -1,0 +1,7 @@
+# かな入力モジュール内部用の behavior。behavior queue の処理完了の合図に使う（keymap には書かない）。
+
+description: Kana input internal queue sync marker
+
+compatible: "zmk,behavior-kana-sync"
+
+include: one_param.yaml

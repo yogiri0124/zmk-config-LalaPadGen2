@@ -6,21 +6,38 @@
 
 ## 作業開始時
 
-1. `git status` を確認する。未コミットの変更があれば、内容をユーザーに報告してから進める（勝手に破棄・stash しない）。
-2. `.review/latest.md` が存在すれば、修正に入る前に必ず読む。
+1. メインのフォルダで `git status` を確認する。未コミットの変更があれば、内容をユーザーに報告してから進める（勝手に破棄・stash しない）。
+2. `.review/latest.md`（メインのフォルダ）が存在すれば、修正に入る前に必ず読む。
+
+## 作業用フォルダ（git worktree）
+
+ユーザーはメインのフォルダ（リポジトリのルート）を LaLapad-Gen2-Editor で開いている。
+作業中のブランチでメインのフォルダの中身を入れ替えないよう、ブランチは作業用フォルダで開く。
+
+- 作成：メインのフォルダで `git pull --ff-only` の後、`git worktree add .worktrees/<名前> -b <ブランチ> main`
+  （`<名前>` はブランチ名の `/` を `-` に置き換えたもの。例：`feat/xxx` → `.worktrees/feat-xxx`）
+- 既存ブランチを開く：`git worktree add .worktrees/<名前> <ブランチ>`
+- 編集・コミット・Codex レビュー・push は作業用フォルダで行う。**メインのフォルダでは `git checkout` でブランチを切り替えない。**
+- main の取り込み（main が進んだとき）は作業用フォルダで `git merge main`。
+- マージ・main の push・`.uf2` の取得はメインのフォルダで行う（下記「GitHub Actions / Artifacts」）。
+- マージ後に `git worktree remove .worktrees/<名前>` で作業用フォルダを削除する。ブランチ自体は残す。
+- `.review/` と `firmware/` はメインのフォルダの1か所に集約する（作業用フォルダには作らない）。
+- `.worktrees/` は git 管理外（`.gitignore`）。
 
 ## Codex によるレビューの呼び出し方
 
-コマンドは Git Bash（Bash ツール）で、リポジトリのルートから実行する。
+コマンドは Git Bash（Bash ツール）で、作業用フォルダから実行する。`MAIN` はメインのフォルダ（リポジトリのルート）の絶対パス。
 
 ```bash
-mkdir -p .review
+MAIN=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+R="$MAIN/.review"
+mkdir -p "$R"
 BASE=$(git rev-parse main); HEAD_SHA=$(git rev-parse HEAD); MB=$(git merge-base main HEAD)
 N=1   # レビュー回数（1〜3）
-T=1; while [ -e ".review/${HEAD_SHA:0:12}-r$N-t$T.md" ] || [ -e ".review/${HEAD_SHA:0:12}-r$N-t$T.log" ]; do T=$((T+1)); done
+T=1; while [ -e "$R/${HEAD_SHA:0:12}-r$N-t$T.md" ] || [ -e "$R/${HEAD_SHA:0:12}-r$N-t$T.log" ]; do T=$((T+1)); done
 RUN=${HEAD_SHA:0:12}-r$N-t$T   # 試行番号 t は既存ファイルと衝突しない番号
-OUT=.review/$RUN.md
-codex exec -s read-only -C . --ephemeral --color never -o "$OUT" - <<EOF > ".review/$RUN.log" 2>&1
+OUT=$R/$RUN.md
+codex exec -s read-only -C . --ephemeral --color never -o "$OUT" - <<EOF > "$R/$RUN.log" 2>&1
 AGENTS.mdのレビュー観点に沿ってmainとの差分をレビューせよ。
 依頼内容: <ここに依頼内容>
 基準 (main): $BASE / merge-base: $MB / 対象 HEAD: $HEAD_SHA
@@ -39,7 +56,7 @@ RC=$?; echo "exit=$RC out=$OUT"
   && grep -q '^## 確認事項' "$OUT" && grep -q '^## 要約' "$OUT" \
   && grep -q "対象 HEAD: *$HEAD_SHA" "$OUT" \
   && [ "$(git rev-parse HEAD)" = "$HEAD_SHA" ] \
-  && cp "$OUT" .review/latest.md && echo 採用 || echo "未レビュー（採用条件を満たさない）"
+  && cp "$OUT" "$R/latest.md" && echo 採用 || echo "未レビュー（採用条件を満たさない）"
 ```
 
 - `-s read-only`：読み取り専用サンドボックス（Codex はファイルを書き換えられない）。
@@ -56,8 +73,10 @@ RC=$?; echo "exit=$RC out=$OUT"
   `gh run list --workflow build.yml --branch <branch> --commit <SHA> --event push --json databaseId,headSha,status,conclusion,url`
   現れるまで待ち（最大10分）、`gh run watch <id> --exit-status` で完了を待つ。`gh run view <id> --json jobs` で全ビルド対象のジョブが success であることを確認する。
 - 失敗時は `gh run view <id> --log-failed` でログを確認し、修正 → 再レビューの流れに戻る。
-- 成功後、`git checkout main && git pull --ff-only` で main が進んでいないか確認してから `git merge --no-ff <branch>` → `git push origin main`。
-- main のマージコミット SHA で同様に run を特定・成功確認し、`gh run download <id> -D firmware/<マージコミットSHA>` で取得する。3種類の `.uf2` がそろい空でないことを確認する。
+- 成功後、**メインのフォルダで** `git status` を確認し（未コミットの変更があれば報告）、`git pull --ff-only` で main が進んでいないか確認してから `git merge --no-ff <branch>` → `git push origin main`。
+  main が進んでいた場合は、作業用フォルダで `git merge main` してから再レビュー・CI 確認をやり直す。
+- main のマージコミット SHA で同様に run を特定・成功確認し、メインのフォルダで `gh run download <id> -D firmware/<マージコミットSHA>` で取得する。3種類の `.uf2` がそろい空でないことを確認する。
+- 最後に `git worktree remove .worktrees/<名前>` で作業用フォルダを削除する。
 
 ## その他
 
