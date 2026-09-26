@@ -49,15 +49,16 @@
             bindings = <&mo 1>, <&mo 2>;
         };
 
-        // かな配列の親指キー: 押している間は親指面レイヤー、単独タップはスペース／エンター
+        // かな配列の親指キー: 押している間は親指面レイヤー、単独タップはスペース／エンター。
+        // タップ側も &kana（KN_SPACE / KN_ENTER）で送り、かなのローマ字列を追い越さないようにする。
+        // quick-tap-ms は付けない（直前にタップしていても、押し続ければ必ず親指面になるように）。
         kana_thumb: kana_thumb {
             compatible = "zmk,behavior-hold-tap";
             display-name = "Kana Thumb";
             #binding-cells = <2>;
             flavor = "hold-preferred";
             tapping-term-ms = <200>;
-            quick-tap-ms = <150>;
-            bindings = <&mo>, <&kp>;
+            bindings = <&mo>, <&kana>;
         };
     };
 
@@ -168,7 +169,7 @@
             &kana KN_A  &kana KN_I  &kana KN_U  &kana KN_E  &kana KN_O  &kana KN_KA  &kana KN_KI  &kana KN_KU  &kana KN_KE  &kana KN_KO
             &kana KN_SA  &kana KN_SI  &kana KN_SU  &kana KN_SE  &kana KN_SO  &kana KN_TA  &kana KN_TI  &kana KN_TU  &kana KN_TE  &kana KN_TO
             &kana KN_NA  &kana KN_NI  &kana KN_NU  &kana KN_NE  &kana KN_NO  &kana KN_HA  &kana KN_HI  &kana KN_HU  &kana KN_HE  &kana KN_HO
-            &none  &none  &none  &none  &kana_thumb KANA_L_LAYER SPACE  &none  &none  &kana_thumb KANA_R_LAYER ENTER  &none  &none  &none  &none
+            &none  &none  &none  &none  &kana_thumb KANA_L_LAYER KN_SPACE  &none  &none  &kana_thumb KANA_R_LAYER KN_ENTER  &none  &none  &none  &none
             &none  &none  &none  &none  &none  &none  &none  &none  &none  &kana_off
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans

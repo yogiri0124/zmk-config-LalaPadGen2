@@ -106,4 +106,8 @@
 #define KN_NIJUKAGI 89 /* 『』 */
 #define KN_PAREN 90    /* （） */
 
-#define KN_COUNT 90
+/* 親指キーのタップ用（かなと同じ送信キューで順番どおりに送る） */
+#define KN_SPACE 91
+#define KN_ENTER 92
+
+#define KN_MAX_ID 92

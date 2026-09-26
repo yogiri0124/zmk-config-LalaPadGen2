@@ -6,11 +6,14 @@
  * かな漢字変換はホスト側の IME（ローマ字入力モード）が行う。
  * ホストのキーボード配列は英語配列 (US) を前提にしている。
  * 記号の一部（… 『』）は Google 日本語入力の標準ローマ字テーブル（z. z[ z]）を前提にしている。
+ * 親指キーのタップ（スペース／エンター）も同じキューで送り、かな列を追い越さないようにする。
+ * キューが満杯で「離す」を登録できなかったときは、登録できるまで再試行してキーの押しっぱなしを防ぐ。
  */
 
 #define DT_DRV_COMPAT zmk_behavior_kana
 
 #include <zephyr/device.h>
+#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <drivers/behavior.h>
 
@@ -35,7 +38,7 @@ struct kana_entry {
 #define K4(a, b, c, d) {.len = 4, .keys = {a, b, c, d}}
 
 /* 文字 ID → 送るキー列（英語配列・ローマ字入力） */
-static const struct kana_entry kana_table[KN_COUNT + 1] = {
+static const struct kana_entry kana_table[KN_MAX_ID + 1] = {
     [KN_A] = K1(A),        [KN_I] = K1(I),        [KN_U] = K1(U),        [KN_E] = K1(E),
     [KN_O] = K1(O),        [KN_KA] = K2(K, A),    [KN_KI] = K2(K, I),    [KN_KU] = K2(K, U),
     [KN_KE] = K2(K, E),    [KN_KO] = K2(K, O),    [KN_SA] = K2(S, A),    [KN_SI] = K2(S, I),
@@ -71,6 +74,9 @@ static const struct kana_entry kana_table[KN_COUNT + 1] = {
     [KN_KAGI] = K2(LBKT, RBKT),      /* 「」 */
     [KN_NIJUKAGI] = K4(Z, LBKT, Z, RBKT), /* 『』 （Google 日本語入力: z[ z]） */
     [KN_PAREN] = K2(LPAR, RPAR),     /* （） */
+
+    [KN_SPACE] = K1(SPACE),
+    [KN_ENTER] = K1(ENTER),
 };
 
 struct behavior_kana_config {
@@ -105,9 +111,10 @@ static const struct behavior_parameter_value_metadata param_values[] = {
     KV(KN_VU, "ゔ"),  KV(KN_TOUTEN, "、"), KV(KN_KUTEN, "。"), KV(KN_CHOUON, "ー"),
     KV(KN_SANTEN, "…"), KV(KN_EXCL, "！"), KV(KN_QUES, "？"), KV(KN_KAGI, "「」"),
     KV(KN_NIJUKAGI, "『』"), KV(KN_PAREN, "（）"),
+    KV(KN_SPACE, "スペース"), KV(KN_ENTER, "エンター"),
 };
 
-BUILD_ASSERT(ARRAY_SIZE(param_values) == KN_COUNT, "kana metadata must cover every kana ID");
+BUILD_ASSERT(ARRAY_SIZE(param_values) == KN_MAX_ID, "kana metadata must cover every kana ID");
 
 static const struct behavior_parameter_metadata_set param_metadata_set[] = {{
     .param1_values = param_values,
@@ -121,14 +128,47 @@ static const struct behavior_parameter_metadata metadata = {
 
 #endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 
+/*
+ * 「押す」を登録済みで「離す」を登録できなかったキー。
+ * 登録できるまで retry_work で再試行する（キーが押されたままになるのを防ぐ）。
+ * behavior のコールバックと k_work はどちらもシステムワークキューで動くので排他は不要。
+ */
+static bool release_pending;
+static struct zmk_behavior_binding pending_release_binding;
+static struct zmk_behavior_binding_event pending_release_event;
+static uint32_t pending_release_wait;
+
+static void retry_pending_release(struct k_work *work);
+static K_WORK_DELAYABLE_DEFINE(retry_work, retry_pending_release);
+
+#define RETRY_INTERVAL_MS 10
+
+static void retry_pending_release(struct k_work *work) {
+    if (!release_pending) {
+        return;
+    }
+    if (zmk_behavior_queue_add(&pending_release_event, pending_release_binding, false,
+                               pending_release_wait) < 0) {
+        k_work_schedule(&retry_work, K_MSEC(RETRY_INTERVAL_MS));
+        return;
+    }
+    release_pending = false;
+}
+
 static int on_kana_binding_pressed(struct zmk_behavior_binding *binding,
                                    struct zmk_behavior_binding_event event) {
     const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
     const struct behavior_kana_config *cfg = dev->config;
     const uint32_t id = binding->param1;
 
-    if (id == 0 || id > KN_COUNT || kana_table[id].len == 0) {
+    if (id == 0 || id > KN_MAX_ID || kana_table[id].len == 0) {
         LOG_WRN("Unknown kana id %d", id);
+        return ZMK_BEHAVIOR_OPAQUE;
+    }
+
+    if (release_pending) {
+        // 前のキーの「離す」が未登録のうちは、順番が崩れないよう新しい入力を捨てる
+        LOG_WRN("Behavior queue busy, dropped kana id %d", id);
         return ZMK_BEHAVIOR_OPAQUE;
     }
 
@@ -138,12 +178,21 @@ static int on_kana_binding_pressed(struct zmk_behavior_binding *binding,
             .behavior_dev = KP_BEHAVIOR_NAME,
             .param1 = entry->keys[i],
         };
-        int ret = zmk_behavior_queue_add(&event, kp, true, cfg->tap_ms);
-        if (ret == 0) {
-            ret = zmk_behavior_queue_add(&event, kp, false, cfg->wait_ms);
+
+        if (zmk_behavior_queue_add(&event, kp, true, cfg->tap_ms) < 0) {
+            // 「押す」を登録できなかった: 何も押されないので、ここで打ち切るだけでよい
+            LOG_ERR("Behavior queue full, dropped rest of kana id %d", id);
+            break;
         }
-        if (ret < 0) {
-            LOG_ERR("Behavior queue full, dropped kana id %d (err %d)", id, ret);
+
+        if (zmk_behavior_queue_add(&event, kp, false, cfg->wait_ms) < 0) {
+            // 「押す」だけ登録された: 「離す」を登録できるまで再試行する
+            LOG_ERR("Behavior queue full, retrying release for kana id %d", id);
+            release_pending = true;
+            pending_release_binding = kp;
+            pending_release_event = event;
+            pending_release_wait = cfg->wait_ms;
+            k_work_schedule(&retry_work, K_MSEC(RETRY_INTERVAL_MS));
             break;
         }
     }
