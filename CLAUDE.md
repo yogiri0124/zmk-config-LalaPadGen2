@@ -34,7 +34,12 @@ RC=$?; echo "exit=$RC out=$OUT"
 採用判定（すべて満たしたときだけ `latest.md` を更新する）：
 
 ```bash
-[ $RC -eq 0 ] && [ -s "$OUT" ] \n  && grep -q '^## 必須修正' "$OUT" && grep -q '^## 推奨' "$OUT" \n  && grep -q '^## 確認事項' "$OUT" && grep -q '^## 要約' "$OUT" \n  && grep -q "対象 HEAD: *$HEAD_SHA" "$OUT" \n  && [ "$(git rev-parse HEAD)" = "$HEAD_SHA" ] \n  && cp "$OUT" .review/latest.md && echo 採用 || echo "未レビュー（採用条件を満たさない）"
+[ $RC -eq 0 ] && [ -s "$OUT" ] \
+  && grep -q '^## 必須修正' "$OUT" && grep -q '^## 推奨' "$OUT" \
+  && grep -q '^## 確認事項' "$OUT" && grep -q '^## 要約' "$OUT" \
+  && grep -q "対象 HEAD: *$HEAD_SHA" "$OUT" \
+  && [ "$(git rev-parse HEAD)" = "$HEAD_SHA" ] \
+  && cp "$OUT" .review/latest.md && echo 採用 || echo "未レビュー（採用条件を満たさない）"
 ```
 
 - `-s read-only`：読み取り専用サンドボックス（Codex はファイルを書き換えられない）。
