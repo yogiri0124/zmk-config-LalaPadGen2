@@ -7,6 +7,8 @@ for l in src:
     if m: cur=[m.group(1),[]];groups.append(cur);continue
     m=re.match(r'#define (\w+) ',l)
     if m and cur is not None: cur[1].append(m.group(1)+(' (非推奨)' if 'DEPRECATED' in l else ''))
+    elif not m and 'DEPRECATED' in l and cur and cur[1] and not cur[1][-1].endswith(' (非推奨)'):
+        cur[1][-1]+=' (非推奨)'  # 複数行の #define の続き行に注記がある場合
 out=[r'''# ZMK キーコード一覧（ZMK v0.3.0）
 
 `&kp` / `&sk` / `&kt` / `&mt` の引数に使える名前の一覧。**このリポジトリが固定している ZMK v0.3.0** の

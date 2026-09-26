@@ -226,10 +226,10 @@ JIS 配列として認識されている PC では、US 配列の名前と出る
 | Keyboard Clear/Again | `CLEAR_AGAIN` |
 | Keyboard CrSel/Props | `CRSEL` |
 | Keyboard ExSel | `EXSEL` |
-| Keyboard Currency Unit | `CURU` |
+| Keyboard Currency Unit | `CURU` (非推奨) |
 | Keypad ( (Left Parenthesis) | `KP_LEFT_PARENTHESIS` `KP_LPAR` |
 | Keypad ) (Right Parenthesis) | `KP_RIGHT_PARENTHESIS` `KP_RPAR` |
-| Keypad Space | `KSPC` |
+| Keypad Space | `KSPC` (非推奨) |
 | Keypad Clear | `KP_CLEAR` |
 | Keyboard Left Control | `LEFT_CONTROL` `LCTRL` `LCTL` (非推奨) |
 | Keyboard Left Shift | `LEFT_SHIFT` `LSHIFT` `LSHFT` `LSFT` (非推奨) |
