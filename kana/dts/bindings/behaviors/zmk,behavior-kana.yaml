@@ -1,0 +1,17 @@
+# かな入力 behavior (&kana)。文字 ID (dt-bindings/kana/kana.h) を受け取り、ローマ字のキー列を送る。
+
+description: Kana romaji output behavior
+
+compatible: "zmk,behavior-kana"
+
+include: one_param.yaml
+
+properties:
+  tap-ms:
+    type: int
+    default: 10
+    description: 1キーを押してから離すまでの時間 (ms)
+  wait-ms:
+    type: int
+    default: 10
+    description: キーを離してから次のキーを押すまでの時間 (ms)
