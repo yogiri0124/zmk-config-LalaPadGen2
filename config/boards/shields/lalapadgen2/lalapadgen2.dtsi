@@ -5,6 +5,7 @@
 #include <zephyr/dt-bindings/input/input-event-codes.h>
 #include <input/processors.dtsi>
 #include "lalapadgen2-layouts.dtsi"
+#include <scroll-snap.dtsi>
 
 #define POS_TP_LCLK_L  52
 #define POS_TP_RCLK_L  53
@@ -174,6 +175,7 @@
                            <&zip_scroll_scaler 1 12>,
                            <&zip_dynamic_xy_scaler>,
                            <&zip_dynamic_scroll_scaler>,
+                           <&zip_scroll_snap>,
                            <&zip_auto_mouse_layer 4 700>;
         lowspeedmode {
             layers = <1>,<2>;
@@ -181,7 +183,8 @@
                                 <&zip_xy_scaler 1 15>,
                                 <&zip_scroll_scaler 1 40>,
                                 <&zip_dynamic_xy_scaler>,
-                                <&zip_dynamic_scroll_scaler>;
+                                <&zip_dynamic_scroll_scaler>,
+                                <&zip_scroll_snap>;
         };
     };
     trackpad_listener_L: trackpad_listener_L {
@@ -193,6 +196,7 @@
                            <&zip_scroll_scaler 1 12>,
                            <&zip_dynamic_xy_scaler>,
                            <&zip_dynamic_scroll_scaler>,
+                           <&zip_scroll_snap>,
                            <&zip_auto_mouse_layer 4 700>;
         lowspeedmode {
             layers = <1>,<2>;
@@ -200,7 +204,8 @@
                                 <&zip_xy_scaler 1 15>,
                                 <&zip_scroll_scaler 1 40>,
                                 <&zip_dynamic_xy_scaler>,
-                                <&zip_dynamic_scroll_scaler>;
+                                <&zip_dynamic_scroll_scaler>,
+                                <&zip_scroll_snap>;
         };
     };
 
@@ -242,4 +247,18 @@ status = "okay";
         status = "okay";
         irq-gpios = <&xiao_d 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
     };
+};
+
+// スクロールスナップ (kot149/zmk-scroll-snap): 2本指スクロールを近いほうの軸 (X/Y) に揃える。
+// x/y-threshold を <1 1> にして常に X か Y へスナップさせる（斜め判定は未実装で出力が 0 になるため使わない）。
+&zip_scroll_snap {
+    x-threshold = <1 1>;
+    y-threshold = <1 1>;
+    xy-threshold = <0 0>;
+
+    require-n-samples = <10>;
+    immediate-snap-threshold = <1500>;
+    lock-duration-ms = <200>;
+    lock-for-next-n-events = <10>;
+    idle-reset-timeout-ms = <200>;
 };
