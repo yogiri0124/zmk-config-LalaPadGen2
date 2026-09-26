@@ -17,8 +17,9 @@
 mkdir -p .review
 BASE=$(git rev-parse main); HEAD_SHA=$(git rev-parse HEAD); MB=$(git merge-base main HEAD)
 N=1   # レビュー回数（1〜3）
-OUT=.review/${HEAD_SHA:0:12}-r$N.md
-codex exec -s read-only -C . --ephemeral --color never -o "$OUT" - <<EOF > .review/codex-r$N.log 2>&1
+RUN=${HEAD_SHA:0:12}-r$N-$(date +%Y%m%d-%H%M%S)   # 再試行ごとに別名になる
+OUT=.review/$RUN.md
+codex exec -s read-only -C . --ephemeral --color never -o "$OUT" - <<EOF > ".review/$RUN.log" 2>&1
 AGENTS.mdのレビュー観点に沿ってmainとの差分をレビューせよ。
 依頼内容: <ここに依頼内容>
 基準 (main): $BASE / merge-base: $MB / 対象 HEAD: $HEAD_SHA
@@ -26,15 +27,16 @@ AGENTS.mdのレビュー観点に沿ってmainとの差分をレビューせよ�
 ファイルは一切変更しないこと。
 最終回答は AGENTS.md の「レビュー出力の書式」に従い、日本語で書くこと。対象 HEAD と基準の SHA を必ず記載すること。
 EOF
-echo "exit=$?"; cp "$OUT" .review/latest.md
+RC=$?; echo "exit=$RC"
+if [ $RC -eq 0 ] && [ -s "$OUT" ]; then cp "$OUT" .review/latest.md; else echo "未レビュー（codex 失敗または出力なし）"; fi
 ```
 
 - `-s read-only`：読み取り専用サンドボックス（Codex はファイルを書き換えられない）。
 - `-o`：Codex の**最終メッセージだけ**をファイルに書き出す（書き込みは codex CLI 自身が行う）。
-- `--ephemeral`：セッションファイルを残さない。途中経過のログは `.review/codex-r<N>.log`（`.review/` は git 管理外）。
+- `--ephemeral`：セッションファイルを残さない。途中経過のログは結果と同名の `.log`。結果・ログとも実行ごとに別ファイルになり上書きされない（`.review/` は git 管理外）。
 - ヒアドキュメントは変数展開のため `<<EOF`（クォートなし）にする。依頼内容に `$` やバッククォートが含まれる場合はエスケープする。
 - 採用前に AGENTS.md「結果の採用条件」を確認する（終了コード0、非空、4見出し、記載 SHA＝現在の HEAD）。満たさなければ未レビュー扱い。
-- 判定は「## 必須修正」が「なし」かどうか。レビューは初回を含め最大3回。
+- 合格は「## 必須修正」が「なし」**かつ**「確認事項」に「マージを妨げるか：はい」が残っていないこと。妨げる確認事項があれば、解消できるものは解消して再レビューし、ユーザーの判断が必要なものは止めて報告する。レビューは初回を含め最大3回。
 
 ## GitHub Actions / Artifacts
 
