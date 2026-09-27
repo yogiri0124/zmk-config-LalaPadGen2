@@ -126,29 +126,21 @@
     // --- pair_: カッコの自動補完（開き・閉じを入力して ← でカーソルを中に置く）。まだどのレイヤーにも置いていない ---
     // display-name は付けない（LaLapad-Gen2-Editor がレイヤーと誤認するため）。
     macros {
-        // {} を入力してカーソルを中に
-        pair_brace: pair_brace {
+        // “” を入力してカーソルを中に（US 配列にキーコードがないので Windows の Alt コードで送る: Alt+0147 = “、Alt+0148 = ”）
+        pair_cquote: pair_cquote {
             compatible = "zmk,behavior-macro";
             #binding-cells = <0>;
-            wait-ms = <0>;
-            tap-ms = <0>;
-            bindings = <&macro_tap &kp LBRC &kp RBRC &kp LEFT>;
-        };
-        // [] を入力してカーソルを中に
-        pair_bracket: pair_bracket {
-            compatible = "zmk,behavior-macro";
-            #binding-cells = <0>;
-            wait-ms = <0>;
-            tap-ms = <0>;
-            bindings = <&macro_tap &kp LBKT &kp RBKT &kp LEFT>;
-        };
-        // "" を入力してカーソルを中に
-        pair_dquote: pair_dquote {
-            compatible = "zmk,behavior-macro";
-            #binding-cells = <0>;
-            wait-ms = <0>;
-            tap-ms = <0>;
-            bindings = <&macro_tap &kp DQT &kp DQT &kp LEFT>;
+            wait-ms = <5>;
+            tap-ms = <5>;
+            bindings
+                = <&macro_press &kp LALT>
+                , <&macro_tap &kp KP_N0 &kp KP_N1 &kp KP_N4 &kp KP_N7>
+                , <&macro_release &kp LALT>
+                , <&macro_press &kp LALT>
+                , <&macro_tap &kp KP_N0 &kp KP_N1 &kp KP_N4 &kp KP_N8>
+                , <&macro_release &kp LALT>
+                , <&macro_tap &kp LEFT>
+                ;
         };
     };
 
