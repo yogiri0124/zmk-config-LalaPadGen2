@@ -158,12 +158,22 @@ static int on_kana_binding_pressed(struct zmk_behavior_binding *binding,
     if (is_char && cfg->ime_resync_ms > 0) {
         const int64_t now = k_uptime_get();
         if (!char_sent || now - last_char_ms >= cfg->ime_resync_ms) {
-            if (kana_output_tap(&event, LANGUAGE_1, cfg->tap_ms, cfg->wait_ms) < 0) {
-                LOG_WRN("Could not queue IME on before kana id %d", id);
+            const int ret = kana_output_tap(&event, LANGUAGE_1, cfg->tap_ms, cfg->wait_ms);
+            if (ret == -EBUSY || ret == -ENOSPC) {
+                // IME オンを登録できなかった: この文字は送らず、次の入力で改めて IME オンを試す
+                LOG_WRN("Could not queue IME on (err %d), dropped kana id %d", ret, id);
+                return ZMK_BEHAVIOR_OPAQUE;
             }
+            last_char_ms = now;
+            char_sent = true;
+            if (ret == -EAGAIN) {
+                // IME オンの「押す」は登録済み（「離す」は自動で再試行される）。順番を守るため、この文字は送らない
+                LOG_WRN("Behavior queue full after IME on, dropped kana id %d", id);
+                return ZMK_BEHAVIOR_OPAQUE;
+            }
+        } else {
+            last_char_ms = now;
         }
-        last_char_ms = now;
-        char_sent = true;
     }
 
     const struct kana_entry *entry = &kana_table[id];
