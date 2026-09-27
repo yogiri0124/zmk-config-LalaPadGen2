@@ -49,6 +49,17 @@
             require-prior-idle-ms = <125>;
             bindings = <&kp>, <&kp>;
         };
+
+        // O.SLO 用の sticky layer。標準の &sl は 1000ms で自動解除されるので、
+        // 自動解除を実質なくし（24時間）、次のキーを押したときだけ解除されるようにする。
+        // display-name は付けない（LaLapad-Gen2-Editor がレイヤーと誤認するため）。
+        sl_until_key: sl_until_key {
+            compatible = "zmk,behavior-sticky-key";
+            #binding-cells = <1>;
+            release-after-ms = <86400000>;
+            quick-release;
+            bindings = <&mo>;
+        };
     };
 
 
@@ -73,13 +84,13 @@
             bindings = <&macro_tap &tog SLOW_LAYER>;
         };
 
-        // O.SLO: 次のキーを押すまでカーソル低速
+        // O.SLO: 次のキーを押すまでカーソル低速（時間では解除されない）
         o_slo: o_slo {
             compatible = "zmk,behavior-macro";
             #binding-cells = <0>;
             wait-ms = <0>;
             tap-ms = <0>;
-            bindings = <&macro_tap &sl SLOW_LAYER>;
+            bindings = <&macro_tap &sl_until_key SLOW_LAYER>;
         };
 
         // DPI+: カーソルを速く（倍率を1段上げてフラッシュに保存）

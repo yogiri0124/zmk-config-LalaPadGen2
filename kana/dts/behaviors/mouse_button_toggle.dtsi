@@ -8,4 +8,10 @@
             display-name = "Mouse Button Toggle";
         };
     };
+
+    // &mbt が出す INPUT_BTN_* を HID のマウスボタンに反映する（ZMK の mkp_input_listener と同じ形）
+    mbt_input_listener: mbt_input_listener {
+        compatible = "zmk,input-listener";
+        device = <&mbt>;
+    };
 };
