@@ -15,6 +15,7 @@
 #define KANA_LAYER      5
 #define KANA_L_LAYER    6
 #define KANA_R_LAYER    7
+#define KANA_SYM_LAYER  8
 
 &mt { quick-tap-ms = <200>; };
 
@@ -43,18 +44,6 @@
             quick-tap-ms = <200>;
             require-prior-idle-ms = <125>;
             bindings = <&kp>, <&kp>;
-        };
-
-        // かな配列の親指キー: 押している間は親指面レイヤー、単独タップはスペース／エンター。
-        // タップ側も &kana（KN_SPACE / KN_ENTER）で送り、かなのローマ字列を追い越さないようにする。
-        // quick-tap-ms は付けない（直前にタップしていても、押し続ければ必ず親指面になるように）。
-        // display-name は付けない（LaLapad-Gen2-Editor がレイヤーと誤認するため）。
-        kana_thumb: kana_thumb {
-            compatible = "zmk,behavior-hold-tap";
-            #binding-cells = <2>;
-            flavor = "hold-preferred";
-            tapping-term-ms = <200>;
-            bindings = <&mo>, <&kana>;
         };
     };
 
@@ -148,7 +137,7 @@
             &kana KN_A  &kana KN_I  &kana KN_U  &kana KN_E  &kana KN_O  &kana KN_KA  &kana KN_KI  &kana KN_KU  &kana KN_KE  &kana KN_KO
             &kana KN_SA  &kana KN_SI  &kana KN_SU  &kana KN_SE  &kana KN_SO  &kana KN_TA  &kana KN_TI  &kana KN_TU  &kana KN_TE  &kana KN_TO
             &kana KN_NA  &kana KN_NI  &kana KN_NU  &kana KN_NE  &kana KN_NO  &kana KN_HA  &kana KN_HI  &kana KN_HU  &kana KN_HE  &kana KN_HO
-            &none  &none  &none  &none  &kana_thumb KANA_L_LAYER KN_SPACE  &none  &none  &kana_thumb KANA_R_LAYER KN_ENTER  &none  &none  &none  &none
+            &none  &none  &none  &kana KN_SPACE  &mo KANA_L_LAYER  &kana KN_BSPC  &none  &mo KANA_R_LAYER  &kana KN_ENTER  &mo KANA_SYM_LAYER  &none  &none
             &none  &none  &none  &none  &none  &none  &none  &none  &none  &kana_mode KANA_MODE_OFF
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
@@ -174,6 +163,20 @@
             &kana KN_DO  &kana KN_BA  &kana KN_BI  &kana KN_BU  &kana KN_BE  &kana KN_BO  &kana KN_PA  &kana KN_PI  &kana KN_PU  &kana KN_PE
             &kana KN_PO  &kana KN_XYA  &kana KN_XYU  &kana KN_XYO  &kana KN_XA  &kana KN_XI  &kana KN_XU  &kana KN_XE  &kana KN_XO  &kana KN_XTU
             &kana KN_VU  &kana KN_TOUTEN  &kana KN_KUTEN  &kana KN_CHOUON  &kana KN_SANTEN  &kana KN_EXCL  &kana KN_QUES  &kana KN_KAGI  &kana KN_NIJUKAGI  &kana KN_PAREN
+            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
+            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
+            &trans  &trans  &trans  &trans  &trans  &trans
+            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
+            >;
+        };
+
+        // かな記号面（かな単打面の位置39を押している間）。記号は後で配置する。今は文字キー（0〜29）を空にしている
+        KANA_SYM_LAYER {
+            display-name = "kana_symbol";
+            bindings = <
+            &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
+            &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
+            &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans

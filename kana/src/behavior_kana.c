@@ -14,6 +14,7 @@
 
 #include <errno.h>
 #include <zephyr/device.h>
+#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <drivers/behavior.h>
 
@@ -79,12 +80,18 @@ static const struct kana_entry kana_table[KN_MAX_ID + 1] = {
 
     [KN_SPACE] = K1(SPACE),
     [KN_ENTER] = K1(ENTER),
+    [KN_BSPC] = K1(BACKSPACE),
 };
 
 struct behavior_kana_config {
     uint32_t tap_ms;
     uint32_t wait_ms;
+    uint32_t ime_resync_ms;
 };
+
+/* 最後にかな・記号（ID 1〜90）を送った時刻。IME オンの再送の判定に使う */
+static int64_t last_char_ms;
+static bool char_sent;
 
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 
@@ -111,7 +118,7 @@ static const struct behavior_parameter_value_metadata param_values[] = {
     KV(KN_VU, "ゔ"),  KV(KN_TOUTEN, "、"), KV(KN_KUTEN, "。"), KV(KN_CHOUON, "ー"),
     KV(KN_SANTEN, "…"), KV(KN_EXCL, "！"), KV(KN_QUES, "？"), KV(KN_KAGI, "「」"),
     KV(KN_NIJUKAGI, "『』"), KV(KN_PAREN, "（）"),
-    KV(KN_SPACE, "スペース"), KV(KN_ENTER, "エンター"),
+    KV(KN_SPACE, "スペース"), KV(KN_ENTER, "エンター"), KV(KN_BSPC, "バックスペース"),
 };
 
 BUILD_ASSERT(ARRAY_SIZE(param_values) == KN_MAX_ID, "kana metadata must cover every kana ID");
@@ -145,6 +152,30 @@ static int on_kana_binding_pressed(struct zmk_behavior_binding *binding,
         return ZMK_BEHAVIOR_OPAQUE;
     }
 
+    // かな・記号の前だけ、しばらく打っていなかったら IME オンを先に送る（LANGUAGE_1 はトグルではないので重ねても害がない）。
+    // スペース・エンター・バックスペースの前には送らない（IME オフのときに全角スペースなどにならないように）
+    const bool is_char = id <= KN_PAREN;
+    if (is_char && cfg->ime_resync_ms > 0) {
+        const int64_t now = k_uptime_get();
+        if (!char_sent || now - last_char_ms >= cfg->ime_resync_ms) {
+            const int ret = kana_output_tap(&event, LANGUAGE_1, cfg->tap_ms, cfg->wait_ms);
+            if (ret == -EBUSY || ret == -ENOSPC) {
+                // IME オンを登録できなかった: この文字は送らず、次の入力で改めて IME オンを試す
+                LOG_WRN("Could not queue IME on (err %d), dropped kana id %d", ret, id);
+                return ZMK_BEHAVIOR_OPAQUE;
+            }
+            last_char_ms = now;
+            char_sent = true;
+            if (ret == -EAGAIN) {
+                // IME オンの「押す」は登録済み（「離す」は自動で再試行される）。順番を守るため、この文字は送らない
+                LOG_WRN("Behavior queue full after IME on, dropped kana id %d", id);
+                return ZMK_BEHAVIOR_OPAQUE;
+            }
+        } else {
+            last_char_ms = now;
+        }
+    }
+
     const struct kana_entry *entry = &kana_table[id];
     for (int i = 0; i < entry->len; i++) {
         const int ret = kana_output_tap(&event, entry->keys[i], cfg->tap_ms, cfg->wait_ms);
@@ -176,6 +207,7 @@ static const struct behavior_driver_api behavior_kana_driver_api = {
     static const struct behavior_kana_config behavior_kana_config_##n = {                         \
         .tap_ms = DT_INST_PROP(n, tap_ms),                                                         \
         .wait_ms = DT_INST_PROP(n, wait_ms),                                                       \
+        .ime_resync_ms = DT_INST_PROP(n, ime_resync_ms),                                           \
     };                                                                                             \
     BEHAVIOR_DT_INST_DEFINE(n, NULL, NULL, NULL, &behavior_kana_config_##n, POST_KERNEL,           \
                             CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &behavior_kana_driver_api);

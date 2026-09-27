@@ -106,11 +106,12 @@
 #define KN_NIJUKAGI 89 /* 『』 */
 #define KN_PAREN 90    /* （） */
 
-/* 親指キーのタップ用（かなと同じ送信キューで順番どおりに送る） */
+/* 編集用のキー（かなと同じ送信キューで順番どおりに送る。IME オンの再送はしない） */
 #define KN_SPACE 91
 #define KN_ENTER 92
+#define KN_BSPC 93
 
-#define KN_MAX_ID 92
+#define KN_MAX_ID 93
 
 /* &kana_mode のパラメータ */
 #define KANA_MODE_ON 1
