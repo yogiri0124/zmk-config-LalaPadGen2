@@ -25,8 +25,8 @@
 
 &lt { quick-tap-ms = <200>; };
 
-// かな配列モードのオン／オフ（&kana_mode）で有効にするかな単打面
-&kana_mode { layer = <KANA_LAYER>; };
+// かな配列モードのオン／オフ（&kana_sw）で有効にするかな単打面
+&kana_sw { layer = <KANA_LAYER>; };
 
 / {
     behaviors {
@@ -40,7 +40,7 @@
             #binding-cells = <2>;
         };
 
-        mt2: mod_tap2 {
+        ht_tap_pref: ht_tap_pref {
             compatible = "zmk,behavior-hold-tap";
             #binding-cells = <2>;
             flavor = "tap-preferred";
@@ -174,10 +174,10 @@
             display-name = "Default";
             bindings = <
             &kp Q  &kp W  &kp E  &kp R  &kp T  &kp Y  &kp U  &kp I  &kp O  &kp P
-            &kp A  &kp S  &kp D  &kp F  &kp G  &kp H  &kp J  &kp K  &kp L  &mt2 EQUAL MINUS
-            &mt2 LEFT_SHIFT Z  &kp X  &kp C  &kp V  &kp B  &kp N  &kp M  &kp COMMA  &kp PERIOD  &kp SLASH
+            &kp A  &kp S  &kp D  &kp F  &kp G  &kp H  &kp J  &kp K  &kp L  &ht_tap_pref EQUAL MINUS
+            &ht_tap_pref LEFT_SHIFT Z  &kp X  &kp C  &kp V  &kp B  &kp N  &kp M  &kp COMMA  &kp PERIOD  &kp SLASH
             &kp LCTRL  &kp LWIN  &kp LEFT_ALT  &mo 1  &kp SPACE  &kp LEFT_SHIFT  &kp BACKSPACE  &kp ENTER  &mo 2  &kp LANGUAGE_2  &kp LANGUAGE_1  &kp BACKSLASH
-            &none  &kp RIGHT  &kp DOWN  &kp LEFT  &kp UP  &kp UP  &kp LEFT  &kp DOWN  &kp RIGHT  &kana_mode KANA_MODE_ON
+            &none  &kp RIGHT  &kp DOWN  &kp LEFT  &kp UP  &kp UP  &kp LEFT  &kp DOWN  &kp RIGHT  &kana_sw KANA_SW_ON
             &mkp LCLK  &mkp RCLK  &mkp MCLK  &mkp LCLK  &mkp RCLK  &mkp MCLK
             &mkp MB4  &mkp MB5  &kp LG(TAB)  &kp LG(D)  &kp LCTRL  &mkp MB4  &mkp MB5  &kp LG(TAB)  &kp LG(D)  &kp LCTRL
             >;
@@ -238,11 +238,11 @@
         KANA_LAYER {
             display-name = "kana";
             bindings = <
-            &kana KN_A  &kana KN_I  &kana KN_U  &kana KN_E  &kana KN_O  &kana KN_KA  &kana KN_KI  &kana KN_KU  &kana KN_KE  &kana KN_KO
-            &kana KN_SA  &kana KN_SI  &kana KN_SU  &kana KN_SE  &kana KN_SO  &kana KN_TA  &kana KN_TI  &kana KN_TU  &kana KN_TE  &kana KN_TO
-            &kana KN_NA  &kana KN_NI  &kana KN_NU  &kana KN_NE  &kana KN_NO  &kana KN_HA  &kana KN_HI  &kana KN_HU  &kana KN_HE  &kana KN_HO
-            &none  &none  &none  &kana KN_SPACE  &mo KANA_L_LAYER  &kana KN_BSPC  &none  &mo KANA_R_LAYER  &kana KN_ENTER  &mo KANA_SYM_LAYER  &none  &none
-            &none  &none  &none  &none  &none  &none  &none  &none  &none  &kana_mode KANA_MODE_OFF
+            &kana_key KN_A  &kana_key KN_I  &kana_key KN_U  &kana_key KN_E  &kana_key KN_O  &kana_key KN_KA  &kana_key KN_KI  &kana_key KN_KU  &kana_key KN_KE  &kana_key KN_KO
+            &kana_key KN_SA  &kana_key KN_SI  &kana_key KN_SU  &kana_key KN_SE  &kana_key KN_SO  &kana_key KN_TA  &kana_key KN_TI  &kana_key KN_TU  &kana_key KN_TE  &kana_key KN_TO
+            &kana_key KN_NA  &kana_key KN_NI  &kana_key KN_NU  &kana_key KN_NE  &kana_key KN_NO  &kana_key KN_HA  &kana_key KN_HI  &kana_key KN_HU  &kana_key KN_HE  &kana_key KN_HO
+            &none  &none  &none  &kana_key KN_SPACE  &mo KANA_L_LAYER  &kana_key KN_BSPC  &none  &mo KANA_R_LAYER  &kana_key KN_ENTER  &mo KANA_SYM_LAYER  &none  &none
+            &none  &none  &none  &none  &none  &none  &none  &none  &none  &kana_sw KANA_SW_OFF
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             >;
@@ -251,9 +251,9 @@
         KANA_L_LAYER {
             display-name = "kana_left";
             bindings = <
-            &kana KN_MA  &kana KN_MI  &kana KN_MU  &kana KN_ME  &kana KN_MO  &kana KN_YA  &kana KN_YU  &kana KN_YO  &kana KN_WA  &kana KN_WO
-            &kana KN_RA  &kana KN_RI  &kana KN_RU  &kana KN_RE  &kana KN_RO  &kana KN_NN  &kana KN_GA  &kana KN_GI  &kana KN_GU  &kana KN_GE
-            &kana KN_GO  &kana KN_ZA  &kana KN_ZI  &kana KN_ZU  &kana KN_ZE  &kana KN_ZO  &kana KN_DA  &kana KN_DI  &kana KN_DU  &kana KN_DE
+            &kana_key KN_MA  &kana_key KN_MI  &kana_key KN_MU  &kana_key KN_ME  &kana_key KN_MO  &kana_key KN_YA  &kana_key KN_YU  &kana_key KN_YO  &kana_key KN_WA  &kana_key KN_WO
+            &kana_key KN_RA  &kana_key KN_RI  &kana_key KN_RU  &kana_key KN_RE  &kana_key KN_RO  &kana_key KN_NN  &kana_key KN_GA  &kana_key KN_GI  &kana_key KN_GU  &kana_key KN_GE
+            &kana_key KN_GO  &kana_key KN_ZA  &kana_key KN_ZI  &kana_key KN_ZU  &kana_key KN_ZE  &kana_key KN_ZO  &kana_key KN_DA  &kana_key KN_DI  &kana_key KN_DU  &kana_key KN_DE
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
@@ -264,9 +264,9 @@
         KANA_R_LAYER {
             display-name = "kana_right";
             bindings = <
-            &kana KN_DO  &kana KN_BA  &kana KN_BI  &kana KN_BU  &kana KN_BE  &kana KN_BO  &kana KN_PA  &kana KN_PI  &kana KN_PU  &kana KN_PE
-            &kana KN_PO  &kana KN_XYA  &kana KN_XYU  &kana KN_XYO  &kana KN_XA  &kana KN_XI  &kana KN_XU  &kana KN_XE  &kana KN_XO  &kana KN_XTU
-            &kana KN_VU  &kana KN_TOUTEN  &kana KN_KUTEN  &kana KN_CHOUON  &kana KN_SANTEN  &kana KN_EXCL  &kana KN_QUES  &kana KN_KAGI  &kana KN_NIJUKAGI  &kana KN_PAREN
+            &kana_key KN_DO  &kana_key KN_BA  &kana_key KN_BI  &kana_key KN_BU  &kana_key KN_BE  &kana_key KN_BO  &kana_key KN_PA  &kana_key KN_PI  &kana_key KN_PU  &kana_key KN_PE
+            &kana_key KN_PO  &kana_key KN_XYA  &kana_key KN_XYU  &kana_key KN_XYO  &kana_key KN_XA  &kana_key KN_XI  &kana_key KN_XU  &kana_key KN_XE  &kana_key KN_XO  &kana_key KN_XTU
+            &kana_key KN_VU  &kana_key KN_TOUTEN  &kana_key KN_KUTEN  &kana_key KN_CHOUON  &kana_key KN_SANTEN  &kana_key KN_EXCL  &kana_key KN_QUES  &kana_key KN_KAGI  &kana_key KN_NIJUKAGI  &kana_key KN_PAREN
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans

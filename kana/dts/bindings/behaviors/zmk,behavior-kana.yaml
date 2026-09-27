@@ -1,4 +1,4 @@
-# かな入力 behavior (&kana)。文字 ID (dt-bindings/kana/kana.h) を受け取り、ローマ字のキー列を送る。
+# かな入力 behavior (&kana_key)。文字 ID (dt-bindings/kana/kana.h) を受け取り、ローマ字のキー列を送る。
 
 description: Kana romaji output behavior
 

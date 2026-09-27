@@ -1,5 +1,5 @@
 /*
- * かな配列モードのオン／オフ behavior (&kana_mode KANA_MODE_ON / KANA_MODE_OFF)。
+ * かな配列モードのオン／オフ behavior (&kana_sw KANA_SW_ON / KANA_SW_OFF)。
  * 実際の処理（レイヤー切替と IME のオン／オフの順序管理）は kana_output.c で行う。
  */
 
@@ -26,8 +26,8 @@ struct behavior_kana_mode_config {
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 
 static const struct behavior_parameter_value_metadata param_values[] = {
-    {.display_name = "オン", .value = KANA_MODE_ON, .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE},
-    {.display_name = "オフ", .value = KANA_MODE_OFF, .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE},
+    {.display_name = "オン", .value = KANA_SW_ON, .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE},
+    {.display_name = "オフ", .value = KANA_SW_OFF, .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE},
 };
 
 static const struct behavior_parameter_metadata_set param_metadata_set[] = {{
@@ -48,10 +48,10 @@ static int on_kana_mode_binding_pressed(struct zmk_behavior_binding *binding,
     const struct behavior_kana_mode_config *cfg = dev->config;
 
     switch (binding->param1) {
-    case KANA_MODE_ON:
+    case KANA_SW_ON:
         kana_mode_on(&event, cfg->layer, cfg->tap_ms, cfg->wait_ms);
         break;
-    case KANA_MODE_OFF:
+    case KANA_SW_OFF:
         kana_mode_off(&event, cfg->tap_ms, cfg->wait_ms);
         break;
     default:

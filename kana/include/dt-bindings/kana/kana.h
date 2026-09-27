@@ -1,6 +1,6 @@
 /*
- * かな入力モジュール (&kana) の文字 ID。
- * keymap では `&kana KN_KA` のように使う。ID から送るローマ字は src/behavior_kana.c の表で決まる。
+ * かな入力モジュール (&kana_key) の文字 ID。
+ * keymap では `&kana_key KN_KA` のように使う。ID から送るローマ字は src/behavior_kana.c の表で決まる。
  * 0 は未定義（何も送らない）。
  */
 
@@ -113,6 +113,6 @@
 
 #define KN_MAX_ID 93
 
-/* &kana_mode のパラメータ */
-#define KANA_MODE_ON 1
-#define KANA_MODE_OFF 2
+/* &kana_sw のパラメータ */
+#define KANA_SW_ON 1
+#define KANA_SW_OFF 2
