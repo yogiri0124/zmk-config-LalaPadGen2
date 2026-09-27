@@ -27,14 +27,14 @@ int kana_output_press(const struct zmk_behavior_binding_event *event, uint32_t k
 void kana_output_release(const struct zmk_behavior_binding_event *event, uint32_t keycode,
                          uint32_t wait_ms);
 
-/* かな配列モード中で、かつ解除処理中でなければ true（&kana の入力を受け付ける） */
+/* かな配列モード中で、かつ解除処理中でなければ true（&kana_key の入力を受け付ける） */
 bool kana_input_enabled(void);
 
 /* かな配列モードをオンにする: かなレイヤーを即座に有効化し、IME オン (LANGUAGE_1) をキューに並べる */
 void kana_mode_on(const struct zmk_behavior_binding_event *event, uint8_t layer_index,
                   uint32_t tap_ms, uint32_t wait_ms);
 
-/* かな配列モードをオフにする: 即座に &kana の受付を止め、IME オフ (LANGUAGE_2) と完了の合図を
+/* かな配列モードをオフにする: 即座に &kana_key の受付を止め、IME オフ (LANGUAGE_2) と完了の合図を
  * キューに並べ、合図が処理された（それより前の送信がすべて実行された）時点でかなレイヤーを解除する */
 void kana_mode_off(const struct zmk_behavior_binding_event *event, uint32_t tap_ms,
                    uint32_t wait_ms);

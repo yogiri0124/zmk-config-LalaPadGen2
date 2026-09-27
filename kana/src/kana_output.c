@@ -217,7 +217,7 @@ void kana_mode_off(const struct zmk_behavior_binding_event *event, uint32_t tap_
         return;
     }
 
-    // この時点から &kana の入力は受け付けない（レイヤー解除までの間の入力は捨てる）
+    // この時点から &kana_key の入力は受け付けない（レイヤー解除までの間の入力は捨てる）
     off_stage = KANA_OFF_SEND_IME_OFF;
     off_event = *event;
     off_tap_ms = tap_ms;

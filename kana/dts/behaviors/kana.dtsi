@@ -2,14 +2,14 @@
 
 / {
     behaviors {
-        /omit-if-no-ref/ kana: kana {
+        /omit-if-no-ref/ kana_key: kana_key {
             compatible = "zmk,behavior-kana";
             #binding-cells = <1>;
             display-name = "Kana";
         };
 
-        // layer は keymap 側で &kana_mode { layer = <かな単打面の番号>; }; と指定する
-        /omit-if-no-ref/ kana_mode: kana_mode {
+        // layer は keymap 側で &kana_sw { layer = <かな単打面の番号>; }; と指定する
+        /omit-if-no-ref/ kana_sw: kana_sw {
             compatible = "zmk,behavior-kana-mode";
             #binding-cells = <1>;
             display-name = "Kana Mode";

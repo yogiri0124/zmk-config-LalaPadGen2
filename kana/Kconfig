@@ -1,9 +1,19 @@
 config ZMK_BEHAVIOR_KANA
-    bool "Kana romaji output behaviors (&kana, &kana_mode)"
+    bool "Kana romaji output behaviors (&kana_key, &kana_sw)"
     default y
     depends on DT_HAS_ZMK_BEHAVIOR_KANA_ENABLED || DT_HAS_ZMK_BEHAVIOR_KANA_MODE_ENABLED
 
 config ZMK_BEHAVIOR_MOUSE_BUTTON_TOGGLE
-    bool "Mouse button toggle behavior (&mbt)"
+    bool "Mouse button toggle behavior (zmk,behavior-mouse-button-toggle)"
     default y
-    depends on DT_HAS_ZMK_BEHAVIOR_MOUSE_BUTTON_TOGGLE_ENABLED && ZMK_POINTING
+    depends on (DT_HAS_ZMK_BEHAVIOR_MOUSE_BUTTON_TOGGLE_ENABLED || DT_HAS_ZMK_MOUSE_BUTTON_LOCK_INPUT_ENABLED) && ZMK_POINTING
+
+config ZMK_CURSOR_SLOW
+    bool "Cursor slow mode (zmk,behavior-cursor-slow, zmk,input-processor-cursor-slow)"
+    default y
+    depends on DT_HAS_ZMK_BEHAVIOR_CURSOR_SLOW_ENABLED || DT_HAS_ZMK_INPUT_PROCESSOR_CURSOR_SLOW_ENABLED
+
+config ZMK_BEHAVIOR_KEY_LOCK
+    bool "Key lock behavior (zmk,behavior-key-lock)"
+    default y
+    depends on DT_HAS_ZMK_BEHAVIOR_KEY_LOCK_ENABLED

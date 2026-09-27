@@ -1,8 +1,14 @@
-# マウスボタンの押しっぱなし切り替え behavior (&mbt LCLK / MCLK / RCLK / MB4 / MB5)。
+# マウスボタンの押しっぱなし切り替え behavior（引数なし）。button で対象のボタンを指定する。
 # 押すたびに押しっぱなし／解除。押しっぱなし中に同じボタンのクリックが来ても解除する。
 
 description: Mouse button toggle (drag lock) behavior
 
 compatible: "zmk,behavior-mouse-button-toggle"
 
-include: one_param.yaml
+include: zero_param.yaml
+
+properties:
+  button:
+    type: int
+    required: true
+    description: 対象のマウスボタン（LCLK / MCLK / RCLK / MB4 / MB5）

@@ -1,0 +1,13 @@
+#include <dt-bindings/lalapad/cursor_slow.h>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+
+/ {
+    // 低速がオンの間だけ、カーソル移動 (REL_X / REL_Y) を param1 / param2 倍にする入力処理。
+    // トラックパッドのリスナーに <&zip_cursor_slow 1 3> のように入れる。
+    // 低速のオン・オフ（zmk,behavior-cursor-slow、mode = <CURSOR_SLOW_HOLD> など）は keymap で定義する
+    /omit-if-no-ref/ zip_cursor_slow: zip_cursor_slow {
+        compatible = "zmk,input-processor-cursor-slow";
+        #input-processor-cells = <2>;
+        track-remainders;
+    };
+};

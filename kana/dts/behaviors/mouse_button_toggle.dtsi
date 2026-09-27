@@ -1,17 +1,15 @@
 #include <dt-bindings/zmk/pointing.h>
 
 / {
-    behaviors {
-        /omit-if-no-ref/ mbt: mouse_button_toggle {
-            compatible = "zmk,behavior-mouse-button-toggle";
-            #binding-cells = <1>;
-            display-name = "Mouse Button Toggle";
-        };
+    // マウスボタンの押しっぱなし切り替え（zmk,behavior-mouse-button-toggle）が共通で使う入力デバイス。
+    // behavior のインスタンス（button = <LCLK> など）は keymap で定義する
+    mouse_lock_input: mouse_lock_input {
+        compatible = "zmk,mouse-button-lock-input";
     };
 
-    // &mbt が出す INPUT_BTN_* を HID のマウスボタンに反映する（ZMK の mkp_input_listener と同じ形）
-    mbt_input_listener: mbt_input_listener {
+    // mouse_lock_input が出す INPUT_BTN_* を HID のマウスボタンに反映する（ZMK の mkp_input_listener と同じ形）
+    mouse_lock_input_listener: mouse_lock_input_listener {
         compatible = "zmk,input-listener";
-        device = <&mbt>;
+        device = <&mouse_lock_input>;
     };
 };
