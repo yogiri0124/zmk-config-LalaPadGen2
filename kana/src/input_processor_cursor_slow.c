@@ -1,7 +1,7 @@
 /*
  * カーソル低速の入力処理 (zmk,input-processor-cursor-slow)。
  *
- * &cursor_slow で低速がオンの間だけ、カーソル移動 (REL_X / REL_Y) を param1 / param2 倍にする
+ * zmk,behavior-cursor-slow（keymap の cur_slow_*）で低速がオンの間だけ、カーソル移動 (REL_X / REL_Y) を param1 / param2 倍にする
  * （例: <&zip_cursor_slow 1 3> で 1/3）。スクロールなど、ほかのイベントはそのまま通す。
  * 端数は ZMK の scaler と同じく state->remainder に持ち越す（track-remainders）。
  */

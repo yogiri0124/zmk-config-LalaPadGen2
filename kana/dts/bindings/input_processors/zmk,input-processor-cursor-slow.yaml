@@ -1,4 +1,4 @@
-# カーソル低速の入力処理。&cursor_slow で低速がオンの間だけ、REL_X / REL_Y を param1 / param2 倍にする。
+# カーソル低速の入力処理。zmk,behavior-cursor-slow で低速がオンの間だけ、REL_X / REL_Y を param1 / param2 倍にする。
 
 description: Input processor that slows cursor movement while cursor slow mode is active
 

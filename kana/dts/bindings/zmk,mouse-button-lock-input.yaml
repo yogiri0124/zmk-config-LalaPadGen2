@@ -1,0 +1,5 @@
+# マウスボタンの押しっぱなし切り替え（zmk,behavior-mouse-button-toggle）が INPUT_BTN_* を出す共通の入力デバイス。
+
+description: Shared input device for mouse button toggle behaviors
+
+compatible: "zmk,mouse-button-lock-input"

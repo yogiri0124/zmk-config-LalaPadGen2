@@ -1,0 +1,14 @@
+# キーの押しっぱなし切り替え behavior（引数なし）。keycode で対象のキーを指定する。
+# 押すたびに押しっぱなし／解除（ZMK 標準の &kt と同じ動き）。
+
+description: Key lock (toggle) behavior with a fixed keycode
+
+compatible: "zmk,behavior-key-lock"
+
+include: zero_param.yaml
+
+properties:
+  keycode:
+    type: int
+    required: true
+    description: 対象のキー（LCTRL / LSHIFT / LALT / LGUI など）

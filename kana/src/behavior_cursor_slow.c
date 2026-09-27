@@ -1,7 +1,8 @@
 /*
- * カーソル低速のオン・オフ behavior (&cursor_slow CURSOR_SLOW_HOLD / TOGGLE / ONESHOT)。
+ * カーソル低速のオン・オフ behavior（zmk,behavior-cursor-slow、引数なし。動作は mode プロパティで指定）。
  *
- * レイヤーは使わず、低速の状態をここで持つ。実際にカーソルを遅くするのは
+ * keymap で mode = <CURSOR_SLOW_HOLD> などを付けたインスタンスを作って使う。
+ * レイヤーは使わず、低速の状態をここで持つ（全インスタンスで共有）。実際にカーソルを遅くするのは
  * input_processor_cursor_slow.c（トラックパッドのリスナーに入れた &zip_cursor_slow）。
  *   HOLD    : 押している間だけ低速
  *   TOGGLE  : 押すたびに低速のオン・オフ
@@ -39,32 +40,20 @@ bool cursor_slow_is_active(void) {
     return atomic_get(&hold_count) > 0 || atomic_get(&toggled) != 0 || atomic_get(&oneshot) != 0;
 }
 
-#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
-
-static const struct behavior_parameter_value_metadata param_values[] = {
-    {.display_name = "押している間", .value = CURSOR_SLOW_HOLD,
-     .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE},
-    {.display_name = "入れ切り", .value = CURSOR_SLOW_TOGGLE,
-     .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE},
-    {.display_name = "次のキーまで", .value = CURSOR_SLOW_ONESHOT,
-     .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE},
+struct behavior_cursor_slow_config {
+    uint8_t mode;
 };
 
-static const struct behavior_parameter_metadata_set param_metadata_set[] = {{
-    .param1_values = param_values,
-    .param1_values_len = ARRAY_SIZE(param_values),
-}};
-
-static const struct behavior_parameter_metadata metadata = {
-    .sets_len = ARRAY_SIZE(param_metadata_set),
-    .sets = param_metadata_set,
-};
-
-#endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
+static uint8_t binding_mode(const struct zmk_behavior_binding *binding) {
+    const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
+    const struct behavior_cursor_slow_config *cfg = dev->config;
+    return cfg->mode;
+}
 
 static int on_cursor_slow_binding_pressed(struct zmk_behavior_binding *binding,
                                           struct zmk_behavior_binding_event event) {
-    switch (binding->param1) {
+    const uint8_t mode = binding_mode(binding);
+    switch (mode) {
     case CURSOR_SLOW_HOLD:
         atomic_inc(&hold_count);
         break;
@@ -76,7 +65,7 @@ static int on_cursor_slow_binding_pressed(struct zmk_behavior_binding *binding,
         atomic_set(&oneshot, 1);
         break;
     default:
-        LOG_WRN("Unknown cursor slow mode %d", binding->param1);
+        LOG_WRN("Unknown cursor slow mode %d", mode);
         break;
     }
     return ZMK_BEHAVIOR_OPAQUE;
@@ -84,7 +73,7 @@ static int on_cursor_slow_binding_pressed(struct zmk_behavior_binding *binding,
 
 static int on_cursor_slow_binding_released(struct zmk_behavior_binding *binding,
                                            struct zmk_behavior_binding_event event) {
-    if (binding->param1 == CURSOR_SLOW_HOLD && atomic_get(&hold_count) > 0) {
+    if (binding_mode(binding) == CURSOR_SLOW_HOLD && atomic_get(&hold_count) > 0) {
         atomic_dec(&hold_count);
     }
     return ZMK_BEHAVIOR_OPAQUE;
@@ -106,13 +95,13 @@ ZMK_SUBSCRIPTION(behavior_cursor_slow, zmk_position_state_changed);
 static const struct behavior_driver_api behavior_cursor_slow_driver_api = {
     .binding_pressed = on_cursor_slow_binding_pressed,
     .binding_released = on_cursor_slow_binding_released,
-#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
-    .parameter_metadata = &metadata,
-#endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 };
 
 #define CURSOR_SLOW_INST(n)                                                                        \
-    BEHAVIOR_DT_INST_DEFINE(n, NULL, NULL, NULL, NULL, POST_KERNEL,                                \
+    static const struct behavior_cursor_slow_config behavior_cursor_slow_config_##n = {            \
+        .mode = DT_INST_PROP(n, mode),                                                             \
+    };                                                                                             \
+    BEHAVIOR_DT_INST_DEFINE(n, NULL, NULL, NULL, &behavior_cursor_slow_config_##n, POST_KERNEL,    \
                             CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &behavior_cursor_slow_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(CURSOR_SLOW_INST)

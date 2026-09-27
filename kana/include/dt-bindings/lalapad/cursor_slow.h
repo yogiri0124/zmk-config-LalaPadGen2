@@ -1,5 +1,5 @@
 /*
- * カーソル低速 behavior (&cursor_slow) のパラメータ。
+ * カーソル低速 behavior（zmk,behavior-cursor-slow）の mode プロパティの値。
  */
 
 #pragma once
