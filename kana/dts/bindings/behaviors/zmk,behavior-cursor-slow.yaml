@@ -1,0 +1,8 @@
+# カーソル低速のオン・オフ behavior（&cursor_slow CURSOR_SLOW_HOLD / TOGGLE / ONESHOT）。
+# 低速の間は zmk,input-processor-cursor-slow がカーソル移動を遅くする。
+
+description: Cursor slow mode behavior
+
+compatible: "zmk,behavior-cursor-slow"
+
+include: one_param.yaml
