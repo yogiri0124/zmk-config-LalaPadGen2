@@ -161,7 +161,7 @@
 
 | 名前 | 中身 | 書き方 |
 | --- | --- | --- |
-| `&ht_tap_pref` | hold-tap（`tap-preferred`、200ms、quick-tap 200、require-prior-idle 125、`<&kp>, <&kp>`） | `&ht_tap_pref 押し続けキー タップキー` |
+| `&mt2` | hold-tap（`tap-preferred`、500ms、quick-tap 200、require-prior-idle 125、`<&kp>, <&kp>`） | `&mt2 押し続けキー タップキー` |
 | `&zip_dyn_scale` | トラックパッドの倍率を増減・リセット（ドライバ v1.0.0） | `&zip_dyn_scale 対象 操作` |
 | `&zip_dyn_scale_set` | トラックパッドの倍率を直接指定 | `&zip_dyn_scale_set 対象 値` |
 
