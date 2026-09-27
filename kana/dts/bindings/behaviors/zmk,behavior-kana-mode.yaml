@@ -13,9 +13,9 @@ properties:
     description: かな単打面のレイヤー番号（keymap で &kana_mode { layer = <...>; }; と指定する）
   tap-ms:
     type: int
-    default: 10
+    default: 5
     description: IME キーを押してから離すまでの時間 (ms)
   wait-ms:
     type: int
-    default: 10
+    default: 5
     description: IME キーを離してから次の送信までの時間 (ms)
