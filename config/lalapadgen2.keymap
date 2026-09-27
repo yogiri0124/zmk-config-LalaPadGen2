@@ -51,7 +51,7 @@
         };
 
         // ===== カスタムキー（まだどのレイヤーにも置いていない。後で割り当てる） =====
-        // 名前の頭で種類を分けている（clk_: クリック、cur_: カーソル、mod_: 修飾キー、pair_: カッコ）。
+        // 名前の頭で種類を分けている（clk_: クリック、cur_: カーソル、mod_: 修飾キー）。
         // display-name は付けない（LaLapad-Gen2-Editor がレイヤーと誤認するため）。
 
         // --- clk_: クリック押しっぱなし（もう一度押す、または同じボタンのクリックで解除） ---
@@ -118,29 +118,6 @@
             compatible = "zmk,behavior-key-lock";
             #binding-cells = <0>;
             keycode = <LGUI>;
-        };
-    };
-
-
-
-    // --- pair_: カッコの自動補完（開き・閉じを入力して ← でカーソルを中に置く）。まだどのレイヤーにも置いていない ---
-    // display-name は付けない（LaLapad-Gen2-Editor がレイヤーと誤認するため）。
-    macros {
-        // “” を入力してカーソルを中に（US 配列にキーコードがないので Windows の Alt コードで送る: Alt+0147 = “、Alt+0148 = ”）
-        pair_cquote: pair_cquote {
-            compatible = "zmk,behavior-macro";
-            #binding-cells = <0>;
-            wait-ms = <5>;
-            tap-ms = <5>;
-            bindings
-                = <&macro_press &kp LALT>
-                , <&macro_tap &kp KP_N0 &kp KP_N1 &kp KP_N4 &kp KP_N7>
-                , <&macro_release &kp LALT>
-                , <&macro_press &kp LALT>
-                , <&macro_tap &kp KP_N0 &kp KP_N1 &kp KP_N4 &kp KP_N8>
-                , <&macro_release &kp LALT>
-                , <&macro_tap &kp LEFT>
-                ;
         };
     };
 
