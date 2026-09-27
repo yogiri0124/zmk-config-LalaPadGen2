@@ -165,8 +165,6 @@
                               52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67>;
     };
 
-    // スクロール方向: &zip_scroll_transform で X・Y とも反転し、下にスワイプ→下へ、右にスワイプ→右へスクロールする
-    // （ドライバ既定はナチュラルスクロール）。通常時・低速モードの両方に入れる。
     trackpad_listener_R: trackpad_listener_R {
         compatible = "zmk,input-listener";
         status = "disabled";
@@ -176,7 +174,6 @@
                            <&zip_scroll_scaler 1 12>,
                            <&zip_dynamic_xy_scaler>,
                            <&zip_dynamic_scroll_scaler>,
-                           <&zip_scroll_transform (INPUT_TRANSFORM_X_INVERT | INPUT_TRANSFORM_Y_INVERT)>,
                            <&zip_auto_mouse_layer 4 700>;
         lowspeedmode {
             layers = <1>,<2>;
@@ -184,8 +181,7 @@
                                 <&zip_xy_scaler 1 15>,
                                 <&zip_scroll_scaler 1 40>,
                                 <&zip_dynamic_xy_scaler>,
-                                <&zip_dynamic_scroll_scaler>,
-                                <&zip_scroll_transform (INPUT_TRANSFORM_X_INVERT | INPUT_TRANSFORM_Y_INVERT)>;
+                                <&zip_dynamic_scroll_scaler>;
         };
     };
     trackpad_listener_L: trackpad_listener_L {
@@ -197,7 +193,6 @@
                            <&zip_scroll_scaler 1 12>,
                            <&zip_dynamic_xy_scaler>,
                            <&zip_dynamic_scroll_scaler>,
-                           <&zip_scroll_transform (INPUT_TRANSFORM_X_INVERT | INPUT_TRANSFORM_Y_INVERT)>,
                            <&zip_auto_mouse_layer 4 700>;
         lowspeedmode {
             layers = <1>,<2>;
@@ -205,8 +200,7 @@
                                 <&zip_xy_scaler 1 15>,
                                 <&zip_scroll_scaler 1 40>,
                                 <&zip_dynamic_xy_scaler>,
-                                <&zip_dynamic_scroll_scaler>,
-                                <&zip_scroll_transform (INPUT_TRANSFORM_X_INVERT | INPUT_TRANSFORM_Y_INVERT)>;
+                                <&zip_dynamic_scroll_scaler>;
         };
     };
 
@@ -262,7 +256,6 @@ status = "okay";
 //                            <&zip_dynamic_xy_scaler>,
 //                            <&zip_dynamic_scroll_scaler>,
 //                            <&zip_scroll_snap_R>,
-//                            <&zip_scroll_transform (INPUT_TRANSFORM_X_INVERT | INPUT_TRANSFORM_Y_INVERT)>,
 //                            <&zip_auto_mouse_layer 4 700>;
 //     };
 // 判定状態（サンプル・軸ロック）は左右のトラックパッドで独立させるため、インスタンスを分ける。
