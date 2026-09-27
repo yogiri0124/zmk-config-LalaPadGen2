@@ -11,6 +11,7 @@
  */
 
 #include <errno.h>
+#include <string.h>
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -18,6 +19,7 @@
 #include <zmk/behavior.h>
 #include <zmk/behavior_queue.h>
 #include <zmk/keymap.h>
+#include <zmk/events/keycode_state_changed.h>
 
 #include <dt-bindings/zmk/keys.h>
 
@@ -31,51 +33,99 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 /* ---- 送信キュー ---- */
 
-static bool release_pending;
-static struct zmk_behavior_binding pending_release_binding;
-static struct zmk_behavior_binding_event pending_release_event;
-static uint32_t pending_release_wait;
+/* 「押す」は登録済みで、キューが満杯のため「離す」をまだ登録できていないキー（登録できるまで順に再試行する） */
+#define PENDING_RELEASE_MAX 8
+
+struct pending_release {
+    struct zmk_behavior_binding binding;
+    struct zmk_behavior_binding_event event;
+    uint32_t wait;
+};
+
+static struct pending_release pending_releases[PENDING_RELEASE_MAX];
+static size_t pending_count;
 
 static void retry_release_work_handler(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(retry_release_work, retry_release_work_handler);
 
+static bool release_pending(void) { return pending_count > 0; }
+
+static void add_pending_release(const struct zmk_behavior_binding_event *event,
+                                struct zmk_behavior_binding binding, uint32_t wait) {
+    if (pending_count >= PENDING_RELEASE_MAX) {
+        // 通常は起きない。押しっぱなしを避けるため、順番より解放を優先してその場で離す
+        LOG_ERR("Too many pending releases, releasing 0x%08X immediately", binding.param1);
+        raise_zmk_keycode_state_changed_from_encoded(binding.param1, false, k_uptime_get());
+        return;
+    }
+    pending_releases[pending_count++] = (struct pending_release){
+        .binding = binding,
+        .event = *event,
+        .wait = wait,
+    };
+    k_work_schedule(&retry_release_work, K_MSEC(RETRY_INTERVAL_MS));
+}
+
 static void retry_release_work_handler(struct k_work *work) {
-    if (!release_pending) {
-        return;
+    // 先に失敗したものから順に登録する
+    while (pending_count > 0) {
+        struct pending_release *p = &pending_releases[0];
+        if (zmk_behavior_queue_add(&p->event, p->binding, false, p->wait) < 0) {
+            k_work_schedule(&retry_release_work, K_MSEC(RETRY_INTERVAL_MS));
+            return;
+        }
+        pending_count--;
+        memmove(&pending_releases[0], &pending_releases[1],
+                pending_count * sizeof(pending_releases[0]));
     }
-    if (zmk_behavior_queue_add(&pending_release_event, pending_release_binding, false,
-                               pending_release_wait) < 0) {
-        k_work_schedule(&retry_release_work, K_MSEC(RETRY_INTERVAL_MS));
-        return;
-    }
-    release_pending = false;
+}
+
+static struct zmk_behavior_binding kp_binding(uint32_t keycode) {
+    return (struct zmk_behavior_binding){
+        .behavior_dev = KP_BEHAVIOR_NAME,
+        .param1 = keycode,
+    };
 }
 
 int kana_output_tap(const struct zmk_behavior_binding_event *event, uint32_t keycode,
                     uint32_t tap_ms, uint32_t wait_ms) {
-    if (release_pending) {
+    if (release_pending()) {
         return -EBUSY;
     }
 
-    struct zmk_behavior_binding kp = {
-        .behavior_dev = KP_BEHAVIOR_NAME,
-        .param1 = keycode,
-    };
+    const struct zmk_behavior_binding kp = kp_binding(keycode);
 
     if (zmk_behavior_queue_add(event, kp, true, tap_ms) < 0) {
         return -ENOSPC;
     }
 
     if (zmk_behavior_queue_add(event, kp, false, wait_ms) < 0) {
-        release_pending = true;
-        pending_release_binding = kp;
-        pending_release_event = *event;
-        pending_release_wait = wait_ms;
-        k_work_schedule(&retry_release_work, K_MSEC(RETRY_INTERVAL_MS));
+        add_pending_release(event, kp, wait_ms);
         return -EAGAIN;
     }
 
     return 0;
+}
+
+int kana_output_press(const struct zmk_behavior_binding_event *event, uint32_t keycode,
+                      uint32_t tap_ms) {
+    if (release_pending()) {
+        return -EBUSY;
+    }
+    if (zmk_behavior_queue_add(event, kp_binding(keycode), true, tap_ms) < 0) {
+        return -ENOSPC;
+    }
+    return 0;
+}
+
+void kana_output_release(const struct zmk_behavior_binding_event *event, uint32_t keycode,
+                         uint32_t wait_ms) {
+    const struct zmk_behavior_binding kp = kp_binding(keycode);
+
+    // 先に待っている「離す」があれば、順番を守るためその後ろに並べる
+    if (release_pending() || zmk_behavior_queue_add(event, kp, false, wait_ms) < 0) {
+        add_pending_release(event, kp, wait_ms);
+    }
 }
 
 /* ---- かな配列モード ---- */
@@ -111,7 +161,7 @@ static void kana_off_work_handler(struct k_work *work) {
 
     if (off_stage == KANA_OFF_SEND_SYNC) {
         // IME オフの「離す」を再試行中なら、その登録が済んでから合図を並べる
-        if (release_pending) {
+        if (release_pending()) {
             k_work_schedule(&kana_off_work, K_MSEC(RETRY_INTERVAL_MS));
             return;
         }

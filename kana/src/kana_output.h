@@ -18,6 +18,15 @@
 int kana_output_tap(const struct zmk_behavior_binding_event *event, uint32_t keycode,
                     uint32_t tap_ms, uint32_t wait_ms);
 
+/* keycode の「押す」だけをキューに並べる（押しっぱなしにするキー用）。
+ * 戻り値: 0 = 登録できた / -EBUSY = 「離す」を再試行中なので登録していない / -ENOSPC = キューが満杯 */
+int kana_output_press(const struct zmk_behavior_binding_event *event, uint32_t keycode,
+                      uint32_t tap_ms);
+
+/* keycode の「離す」をキューに並べる。満杯なら登録できるまで順番どおりに自動で再試行する（必ず離される） */
+void kana_output_release(const struct zmk_behavior_binding_event *event, uint32_t keycode,
+                         uint32_t wait_ms);
+
 /* かな配列モード中で、かつ解除処理中でなければ true（&kana の入力を受け付ける） */
 bool kana_input_enabled(void);
 

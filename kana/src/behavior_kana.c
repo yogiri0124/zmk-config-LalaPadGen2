@@ -19,6 +19,8 @@
 #include <drivers/behavior.h>
 
 #include <zmk/behavior.h>
+#include <zmk/keymap.h>
+#include <zmk/matrix.h>
 
 #include <dt-bindings/kana/kana.h>
 #include <dt-bindings/zmk/keys.h>
@@ -89,6 +91,12 @@ struct behavior_kana_config {
     uint32_t ime_resync_ms;
 };
 
+/* スペース・エンター・バックスペースは押しっぱなし（キーリピート）ができるよう、押したとき「押す」、
+ * 離したとき「離す」を送る。キー位置ごとに押しているキーコードを覚えておく（0 = 押していない） */
+static uint32_t held_keycode[ZMK_KEYMAP_LEN];
+
+static bool is_hold_key(uint32_t id) { return id == KN_SPACE || id == KN_ENTER || id == KN_BSPC; }
+
 /* 最後にかな・記号（ID 1〜90）を送った時刻。IME オンの再送の判定に使う */
 static int64_t last_char_ms;
 static bool char_sent;
@@ -152,6 +160,19 @@ static int on_kana_binding_pressed(struct zmk_behavior_binding *binding,
         return ZMK_BEHAVIOR_OPAQUE;
     }
 
+    if (is_hold_key(id)) {
+        if (event.position < ZMK_KEYMAP_LEN && held_keycode[event.position] == 0) {
+            const uint32_t keycode = kana_table[id].keys[0];
+            const int ret = kana_output_press(&event, keycode, cfg->tap_ms);
+            if (ret == 0) {
+                held_keycode[event.position] = keycode;
+            } else {
+                LOG_WRN("Behavior queue busy/full (err %d), dropped kana id %d", ret, id);
+            }
+        }
+        return ZMK_BEHAVIOR_OPAQUE;
+    }
+
     // かな・記号の前だけ、しばらく打っていなかったら IME オンを先に送る（LANGUAGE_1 はトグルではないので重ねても害がない）。
     // スペース・エンター・バックスペースの前には送らない（IME オフのときに全角スペースなどにならないように）
     const bool is_char = id <= KN_PAREN;
@@ -192,6 +213,13 @@ static int on_kana_binding_pressed(struct zmk_behavior_binding *binding,
 
 static int on_kana_binding_released(struct zmk_behavior_binding *binding,
                                     struct zmk_behavior_binding_event event) {
+    // 押しっぱなしのキーは、かな配列モードの解除中でも必ず離す
+    if (event.position < ZMK_KEYMAP_LEN && held_keycode[event.position] != 0) {
+        const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
+        const struct behavior_kana_config *cfg = dev->config;
+        kana_output_release(&event, held_keycode[event.position], cfg->wait_ms);
+        held_keycode[event.position] = 0;
+    }
     return ZMK_BEHAVIOR_OPAQUE;
 }
 
