@@ -183,6 +183,17 @@
                                 <&zip_dynamic_xy_scaler>,
                                 <&zip_dynamic_scroll_scaler>;
         };
+        // 低速レイヤー（レイヤー11、keymap の SLOW / T.SLO / O.SLO）: カーソルだけ遅くする（スクロールは通常どおり）。
+        // lowspeedmode（レイヤー1・2）と両方有効なときは、先に書いた lowspeedmode が優先される
+        slowmode {
+            layers = <11>;
+            input-processors = <&trackpad_key_behaviors_R>,
+                               <&zip_xy_scaler 1 15>,
+                               <&zip_scroll_scaler 1 12>,
+                               <&zip_dynamic_xy_scaler>,
+                               <&zip_dynamic_scroll_scaler>,
+                               <&zip_auto_mouse_layer 4 700>;
+        };
     };
     trackpad_listener_L: trackpad_listener_L {
         compatible = "zmk,input-listener";
@@ -201,6 +212,17 @@
                                 <&zip_scroll_scaler 1 40>,
                                 <&zip_dynamic_xy_scaler>,
                                 <&zip_dynamic_scroll_scaler>;
+        };
+        // 低速レイヤー（レイヤー11、keymap の SLOW / T.SLO / O.SLO）: カーソルだけ遅くする（スクロールは通常どおり）。
+        // lowspeedmode（レイヤー1・2）と両方有効なときは、先に書いた lowspeedmode が優先される
+        slowmode {
+            layers = <11>;
+            input-processors = <&trackpad_key_behaviors_L>,
+                               <&zip_xy_scaler 1 15>,
+                               <&zip_scroll_scaler 1 12>,
+                               <&zip_dynamic_xy_scaler>,
+                               <&zip_dynamic_scroll_scaler>,
+                               <&zip_auto_mouse_layer 4 700>;
         };
     };
 
