@@ -11,6 +11,8 @@
  * - それ以外のキーを押すと、すぐに解除する。
  * - 直前のキー入力から require-prior-idle-ms 以内のトラックパッド操作では有効にしない（打鍵中の誤動作防止）。
  * - 状態はインスタンスごとに持つので、左右のリスナーに別々のインスタンスを入れれば別々に動く。
+ *   1つのインスタンスで扱うレイヤーは1つだけ。別のレイヤーを使うリスナーには別のインスタンスを入れること
+ *   （有効中に違う param1 が来ても、有効にしたレイヤーのまま扱う）。
  *
  * 入力処理は入力スレッドで呼ばれるので、レイヤーの切り替えはワーク（システムワークキュー）で行う。
  */
@@ -57,7 +59,9 @@ struct auto_mouse_data {
     uint8_t layer; /* 有効にしたレイヤーの番号（keymap の宣言順） */
     int64_t last_tapped;
 
-    /* 押している「マウス操作」のキー */
+    /* 押しているキー（レイヤーの状態に関係なく記録する） */
+    bool pressed[ZMK_KEYMAP_LEN];
+    /* そのうち「マウス操作」として扱っているキー。押している間は時間切れにしない */
     bool held[ZMK_KEYMAP_LEN];
     size_t held_count;
 };
@@ -100,6 +104,17 @@ static void deactivate(struct auto_mouse_data *data) {
     LOG_DBG("Auto mouse layer %d deactivated", data->layer);
 }
 
+/* 有効にしたときに、それより前から押しているキーのうちマウス操作のものを数え直す */
+static void recount_held(const struct device *dev, struct auto_mouse_data *data) {
+    data->held_count = 0;
+    for (uint32_t pos = 0; pos < ZMK_KEYMAP_LEN; pos++) {
+        data->held[pos] = data->pressed[pos] && is_mouse_key(dev, pos);
+        if (data->held[pos]) {
+            data->held_count++;
+        }
+    }
+}
+
 /* 押しているマウス操作のキーがなければ、時間切れを数え直す */
 static void restart_timeout(struct auto_mouse_data *data) {
     if (!data->active) {
@@ -128,8 +143,12 @@ static void activity_work_cb(struct k_work *work) {
         }
         data->layer = data->requested_layer;
         data->active = true;
+        recount_held(data->dev, data);
         zmk_keymap_layer_activate(zmk_keymap_layer_index_to_id(data->layer));
         LOG_DBG("Auto mouse layer %d activated", data->layer);
+    } else if (data->requested_layer != data->layer) {
+        LOG_WRN("Auto mouse: layer %d requested while layer %d is active (use separate instances)",
+                data->requested_layer, data->layer);
     }
     restart_timeout(data);
     k_mutex_unlock(&data->lock);
@@ -176,6 +195,7 @@ static void handle_position(const struct device *dev,
     }
 
     k_mutex_lock(&data->lock, K_FOREVER);
+    data->pressed[ev->position] = ev->state;
     if (ev->state) {
         if (data->active) {
             if (is_mouse_key(dev, ev->position)) {
