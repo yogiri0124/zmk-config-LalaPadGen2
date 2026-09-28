@@ -158,6 +158,8 @@
     // オートマウスレイヤー: トラックパッド操作でレイヤー4 (MOUSE_LAYER) を一時的に有効化する（自作: kana/src/input_processor_auto_mouse_layer.c）。
     // マウスレイヤーで何か割り当ててあるキー（&trans / &none 以外）と excluded-positions のキーは「マウス操作」として扱い、
     // 押しても解除せず、押している間は時間切れにしない（離してから数え直す）。それ以外のキーを押すと即解除。
+    // トラックパッドに触れている間も時間切れにしない（離れてから 700ms で解除）。触れている合図は
+    // ドライバの INPUT_BTN_TOUCH（CONFIG_INPUT_IQS9151_REPORT_TOUCH）で、受け取るデバイスは親機の overlay の touch-devices で指定する。
     // excluded-positions: 修飾キー (LCTRL=30, LWIN=31, LALT=32, LSHIFT=35)、トラックパッド由来の位置 (52-67)、
     // クリックキー (S/D/F=11-13, J/K/L=16-18。マウスレイヤーに割り当てがあるので自動でも対象になる)。
     zip_auto_mouse_layer: zip_auto_mouse_layer {

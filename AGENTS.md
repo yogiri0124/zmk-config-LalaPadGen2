@@ -38,7 +38,7 @@ Claude Code（編集担当）と Codex（レビュー担当）の両者がこの
 ## 参照資料
 
 キーマップ・`.conf` を編集またはレビューするときは、推測で書かずに次の資料で名前・引数・値の範囲を確認する。
-いずれもこのリポジトリが固定している版（ZMK v0.3.0、zmk-driver-iqs9151 v1.0.0）に合わせてある。
+いずれもこのリポジトリが固定している版（ZMK v0.3.0、zmk-driver-iqs9151 v1.0.0。ドライバは v1.0.0 に触れている状態の送信を足した複製 `yogiri0124/zmk-driver-iqs9151` の `v1.0.0-lalapad-touch.1` を使用）に合わせてある。
 
 - [docs/reference/zmk-keycodes.md](docs/reference/zmk-keycodes.md)：`&kp` などに使えるキーコード名（別名を含む）と、JIS 配列ホストでの注意点
 - [docs/reference/zmk-behaviors.md](docs/reference/zmk-behaviors.md)：`&xxx` の書き方・引数・既定値、自作 behavior・combos のプロパティ、このリポジトリ独自の behavior

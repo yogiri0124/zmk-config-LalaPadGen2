@@ -18,3 +18,8 @@
 &trackpad_listener_R {
     status = "okay";
 };
+
+// オートマウスレイヤー: 左右のトラックパッドに触れている間は時間切れにしない（左 = このドライバ、右 = 子機からの中継）
+&zip_auto_mouse_layer {
+    touch-devices = <&iqs9151 &trackpad_split_R>;
+};
