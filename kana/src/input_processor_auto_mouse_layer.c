@@ -11,8 +11,12 @@
  * - それ以外のキーを押すと、すぐに解除する。
  * - touch-devices に指定した入力デバイスから INPUT_BTN_TOUCH（トラックパッドに触れている／離れた）が届く場合、
  *   触れている間は時間切れにしない。離れてから param2 ms で解除する（触れただけでは有効にしない）。
+ *   そのデバイスからの入力は、触れている間のものだけを有効化・延長のきっかけにする
+ *   （指を離した後の慣性による移動では延長しない。離してすぐの打鍵がクリックにならないように）。
  *   触れている合図はリスナーを通さず入力デバイスから直接受け取るので、どのレイヤーでも取りこぼさない。
  *   「離れた」が届かなかったときに備え、そのデバイスから touch-stale-ms の間なにも届かなければ離れたとみなす。
+ *   この場合は触れているか「分からない」状態として、次に入力が届いたら触れているとみなし直す
+ *   （指を置いたまま止めていただけなら、動かせばまた使えるように）。
  * - 直前のキー入力から require-prior-idle-ms 以内のトラックパッド操作では有効にしない（打鍵中の誤動作防止）。
  * - 状態はインスタンスごとに持つので、左右のリスナーに別々のインスタンスを入れれば別々に動く。
  *   1つのインスタンスで扱うレイヤーは1つだけ。別のレイヤーを使うリスナーには別のインスタンスを入れること
@@ -51,6 +55,8 @@ struct auto_mouse_config {
     const uint16_t *excluded_positions;
     size_t num_positions;
     uint32_t touch_stale_ms;
+    const struct device *const *touch_devs;
+    size_t num_touch_devs;
 };
 
 struct auto_mouse_data {
@@ -78,6 +84,8 @@ struct auto_mouse_data {
 
     /* トラックパッドに触れている入力デバイス（touch-devices の順番のビット）と、最後に入力が届いた時刻 */
     uint8_t touch_mask;
+    /* touch-stale-ms で離れたとみなしたデバイス。「離れた」を実際には受け取っていないので、次の入力で触れているに戻す */
+    uint8_t touch_unknown_mask;
     int64_t touch_last_ms[MAX_TOUCH_DEVICES];
 };
 
@@ -140,6 +148,7 @@ static void expire_stale_touches(const struct auto_mouse_config *cfg,
     for (int i = 0; i < MAX_TOUCH_DEVICES; i++) {
         if ((data->touch_mask & BIT(i)) && now - data->touch_last_ms[i] >= cfg->touch_stale_ms) {
             data->touch_mask &= ~BIT(i);
+            data->touch_unknown_mask |= BIT(i);
             LOG_WRN("Auto mouse: no input from touch device %d for %d ms, treating as released", i,
                     cfg->touch_stale_ms);
         }
@@ -225,6 +234,16 @@ static void disable_work_cb(struct k_work *work) {
 
 /* ---- 入力処理（入力スレッド） ---- */
 
+/* touch-devices の何番目か。含まれなければ -1 */
+static int touch_device_index(const struct auto_mouse_config *cfg, const struct device *input_dev) {
+    for (size_t i = 0; i < cfg->num_touch_devs; i++) {
+        if (cfg->touch_devs[i] == input_dev) {
+            return (int)i;
+        }
+    }
+    return -1;
+}
+
 static int auto_mouse_handle_event(const struct device *dev, struct input_event *event,
                                    uint32_t param1, uint32_t param2,
                                    struct zmk_input_processor_state *state) {
@@ -240,6 +259,14 @@ static int auto_mouse_handle_event(const struct device *dev, struct input_event 
 
     struct auto_mouse_data *data = dev->data;
     k_mutex_lock(&data->lock, K_FOREVER);
+
+    // 触れているかを送ってくるデバイスで、いま触れていなければ（指を離した後の慣性など）きっかけにしない
+    const int touch_idx = touch_device_index(dev->config, event->dev);
+    if (touch_idx >= 0 && !(data->touch_mask & BIT(touch_idx))) {
+        k_mutex_unlock(&data->lock);
+        return ZMK_INPUT_PROC_CONTINUE;
+    }
+
     data->requested_layer = param1;
     data->timeout_ms = param2;
     k_mutex_unlock(&data->lock);
@@ -260,6 +287,13 @@ static void handle_touch_input(const struct device *dev, int idx, struct input_e
         } else {
             data->touch_mask &= ~BIT(idx);
         }
+        data->touch_unknown_mask &= ~BIT(idx);
+        data->touch_last_ms[idx] = k_uptime_get();
+        restart_timeout(dev->config, data);
+    } else if (data->touch_unknown_mask & BIT(idx)) {
+        // 古くなって離れたとみなしていたが、「離れた」は届いていない。入力が来たので触れているに戻す
+        data->touch_unknown_mask &= ~BIT(idx);
+        data->touch_mask |= BIT(idx);
         data->touch_last_ms[idx] = k_uptime_get();
         restart_timeout(dev->config, data);
     } else if (data->touch_mask & BIT(idx)) {
@@ -369,9 +403,15 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
     INPUT_CALLBACK_DEFINE(DEVICE_DT_GET(DT_PHANDLE_BY_IDX(node_id, prop, idx)),                    \
                           auto_mouse_touch_cb_##n##_##idx);
 
+#define AUTO_MOUSE_TOUCH_DEV(node_id, prop, idx) DEVICE_DT_GET(DT_PHANDLE_BY_IDX(node_id, prop, idx)),
+
 #define AUTO_MOUSE_INST(n)                                                                         \
     BUILD_ASSERT(DT_INST_PROP_LEN_OR(n, touch_devices, 0) <= MAX_TOUCH_DEVICES,                    \
                  "too many touch-devices");                                                        \
+    COND_CODE_1(DT_INST_NODE_HAS_PROP(n, touch_devices),                                           \
+                (static const struct device *const auto_mouse_touch_devs_##n[] = {                 \
+                     DT_INST_FOREACH_PROP_ELEM(n, touch_devices, AUTO_MOUSE_TOUCH_DEV)};),         \
+                ())                                                                                \
     static struct auto_mouse_data auto_mouse_data_##n;                                             \
     static const uint16_t auto_mouse_excluded_##n[] = DT_INST_PROP(n, excluded_positions);         \
     static const struct auto_mouse_config auto_mouse_config_##n = {                                \
@@ -379,6 +419,9 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
         .excluded_positions = auto_mouse_excluded_##n,                                             \
         .num_positions = DT_INST_PROP_LEN(n, excluded_positions),                                  \
         .touch_stale_ms = DT_INST_PROP(n, touch_stale_ms),                                         \
+        .touch_devs = COND_CODE_1(DT_INST_NODE_HAS_PROP(n, touch_devices),                         \
+                                  (auto_mouse_touch_devs_##n), (NULL)),                            \
+        .num_touch_devs = DT_INST_PROP_LEN_OR(n, touch_devices, 0),                                \
     };                                                                                             \
     DEVICE_DT_INST_DEFINE(n, auto_mouse_init, NULL, &auto_mouse_data_##n,                          \
                           &auto_mouse_config_##n, POST_KERNEL,                                     \
