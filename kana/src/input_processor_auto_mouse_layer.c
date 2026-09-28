@@ -50,6 +50,10 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 /* touch-devices に指定できる入力デバイスの数 */
 #define MAX_TOUCH_DEVICES 8
 
+/* 初期化の優先度。touch-devices（トラックパッドのドライバ・左右の中継）より後にする必要がある
+ * （Zephyr のビルド時チェック）。ロックとワークは静的に初期化しているので、これより前に入力が届いても動く */
+#define AUTO_MOUSE_INIT_PRIORITY 99
+
 struct auto_mouse_config {
     int32_t require_prior_idle_ms;
     const uint16_t *excluded_positions;
@@ -383,15 +387,6 @@ ZMK_SUBSCRIPTION(auto_mouse_layer, zmk_position_state_changed);
 ZMK_SUBSCRIPTION(auto_mouse_layer, zmk_keycode_state_changed);
 ZMK_SUBSCRIPTION(auto_mouse_layer, zmk_layer_state_changed);
 
-static int auto_mouse_init(const struct device *dev) {
-    struct auto_mouse_data *data = dev->data;
-    data->dev = dev;
-    k_mutex_init(&data->lock);
-    k_work_init(&data->activity_work, activity_work_cb);
-    k_work_init_delayable(&data->disable_work, disable_work_cb);
-    return 0;
-}
-
 static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
     .handle_event = auto_mouse_handle_event,
 };
@@ -412,7 +407,12 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
                 (static const struct device *const auto_mouse_touch_devs_##n[] = {                 \
                      DT_INST_FOREACH_PROP_ELEM(n, touch_devices, AUTO_MOUSE_TOUCH_DEV)};),         \
                 ())                                                                                \
-    static struct auto_mouse_data auto_mouse_data_##n;                                             \
+    static struct auto_mouse_data auto_mouse_data_##n = {                                          \
+        .dev = DEVICE_DT_INST_GET(n),                                                              \
+        .lock = Z_MUTEX_INITIALIZER(auto_mouse_data_##n.lock),                                     \
+        .activity_work = Z_WORK_INITIALIZER(activity_work_cb),                                     \
+        .disable_work = Z_WORK_DELAYABLE_INITIALIZER(disable_work_cb),                             \
+    };                                                                                             \
     static const uint16_t auto_mouse_excluded_##n[] = DT_INST_PROP(n, excluded_positions);         \
     static const struct auto_mouse_config auto_mouse_config_##n = {                                \
         .require_prior_idle_ms = DT_INST_PROP(n, require_prior_idle_ms),                           \
@@ -423,9 +423,8 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
                                   (auto_mouse_touch_devs_##n), (NULL)),                            \
         .num_touch_devs = DT_INST_PROP_LEN_OR(n, touch_devices, 0),                                \
     };                                                                                             \
-    DEVICE_DT_INST_DEFINE(n, auto_mouse_init, NULL, &auto_mouse_data_##n,                          \
-                          &auto_mouse_config_##n, POST_KERNEL,                                     \
-                          CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &auto_mouse_driver_api);           \
+    DEVICE_DT_INST_DEFINE(n, NULL, NULL, &auto_mouse_data_##n, &auto_mouse_config_##n,             \
+                          POST_KERNEL, AUTO_MOUSE_INIT_PRIORITY, &auto_mouse_driver_api);          \
     IF_ENABLED(DT_INST_NODE_HAS_PROP(n, touch_devices),                                            \
                (DT_INST_FOREACH_PROP_ELEM_VARGS(n, touch_devices, AUTO_MOUSE_TOUCH_CB, n)))
 
