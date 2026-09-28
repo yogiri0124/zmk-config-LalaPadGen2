@@ -18,8 +18,7 @@
 #define KANA_L_LAYER    6
 #define KANA_R_LAYER    7
 #define KANA_SYM_LAYER  8
-#define NUMBER_LAYER    9
-#define SYMBOL_LAYER    10
+#define SYMBOL_LAYER    9
 
 &mt { quick-tap-ms = <200>; };
 
@@ -251,20 +250,6 @@
             &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
             &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
-            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
-            &trans  &trans  &trans  &trans  &trans  &trans
-            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
-            >;
-        };
-
-        // 数字レイヤー（後で編集する。今は全キー透過）
-        NUMBER_LAYER {
-            display-name = "number";
-            bindings = <
-            &trans  &trans  &kp UP  &trans  &trans  &trans  &kp NUMBER_7  &kp NUMBER_8  &kp NUMBER_9  &trans
-            &trans  &kp LEFT  &kp DOWN  &kp RIGHT  &trans  &trans  &kp NUMBER_4  &kp NUMBER_5  &kp NUMBER_6  &trans
-            &trans  &trans  &trans  &trans  &trans  &trans  &kp NUMBER_1  &kp NUMBER_2  &kp NUMBER_3  &trans
-            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &kp NUMBER_0  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
