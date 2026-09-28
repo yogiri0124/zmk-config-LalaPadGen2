@@ -1,0 +1,19 @@
+# オートマウスレイヤーの入力処理。<&zip_auto_mouse_layer レイヤー番号 解除までのms> のように使う。
+# マウスレイヤーで何か割り当ててあるキーと excluded-positions のキーは、押しても解除せず、離してから時間を数え直す。
+# それ以外のキーを押すとすぐに解除する。
+
+description: Input processor that temporarily enables a mouse layer and keeps it while mouse keys are used
+
+compatible: "zmk,input-processor-auto-mouse-layer"
+
+include: ip_two_param.yaml
+
+properties:
+  require-prior-idle-ms:
+    type: int
+    default: 0
+    description: 直前のキー入力からこの時間（ms）以内のトラックパッド操作では有効にしない
+  excluded-positions:
+    type: array
+    default: []
+    description: マウスレイヤーで割り当てがなくても（&trans でも）マウス操作として扱うキー位置（修飾キー、トラックパッド由来の位置など）

@@ -155,11 +155,13 @@
         track-remainders;
     };
 
-    // オートマウスレイヤー: トラックパッド操作でレイヤー4 (MOUSE_LAYER) を一時的に有効化する。
-    // excluded-positions 以外のキーを押すと即解除。除外: クリックキー (S/D/F=11-13, J/K/L=16-18)、
-    // 修飾キー (LCTRL=30, LWIN=31, LALT=32, LSHIFT=35)、トラックパッド由来の位置 (52-67)。
+    // オートマウスレイヤー: トラックパッド操作でレイヤー4 (MOUSE_LAYER) を一時的に有効化する（自作: kana/src/input_processor_auto_mouse_layer.c）。
+    // マウスレイヤーで何か割り当ててあるキー（&trans / &none 以外）と excluded-positions のキーは「マウス操作」として扱い、
+    // 押しても解除せず、押している間は時間切れにしない（離してから数え直す）。それ以外のキーを押すと即解除。
+    // excluded-positions: 修飾キー (LCTRL=30, LWIN=31, LALT=32, LSHIFT=35)、トラックパッド由来の位置 (52-67)、
+    // クリックキー (S/D/F=11-13, J/K/L=16-18。マウスレイヤーに割り当てがあるので自動でも対象になる)。
     zip_auto_mouse_layer: zip_auto_mouse_layer {
-        compatible = "zmk,input-processor-temp-layer";
+        compatible = "zmk,input-processor-auto-mouse-layer";
         #input-processor-cells = <2>;
         require-prior-idle-ms = <150>;
         excluded-positions = <11 12 13 16 17 18 30 31 32 35
