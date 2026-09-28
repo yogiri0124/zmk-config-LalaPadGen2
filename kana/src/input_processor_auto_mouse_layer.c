@@ -58,6 +58,8 @@ struct auto_mouse_data {
     bool active;
     uint8_t layer; /* 有効にしたレイヤーの番号（keymap の宣言順） */
     int64_t last_tapped;
+    /* 解除する時刻。解除ワークが遅れて動いても、この時刻まではまだ解除しない */
+    int64_t deadline;
 
     /* 押しているキー（レイヤーの状態に関係なく記録する） */
     bool pressed[ZMK_KEYMAP_LEN];
@@ -121,8 +123,10 @@ static void restart_timeout(struct auto_mouse_data *data) {
         return;
     }
     if (data->held_count > 0) {
+        // 押している間は解除しない（すでにキューに入った解除ワークは held_count を見て何もしない）
         k_work_cancel_delayable(&data->disable_work);
     } else if (data->timeout_ms > 0) {
+        data->deadline = k_uptime_get() + data->timeout_ms;
         k_work_reschedule(&data->disable_work, K_MSEC(data->timeout_ms));
     }
 }
@@ -159,8 +163,14 @@ static void disable_work_cb(struct k_work *work) {
     struct auto_mouse_data *data = CONTAINER_OF(d_work, struct auto_mouse_data, disable_work);
 
     k_mutex_lock(&data->lock, K_FOREVER);
-    if (data->held_count == 0) {
-        deactivate(data);
+    if (data->active && data->held_count == 0) {
+        // 延長の前に予約されていた解除ワークが遅れて動いた場合は、残り時間で予約し直す
+        const int64_t remaining = data->deadline - k_uptime_get();
+        if (remaining > 0) {
+            k_work_reschedule(&data->disable_work, K_MSEC(remaining));
+        } else {
+            deactivate(data);
+        }
     }
     k_mutex_unlock(&data->lock);
 }
