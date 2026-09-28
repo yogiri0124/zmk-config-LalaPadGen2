@@ -3,6 +3,9 @@
 出典：[ShiniNet/LaLaPadGen2 guide/ConfigList.md](https://github.com/ShiniNet/LaLaPadGen2/blob/main/guide/ConfigList.md)
 （2026-09-26 取得）。このリポジトリが固定しているドライバ `zmk-driver-iqs9151` **v1.0.0** の
 `drivers/input/Kconfig` と照合し、全48項目の名前・既定値が一致することを確認済み。
+現在は v1.0.0 に「触れている状態を送る」機能だけを足した複製
+[yogiri0124/zmk-driver-iqs9151 `v1.0.0-lalapad-touch.1`](https://github.com/yogiri0124/zmk-driver-iqs9151/tree/v1.0.0-lalapad-touch.1)
+を使っている（追加した項目は `CONFIG_INPUT_IQS9151_REPORT_TOUCH` の1つだけで、ほかの項目は v1.0.0 と同じ）。
 「現在値」列は同日時点のこのリポジトリの設定（編集後は古くなるので、最新値は各 `.conf` を見ること）（`左 / 右`、`—` は未記載＝既定値が使われる）。
 
 ## 書く場所と反映範囲
@@ -30,6 +33,7 @@
 | `CONFIG_INPUT_IQS9151` | `y` | `y / n` | IQS9151ドライバ有効化 | 共通 `y` |
 | `CONFIG_INPUT_IQS9151_LOG_LEVEL` | `INPUT_LOG_LEVEL`（LOG有効時）/ `0` | `0..4` | ドライバログレベル | — / — |
 | `CONFIG_INPUT_IQS9151_INIT_PRIORITY` | `80` | `整数` | ドライバ初期化優先度 | — / — |
+| `CONFIG_INPUT_IQS9151_REPORT_TOUCH` | `n` | `y / n` | 触れた／離れたを `INPUT_BTN_TOUCH`（1／0）で送る（複製版で追加。オートマウスレイヤーが使う） | 共通 `y` |
 
 ## 2. Rotation
 

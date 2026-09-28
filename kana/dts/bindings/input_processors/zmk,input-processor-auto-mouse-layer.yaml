@@ -17,3 +17,10 @@ properties:
     type: array
     default: []
     description: マウスレイヤーで割り当てがなくても（&trans でも）マウス操作として扱うキー位置（修飾キー、トラックパッド由来の位置など）
+  touch-devices:
+    type: phandles
+    description: INPUT_BTN_TOUCH（触れている=1／離れた=0）を送る入力デバイス。触れている間はレイヤーを時間切れにしない
+  touch-stale-ms:
+    type: int
+    default: 30000
+    description: 触れている間にこの時間（ms）そのデバイスから何も届かなければ、離れたとみなす（「離れた」の取りこぼし対策。0 で無効）
