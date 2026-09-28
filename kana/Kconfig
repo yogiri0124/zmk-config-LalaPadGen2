@@ -17,3 +17,8 @@ config ZMK_BEHAVIOR_KEY_LOCK
     bool "Key lock behavior (zmk,behavior-key-lock)"
     default y
     depends on DT_HAS_ZMK_BEHAVIOR_KEY_LOCK_ENABLED
+
+config ZMK_AUTO_MOUSE_LAYER
+    bool "Auto mouse layer input processor (zmk,input-processor-auto-mouse-layer)"
+    default y
+    depends on DT_HAS_ZMK_INPUT_PROCESSOR_AUTO_MOUSE_LAYER_ENABLED && ZMK_POINTING
