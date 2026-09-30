@@ -10,14 +10,15 @@
 #include <dt-bindings/lalapad/cursor_slow.h>
 
 #define DEFAULT_LAYER   0
-#define SECONDARY_LAYER 1
-#define TERTIARY_LAYER  2
-#define SYSTEM_LAYER    3
-#define MOUSE_LAYER     4
-#define KANA_LAYER      5
-#define KANA_L_LAYER    6
-#define KANA_R_LAYER    7
-#define KANA_SYM_LAYER  8
+#define QWERTY_LAYER    1
+#define SECONDARY_LAYER 2
+#define TERTIARY_LAYER  3
+#define SYSTEM_LAYER    4
+#define MOUSE_LAYER     5
+#define KANA_LAYER      6
+#define KANA_L_LAYER    7
+#define KANA_R_LAYER    8
+#define KANA_SYM_LAYER  9
 
 &mt { quick-tap-ms = <200>; };
 
@@ -129,7 +130,7 @@
             #binding-cells = <0>;
             wait-ms = <5>;
             tap-ms = <5>;
-            bindings = <&macro_tap &kp LANGUAGE_1 &kp LBKT &kp RBKT &kp LEFT>;
+            bindings = <&macro_tap &kp LANGUAGE_1 &kp LEFT_BRACKET &kp RIGHT_BRACKET &kp LEFT>;
         };
         // () を入力してカーソルを中に（IME の切り替えはしない。IME オンなら（）になる）
         pair_paren: pair_paren {
@@ -147,7 +148,7 @@
             #binding-cells = <0>;
             wait-ms = <5>;
             tap-ms = <5>;
-            bindings = <&macro_tap &kp LANGUAGE_1 &kp Z &kp DOT>;
+            bindings = <&macro_tap &kp LANGUAGE_1 &kp Z &kp PERIOD>;
         };
     };
 
@@ -157,12 +158,12 @@
         CONBO_ESC {
             bindings = <&kp ESCAPE>;
             key-positions = <0 1>;
-            layers = <DEFAULT_LAYER SECONDARY_LAYER TERTIARY_LAYER SYSTEM_LAYER MOUSE_LAYER>;
+            layers = <DEFAULT_LAYER QWERTY_LAYER SECONDARY_LAYER TERTIARY_LAYER SYSTEM_LAYER MOUSE_LAYER>;
         };
         COMBO_TAB {
             bindings = <&kp TAB>;
             key-positions = <10 11>;
-            layers = <DEFAULT_LAYER SECONDARY_LAYER TERTIARY_LAYER SYSTEM_LAYER MOUSE_LAYER>;
+            layers = <DEFAULT_LAYER QWERTY_LAYER SECONDARY_LAYER TERTIARY_LAYER SYSTEM_LAYER MOUSE_LAYER>;
         };
     };
 
@@ -172,23 +173,39 @@
         DEFAULT_LAYER {
             display-name = "Default";
             bindings = <
+            &kp B  &kp F  &kp L  &kp K  &kp Q  &kp P  &kp G  &kp O  &kp U  &kp PERIOD
+            &kp N  &kp S  &kp H  &kp T  &kp M  &kp Y  &kp C  &kp A  &kp E  &mt2 MINUS I
+            &mt2 LEFT_SHIFT X  &kp V  &kp J  &kp D  &kp Z  &kp SQT  &kp W  &kp SLASH  &kp SEMI  &kp COMMA
+            &kp LEFT_CONTROL  &kp LWIN  &kp LEFT_ALT  &mo SECONDARY_LAYER  &kp R  &kp BACKSPACE  &kp ENTER  &mt2 RIGHT_SHIFT SPACE  &mo TERTIARY_LAYER  &kp LANGUAGE_2  &kp LANGUAGE_1  &kp BACKSLASH
+            &tog QWERTY_LAYER  &kp RIGHT  &kp DOWN  &kp LEFT  &kp UP  &kp UP  &kp LEFT  &kp DOWN  &kp RIGHT  &kana_sw KANA_SW_ON
+            &mkp LCLK  &mkp RCLK  &mkp MCLK  &mkp LCLK  &mkp RCLK  &mkp MCLK
+            &mkp MB4  &mkp MB5  &kp LG(TAB)  &kp LG(D)  &kp LEFT_CONTROL  &mkp MB4  &mkp MB5  &kp LG(TAB)  &kp LG(D)  &kp LEFT_CONTROL
+            >;
+        };
+
+        // QWERTY 配列（Default は Night 配列 https://valorance.net/night/ ）。Default の上に重ねる。文字以外は透過で Default のまま。
+        // 42 で Default（Night）と切り替える。親指は 34 = Space、35 = Shift、36 = BS、37 = Enter。
+        // 番号の大きいレイヤーが優先されるので、数字・記号・マウス・かなが隠れないよう Default のすぐ上に置く。
+        QWERTY_LAYER {
+            display-name = "qwerty";
+            bindings = <
             &kp Q  &kp W  &kp E  &kp R  &kp T  &kp Y  &kp U  &kp I  &kp O  &kp P
             &kp A  &kp S  &kp D  &kp F  &kp G  &kp H  &kp J  &kp K  &kp L  &mt2 EQUAL MINUS
             &mt2 LEFT_SHIFT Z  &kp X  &kp C  &kp V  &kp B  &kp N  &kp M  &kp COMMA  &kp PERIOD  &kp SLASH
-            &kp LCTRL  &kp LWIN  &kp LEFT_ALT  &mo 1  &kp SPACE  &kp LEFT_SHIFT  &kp BACKSPACE  &kp ENTER  &mo 2  &kp LANGUAGE_2  &kp LANGUAGE_1  &kp BACKSLASH
-            &none  &kp RIGHT  &kp DOWN  &kp LEFT  &kp UP  &kp UP  &kp LEFT  &kp DOWN  &kp RIGHT  &kana_sw KANA_SW_ON
-            &mkp LCLK  &mkp RCLK  &mkp MCLK  &mkp LCLK  &mkp RCLK  &mkp MCLK
-            &mkp MB4  &mkp MB5  &kp LG(TAB)  &kp LG(D)  &kp LCTRL  &mkp MB4  &mkp MB5  &kp LG(TAB)  &kp LG(D)  &kp LCTRL
+            &trans  &trans  &trans  &trans  &kp SPACE  &kp LEFT_SHIFT  &kp BACKSPACE  &kp ENTER  &trans  &trans  &trans  &trans
+            &tog QWERTY_LAYER  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
+            &trans  &trans  &trans  &trans  &trans  &trans
+            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             >;
         };
 
         SECONDARY_LAYER {
             display-name = "secondary_layer";
             bindings = <
-            &kp NUMBER_1  &kp NUMBER_2  &kp NUMBER_3  &kp NUMBER_4  &kp N5  &kp KP_NUMLOCK  &kp KP_NUMBER_7  &kp KP_NUMBER_8  &kp KP_NUMBER_9  &kp KP_PLUS
-            &kp NUMBER_6  &kp N7  &kp N8  &kp N9  &kp N0  &trans  &kp KP_NUMBER_4  &kp KP_NUMBER_5  &kp KP_NUMBER_6  &kp KP_MINUS
+            &kp NUMBER_1  &kp NUMBER_2  &kp NUMBER_3  &kp NUMBER_4  &kp NUMBER_5  &kp KP_NUMLOCK  &kp KP_NUMBER_7  &kp KP_NUMBER_8  &kp KP_NUMBER_9  &kp KP_PLUS
+            &kp NUMBER_6  &kp NUMBER_7  &kp NUMBER_8  &kp NUMBER_9  &kp NUMBER_0  &kp KP_EQUAL  &kp KP_NUMBER_4  &kp KP_NUMBER_5  &kp KP_NUMBER_6  &kp KP_MINUS
             &kp F6  &kp F7  &kp F8  &kp F9  &kp F10  &trans  &kp KP_NUMBER_1  &kp KP_NUMBER_2  &kp KP_NUMBER_3  &kp KP_ASTERISK
-            &trans  &trans  &trans  &trans  &trans  &trans  &kp DEL  &trans  &trans  &kp KP_NUMBER_0  &kp KP_DOT  &kp KP_DIVIDE
+            &trans  &trans  &trans  &trans  &trans  &kp DELETE  &trans  &trans  &trans  &kp KP_NUMBER_0  &kp KP_DOT  &kp KP_DIVIDE
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
             &kp LC(LG(LEFT))  &kp LC(LG(RIGHT))  &trans  &trans  &trans  &kp LC(LG(LEFT))  &kp LC(LG(RIGHT))  &trans  &trans  &trans
@@ -198,9 +215,9 @@
         TERTIARY_LAYER {
             display-name = "tertiary_layer";
             bindings = <
-            &kp EXCLAMATION  &kp AT_SIGN  &kp HASH  &kp DOLLAR  &kp PERCENT  &kp PAGE_UP  &kp HOME  &kp UP_ARROW  &kp END  &kp PRINTSCREEN
-            &kp CARET  &kp AMPERSAND  &kp ASTERISK  &pair_paren  &pair_kagi  &kp PAGE_DOWN  &kp LEFT  &kp DOWN_ARROW  &kp RIGHT  &kp SCROLLLOCK
-            &kp GRAVE  &kp SQT  &kp SEMI  &sym_ellipsis  &kp BACKSLASH  &trans  &mkp MB4  &trans  &mkp MB5  &kp PAUSE_BREAK
+            &kp EXCL  &kp AT  &kp HASH  &kp DLLR  &kp PRCNT  &kp PAGE_UP  &kp HOME  &kp UP  &kp END  &kp PRINTSCREEN
+            &kp CARET  &kp AMPS  &kp ASTRK  &pair_paren  &pair_kagi  &kp PAGE_DOWN  &kp LEFT  &kp DOWN  &kp RIGHT  &kp SCROLLLOCK
+            &kp GRAVE  &kp SQT  &kp SEMI  &sym_ellipsis  &kp QMARK  &trans  &mkp MB4  &trans  &mkp MB5  &kp PAUSE_BREAK
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
@@ -224,11 +241,11 @@
         MOUSE_LAYER {
             display-name = "mouse_layer";
             bindings = <
-            &trans  &trans  &trans  &clk_lock_l  &trans  &trans  &clk_lock_l  &trans  &trans  &trans
-            &trans  &mkp MCLK  &mkp RCLK  &mkp LCLK  &trans  &trans  &mkp LCLK  &mkp RCLK  &mkp MCLK  &trans
-            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
-            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &kp RIGHT_CONTROL  &trans  &trans  &trans  &trans
-            &trans  &kp LS(TAB)  &trans  &kp LC(LS(TAB))  &trans  &trans  &kp LC(LS(TAB))  &trans  &kp LS(TAB)  &trans
+            &none  &none  &none  &clk_lock_l  &none  &none  &none  &none  &none  &none
+            &none  &mkp MCLK  &mkp RCLK  &mkp LCLK  &none  &none  &none  &none  &none  &none
+            &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
+            &none  &none  &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
+            &trans  &kp LC(TAB)  &trans  &kp LC(LS(TAB))  &trans  &trans  &kp LC(LS(TAB))  &trans  &kp LC(TAB)  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             >;
@@ -240,8 +257,8 @@
             &kana_key KN_A  &kana_key KN_I  &kana_key KN_U  &kana_key KN_E  &kana_key KN_O  &kana_key KN_KA  &kana_key KN_KI  &kana_key KN_KU  &kana_key KN_KE  &kana_key KN_KO
             &kana_key KN_SA  &kana_key KN_SI  &kana_key KN_SU  &kana_key KN_SE  &kana_key KN_SO  &kana_key KN_TA  &kana_key KN_TI  &kana_key KN_TU  &kana_key KN_TE  &kana_key KN_TO
             &kana_key KN_NA  &kana_key KN_NI  &kana_key KN_NU  &kana_key KN_NE  &kana_key KN_NO  &kana_key KN_HA  &kana_key KN_HI  &kana_key KN_HU  &kana_key KN_HE  &kana_key KN_HO
-            &none  &none  &none  &kana_key KN_SPACE  &mo KANA_L_LAYER  &kana_key KN_BSPC  &none  &mo KANA_R_LAYER  &kana_key KN_ENTER  &mo KANA_SYM_LAYER  &none  &none
-            &none  &none  &none  &none  &none  &none  &none  &none  &none  &kana_sw KANA_SW_OFF
+            &none  &none  &none  &kana_key KN_SPACE  &mo KANA_L_LAYER  &kana_key KN_BSPC  &kana_key KN_ENTER  &mo KANA_R_LAYER  &none  &mo KANA_SYM_LAYER  &none  &none
+            &none  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &kana_sw KANA_SW_OFF
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             >;
@@ -292,8 +309,8 @@
         compatible = "zmk,conditional-layers";
 
         Cond_Syslayer {
-            if-layers = <1 2>;
-            then-layer = <3>;
+            if-layers = <SECONDARY_LAYER TERTIARY_LAYER>;
+            then-layer = <SYSTEM_LAYER>;
         };
     };
 };
