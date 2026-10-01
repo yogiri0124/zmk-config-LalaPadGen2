@@ -91,8 +91,8 @@ Claude Code（編集担当）と Codex（レビュー担当）の両者がこの
   - エディタ管理の `&mc*` / `&td*` の定義・参照・番号対応が崩れていないか。
 - **レイヤー参照**
   - `&mo` / `&lt`（`&tog`、`&to`、`&sl`、タップダンス・マクロ内の参照、combos の `layers`、`conditional_layers` を含む）のレイヤー番号が実在するレイヤーを指しているか。
-  - レイヤー番号はキーマップ内の宣言順で決まる。レイヤーを追加・削除・並べ替えた場合は、編集範囲外の `lalapadgen2.dtsi` にある input listener の `layers = <1>,<2>`（トラックパッドの速度切替）も読み取りで確認し、ずれるなら指摘する。
-  - 各レイヤーへ到達でき、キーを離すなどで Default へ戻れるか。現行の `conditional_layers`（1と2の同時有効で3）と干渉しないか。
+  - レイヤー番号はキーマップ内の宣言順で決まる。レイヤーを追加・削除・並べ替えた場合は、編集範囲外の `lalapadgen2.dtsi` にある input listener の `layers = <2>,<3>`（トラックパッドの速度切替。SECONDARY・TERTIARY）とオートマウスのレイヤー番号（`<&zip_auto_mouse_layer 5 700>`。MOUSE）も読み取りで確認し、ずれるなら指摘する。
+  - 各レイヤーへ到達でき、キーを離すなどで Default へ戻れるか。現行の `conditional_layers`（SECONDARY＝2 と TERTIARY＝3 の同時有効で SYSTEM＝4）と干渉しないか。
 - **combos**
   - `key-positions` が 0〜67 の範囲か。同じコンボ内での位置の重複、同じキー集合・同じ有効レイヤーでの競合がないか。
 - **.conf**

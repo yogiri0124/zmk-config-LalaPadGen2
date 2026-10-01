@@ -160,8 +160,9 @@
     // 押しても解除せず、押している間は時間切れにしない（離してから数え直す）。それ以外のキーを押すと即解除。
     // トラックパッドに触れている間も時間切れにしない（離れてから 700ms で解除）。触れている合図は
     // ドライバの INPUT_BTN_TOUCH（CONFIG_INPUT_IQS9151_REPORT_TOUCH）で、受け取るデバイスは親機の overlay の touch-devices で指定する。
-    // excluded-positions: 修飾キー (LCTRL=30, LWIN=31, LALT=32, LSHIFT=35)、トラックパッド由来の位置 (52-67)、
-    // クリックキー (S/D/F=11-13, J/K/L=16-18。マウスレイヤーに割り当てがあるので自動でも対象になる)。
+    // excluded-positions: 修飾キー (LCTRL=30, LWIN=31, LALT=32)、35（QWERTY レイヤーでは LSHIFT、Default では ENTER）、
+    // トラックパッド由来の位置 (52-67)、クリックキーの位置 (11-13, 16-18)。
+    // マウスレイヤーで &none にしてある位置は、押してもレイヤーは解除されず何も入力されない（意図どおり）。
     zip_auto_mouse_layer: zip_auto_mouse_layer {
         compatible = "zmk,input-processor-auto-mouse-layer";
         #input-processor-cells = <2>;
@@ -266,7 +267,7 @@ status = "okay";
 //                            <&zip_dynamic_xy_scaler>,
 //                            <&zip_dynamic_scroll_scaler>,
 //                            <&zip_scroll_snap_R>,
-//                            <&zip_auto_mouse_layer 4 700>;
+//                            <&zip_auto_mouse_layer 5 700>;
 //     };
 // 判定状態（サンプル・軸ロック）は左右のトラックパッドで独立させるため、インスタンスを分ける。
 // y-threshold <1 1>: |y| > |x| なら Y 軸。x-threshold <101 100>: |y| < 1.01|x| なら X 軸
