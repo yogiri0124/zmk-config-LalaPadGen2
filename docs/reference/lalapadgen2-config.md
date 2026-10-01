@@ -72,7 +72,7 @@
 | `CONFIG_INPUT_IQS9151_SCROLL_X_ENABLE` | `y` | `y / n` | 2F 横スクロール有効/無効 | `y` / `y` |
 | `CONFIG_INPUT_IQS9151_SCROLL_Y_ENABLE` | `y` | `y / n` | 2F 縦スクロール有効/無効 | `y` / `y` |
 | `CONFIG_INPUT_IQS9151_2F_SCROLL_START_MOVE` | `50` | `1..2000` | 2F Scroll 開始しきい値 | `50` / `50` |
-| `CONFIG_INPUT_IQS9151_2F_PINCH_ENABLE` | `y` | `y / n` | 2F Pinch 有効/無効 | `y` / `y` |
+| `CONFIG_INPUT_IQS9151_2F_PINCH_ENABLE` | `y` | `y / n` | 2F Pinch 有効/無効 | `n` / `n` |
 | `CONFIG_INPUT_IQS9151_2F_PINCH_START_DISTANCE` | `100` | `1..2000` | 2F Pinch 開始しきい値 | `100` / `100` |
 | `CONFIG_INPUT_IQS9151_2F_PINCH_WHEEL_GAIN_X10` | `40` | `1..100` | 2F Pinch `REL_WHEEL` ゲイン（x10） | `40` / `40` |
 | `CONFIG_INPUT_IQS9151_3F_TAP_ENABLE` | `y` | `y / n` | 3F Tap 有効/無効 | `y` / `y` |

@@ -43,7 +43,7 @@
             compatible = "zmk,behavior-hold-tap";
             #binding-cells = <2>;
             flavor = "tap-preferred";
-            tapping-term-ms = <500>;
+            tapping-term-ms = <350>;
             quick-tap-ms = <200>;
             require-prior-idle-ms = <125>;
             bindings = <&kp>, <&kp>;
@@ -174,9 +174,9 @@
             display-name = "Default";
             bindings = <
             &kp B  &kp F  &kp L  &kp K  &kp Q  &kp P  &kp G  &kp O  &kp U  &kp PERIOD
-            &kp N  &kp S  &kp H  &kp T  &kp M  &kp Y  &kp C  &kp A  &kp E  &mt2 MINUS I
+            &kp N  &kp S  &kp H  &kp T  &kp M  &kp Y  &kp C  &kp A  &kp E  &kp I
             &mt2 LEFT_SHIFT X  &kp V  &kp J  &kp D  &kp Z  &kp SQT  &kp W  &kp SLASH  &kp SEMI  &kp COMMA
-            &kp LEFT_CONTROL  &kp LWIN  &kp LEFT_ALT  &mo SECONDARY_LAYER  &kp R  &kp BACKSPACE  &kp ENTER  &mt2 RIGHT_SHIFT SPACE  &mo TERTIARY_LAYER  &kp LANGUAGE_2  &kp LANGUAGE_1  &kp BACKSLASH
+            &kp LEFT_CONTROL  &kp LWIN  &kp LEFT_ALT  &mo SECONDARY_LAYER  &kp R  &kp ENTER  &kp BACKSPACE  &mt2 RIGHT_SHIFT SPACE  &mo TERTIARY_LAYER  &kp LANGUAGE_2  &kp LANGUAGE_1  &kp BACKSLASH
             &tog QWERTY_LAYER  &kp RIGHT  &kp DOWN  &kp LEFT  &kp UP  &kp UP  &kp LEFT  &kp DOWN  &kp RIGHT  &kana_sw KANA_SW_ON
             &mkp LCLK  &mkp RCLK  &mkp MCLK  &mkp LCLK  &mkp RCLK  &mkp MCLK
             &mkp MB4  &mkp MB5  &kp LG(TAB)  &kp LG(D)  &kp LEFT_CONTROL  &mkp MB4  &mkp MB5  &kp LG(TAB)  &kp LG(D)  &kp LEFT_CONTROL
@@ -203,9 +203,9 @@
             display-name = "secondary_layer";
             bindings = <
             &kp NUMBER_1  &kp NUMBER_2  &kp NUMBER_3  &kp NUMBER_4  &kp NUMBER_5  &kp KP_NUMLOCK  &kp KP_NUMBER_7  &kp KP_NUMBER_8  &kp KP_NUMBER_9  &kp KP_PLUS
-            &kp NUMBER_6  &kp NUMBER_7  &kp NUMBER_8  &kp NUMBER_9  &kp NUMBER_0  &kp KP_EQUAL  &kp KP_NUMBER_4  &kp KP_NUMBER_5  &kp KP_NUMBER_6  &kp KP_MINUS
-            &kp F6  &kp F7  &kp F8  &kp F9  &kp F10  &trans  &kp KP_NUMBER_1  &kp KP_NUMBER_2  &kp KP_NUMBER_3  &kp KP_ASTERISK
-            &trans  &trans  &trans  &trans  &trans  &kp DELETE  &trans  &trans  &trans  &kp KP_NUMBER_0  &kp KP_DOT  &kp KP_DIVIDE
+            &kp NUMBER_6  &kp NUMBER_7  &kp NUMBER_8  &kp NUMBER_9  &kp NUMBER_0  &kp MINUS  &kp KP_NUMBER_4  &kp KP_NUMBER_5  &kp KP_NUMBER_6  &kp KP_MINUS
+            &kp F6  &kp F7  &kp F8  &kp F9  &kp F10  &kp EQUAL  &kp KP_NUMBER_1  &kp KP_NUMBER_2  &kp KP_NUMBER_3  &kp KP_ASTERISK
+            &trans  &trans  &trans  &trans  &trans  &trans  &kp DELETE  &trans  &trans  &kp KP_NUMBER_0  &kp KP_DOT  &kp KP_DIVIDE
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
             &kp LC(LG(LEFT))  &kp LC(LG(RIGHT))  &trans  &trans  &trans  &kp LC(LG(LEFT))  &kp LC(LG(RIGHT))  &trans  &trans  &trans
