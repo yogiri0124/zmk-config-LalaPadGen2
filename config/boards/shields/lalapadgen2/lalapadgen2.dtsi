@@ -183,6 +183,19 @@
                            <&zip_cursor_slow 1 3>,
                            <&zip_dynamic_scroll_scaler>,
                            <&zip_auto_mouse_layer 5 700>;
+        // スクロールスナップ: レイヤー10 (SCROLL_SNAP_LAYER。マウスレイヤーの 34 を押している間) だけ、
+        // 通常の処理に &zip_scroll_snap_R を足して、スクロールを縦か横のどちらかにそろえる
+        snapmode {
+            layers = <10>;
+            input-processors = <&trackpad_key_behaviors_R>,
+                               <&zip_xy_scaler 1 5>,
+                               <&zip_scroll_scaler 1 12>,
+                               <&zip_dynamic_xy_scaler>,
+                               <&zip_cursor_slow 1 3>,
+                               <&zip_dynamic_scroll_scaler>,
+                               <&zip_scroll_snap_R>,
+                               <&zip_auto_mouse_layer 5 700>;
+        };
         lowspeedmode {
             layers = <2>,<3>;
             input-processors =  <&trackpad_key_behaviors_R>,
@@ -204,6 +217,19 @@
                            <&zip_cursor_slow 1 3>,
                            <&zip_dynamic_scroll_scaler>,
                            <&zip_auto_mouse_layer 5 700>;
+        // スクロールスナップ: レイヤー10 (SCROLL_SNAP_LAYER。マウスレイヤーの 34 を押している間) だけ、
+        // 通常の処理に &zip_scroll_snap_L を足して、スクロールを縦か横のどちらかにそろえる
+        snapmode {
+            layers = <10>;
+            input-processors = <&trackpad_key_behaviors_L>,
+                               <&zip_xy_scaler 1 5>,
+                               <&zip_scroll_scaler 1 12>,
+                               <&zip_dynamic_xy_scaler>,
+                               <&zip_cursor_slow 1 3>,
+                               <&zip_dynamic_scroll_scaler>,
+                               <&zip_scroll_snap_L>,
+                               <&zip_auto_mouse_layer 5 700>;
+        };
         lowspeedmode {
             layers = <2>,<3>;
             input-processors =  <&trackpad_key_behaviors_L>,
@@ -256,9 +282,10 @@ status = "okay";
 };
 
 // スクロールスナップ (kot149/zmk-scroll-snap): 2本指スクロールを近いほうの軸 (X/Y) に揃える。
-// 既定では使わない（斜めスクロールできるように、どのリスナーからも参照していない）。
-// 特定のレイヤーでだけ有効にするときは、各リスナー（trackpad_listener_R / _L）に次のような子ノードを
-// lowspeedmode より前に追加する（先に書いた子ノードが優先される。<N> はレイヤー番号、_R / _L は左右で合わせる）:
+// ふだんは使わない（斜めスクロールできるように）。各リスナー（trackpad_listener_R / _L）の snapmode で、
+// レイヤー10 (SCROLL_SNAP_LAYER) が有効な間だけ使っている。
+// ほかのレイヤーでも有効にするときは、次のような子ノードを lowspeedmode より前に追加する
+// （先に書いた子ノードが優先される。<N> はレイヤー番号、_R / _L は左右で合わせる）:
 //     snapmode {
 //         layers = <N>;
 //         input-processors = <&trackpad_key_behaviors_R>,

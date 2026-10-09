@@ -19,6 +19,7 @@
 #define KANA_L_LAYER    7
 #define KANA_R_LAYER    8
 #define KANA_SYM_LAYER  9
+#define SCROLL_SNAP_LAYER 10
 
 &mt { quick-tap-ms = <200>; };
 
@@ -284,11 +285,11 @@
         MOUSE_LAYER {
             display-name = "mouse_layer";
             bindings = <
-            &none  &kp LC(W)  &none  &clk_lock_l  &none  &none  &none  &none  &none  &none
+            &none  &kp LC(W)  &none  &clk_lock_l  &kp LC(LS(T))  &kp LC(LS(TAB))  &kp LC(TAB)  &none  &none  &none
             &none  &mkp MCLK  &mkp RCLK  &mkp LCLK  &none  &none  &none  &none  &none  &none
             &none  &kp LC(X)  &kp LC(C)  &kp LC(V)  &none  &none  &none  &none  &none  &none
-            &trans  &trans  &trans  &none  &none  &none  &none  &none  &none  &none  &none  &none
-            &trans  &kp LC(TAB)  &trans  &kp LC(LS(TAB))  &trans  &trans  &kp LC(LS(TAB))  &trans  &kp LC(TAB)  &trans
+            &trans  &trans  &trans  &none  &mo SCROLL_SNAP_LAYER  &none  &none  &none  &none  &none  &none  &none
+            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             >;
@@ -340,6 +341,22 @@
             &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
             &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
             &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
+            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
+            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
+            &trans  &trans  &trans  &trans  &trans  &trans
+            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
+            >;
+        };
+
+        // スクロールスナップ用（マウスレイヤーの 34 を押している間だけ有効）。キーはすべて透過。
+        // このレイヤーが有効な間、トラックパッドの2本指スクロールを縦か横のどちらかにそろえる
+        // （lalapadgen2.dtsi の各リスナーの snapmode が、このレイヤー番号を見ている）。
+        SCROLL_SNAP_LAYER {
+            display-name = "scroll_snap";
+            bindings = <
+            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
+            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
+            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
