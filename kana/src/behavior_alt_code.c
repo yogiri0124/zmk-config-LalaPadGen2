@@ -15,7 +15,15 @@
  *   （そのかわり、キューに残っている &kana_key やマクロの送信とは順序を保証しない）。
  * - 送信中に押された分は待ち行列に入れ、前の送信が終わってから順に送る。
  * - 送信の途中で接続先（USB・BLE プロファイル）が変わったら、残りは送らずに中止する
- *   （別の PC に数字や Num Lock の復元を送らないため）。
+ *   （別の PC に数字や Num Lock の復元を送らないため）。送信中に押されて待っていた分も、
+ *   押したときと接続先が違えば送らない。
+ *   制約: ZMK v0.3.0 の BLE 送信（app/src/hog.c）はレポートをキューに入れ、取り出す時点の
+ *   アクティブなプロファイルへ送る。そのため、ここで接続先を確かめてからキューに入った直近の
+ *   数操作は、送信前にプロファイルが切り替わると切り替え先に届くことがある（通常のキーやマクロと
+ *   同じ ZMK 本体の動作で、behavior からは送信先を固定できない。防ぐには hog.c のキューに
+ *   送信先を持たせる ZMK 本体の変更が必要）。このため中止したときは、どちらの PC の Num Lock が
+ *   どうなったか確定できないものとして自分の記録は作らず（あれば消し）、PC から届く点灯状態に従う。
+ *   接続先が切り替わったとき（zmk_endpoint_changed）も、同じ理由で記録をすべて捨てる。
  * - Num Lock を切り替えた直後は、PC からの点灯状態の報告が遅れて古い状態が残っていることがある。
  *   そのため切り替えてから ASSUME_MS の間は、PC の報告ではなく「実際に送った Num Lock の回数から
  *   わかる状態」（元に戻した／中止でオンのまま）という自分の記録を使う。記録は接続先ごとに持つ。
@@ -34,6 +42,8 @@
 
 #include <zmk/behavior.h>
 #include <zmk/endpoints.h>
+#include <zmk/event_manager.h>
+#include <zmk/events/endpoint_changed.h>
 #include <zmk/events/keycode_state_changed.h>
 
 #include <dt-bindings/zmk/keys.h>
@@ -94,7 +104,12 @@ static bool assumed_valid[ZMK_ENDPOINT_COUNT];
 static bool assumed_num_lock[ZMK_ENDPOINT_COUNT];
 static int64_t assume_until[ZMK_ENDPOINT_COUNT];
 
-static const struct behavior_alt_code_config *pending[MAX_PENDING];
+struct pending_press {
+    const struct behavior_alt_code_config *cfg;
+    struct zmk_endpoint_instance endpoint; /* 押したときの接続先 */
+};
+
+static struct pending_press pending[MAX_PENDING];
 static size_t pending_count;
 
 static void alt_code_work_handler(struct k_work *work);
@@ -123,19 +138,26 @@ static bool current_num_lock(struct zmk_endpoint_instance endpoint) {
     return reported_num_lock(endpoint);
 }
 
-/* 送信を終えた（または中止した）ときに、実際に送った Num Lock の回数から接続先の状態を記録する */
-static void record_num_lock_state(void) {
-    if (num_lock_presses_sent == 0) {
+/* 最後まで送り終えたときに、Num Lock を元に戻したことを接続先の記録に残す */
+static void record_num_lock_restored(void) {
+    if (num_lock_presses_sent != 2) {
         return;
     }
     const int idx = zmk_endpoint_instance_to_index(active_endpoint);
     if (idx < 0 || idx >= ZMK_ENDPOINT_COUNT) {
         return;
     }
-    // 1回だけ送った（オンにしたまま中止）なら元の逆、2回送った（元に戻した）なら元の状態
-    assumed_num_lock[idx] = (num_lock_presses_sent == 1) ? !num_lock_original : num_lock_original;
+    assumed_num_lock[idx] = num_lock_original;
     assume_until[idx] = k_uptime_get() + ASSUME_MS;
     assumed_valid[idx] = true;
+}
+
+/* 中止したとき: どの操作がどの PC に届いたか確定できないので、記録は作らず、あれば消す */
+static void forget_num_lock_state(struct zmk_endpoint_instance endpoint) {
+    const int idx = zmk_endpoint_instance_to_index(endpoint);
+    if (idx >= 0 && idx < ZMK_ENDPOINT_COUNT) {
+        assumed_valid[idx] = false;
+    }
 }
 
 static void add_step(uint32_t keycode, bool press) {
@@ -205,11 +227,17 @@ static bool build_steps(const struct behavior_alt_code_config *cfg) {
 /* 待ち行列の先頭から次の送信を始める。なければ待機状態に戻る */
 static void start_next(void) {
     while (pending_count > 0) {
-        const struct behavior_alt_code_config *cfg = pending[0];
+        const struct behavior_alt_code_config *cfg = pending[0].cfg;
+        const struct zmk_endpoint_instance pressed_endpoint = pending[0].endpoint;
         pending_count--;
         memmove(&pending[0], &pending[1], pending_count * sizeof(pending[0]));
 
         active_endpoint = zmk_endpoints_selected();
+        if (!zmk_endpoint_instance_eq(active_endpoint, pressed_endpoint)) {
+            // 押したときと接続先が違う: 押し直していない入力を別の PC には送らない
+            LOG_WRN("Endpoint changed since alt code key press, dropping");
+            continue;
+        }
         num_lock_original = current_num_lock(active_endpoint);
         num_lock_toggled = !num_lock_original;
         if (!build_steps(cfg)) {
@@ -241,7 +269,8 @@ static void alt_code_work_handler(struct k_work *work) {
             if (alt_down) {
                 raise_zmk_keycode_state_changed_from_encoded(LALT, false, now);
             }
-            record_num_lock_state();
+            forget_num_lock_state(active_endpoint);
+            forget_num_lock_state(zmk_endpoints_selected());
             start_next();
             return;
         }
@@ -261,9 +290,21 @@ static void alt_code_work_handler(struct k_work *work) {
         return;
     }
 
-    record_num_lock_state();
+    record_num_lock_restored();
     start_next();
 }
+
+/* 接続先が切り替わったら、Num Lock の記録はすべて捨てる（切り替えの前後に送った操作が
+ * どちらの PC に届いたか確定できないため。以後は PC から届く点灯状態に従う） */
+static int alt_code_endpoint_listener(const zmk_event_t *eh) {
+    for (int i = 0; i < ZMK_ENDPOINT_COUNT; i++) {
+        assumed_valid[i] = false;
+    }
+    return ZMK_EV_EVENT_BUBBLE;
+}
+
+ZMK_LISTENER(behavior_alt_code, alt_code_endpoint_listener);
+ZMK_SUBSCRIPTION(behavior_alt_code, zmk_endpoint_changed);
 
 static int on_alt_code_binding_pressed(struct zmk_behavior_binding *binding,
                                        struct zmk_behavior_binding_event event) {
@@ -274,7 +315,10 @@ static int on_alt_code_binding_pressed(struct zmk_behavior_binding *binding,
         LOG_WRN("Too many pending alt code presses, ignoring");
         return ZMK_BEHAVIOR_OPAQUE;
     }
-    pending[pending_count++] = cfg;
+    pending[pending_count++] = (struct pending_press){
+        .cfg = cfg,
+        .endpoint = zmk_endpoints_selected(),
+    };
 
     if (!busy) {
         start_next();
