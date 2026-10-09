@@ -1,0 +1,27 @@
+# Windows の Alt コードで文字を送る behavior（引数なし）。
+# codes の各値を「Alt を押したまま、テンキーでその10進数を打つ」操作として順に送り、最後に ← を cursor-left 回送る。
+# Num Lock がオフなら前後で Num Lock を押して一時的にオンにする（CONFIG_ZMK_HID_INDICATORS が必要）。
+
+description: Send characters as Windows Alt codes, independent of the Num Lock state
+
+compatible: "zmk,behavior-alt-code"
+
+include: zero_param.yaml
+
+properties:
+  codes:
+    type: array
+    required: true
+    description: Alt に続けてテンキーで打つ10進数（日本語 Windows では Shift_JIS の文字コードの10進数。例 ― = 33116）
+  cursor-left:
+    type: int
+    default: 0
+    description: 送り終えた後に ← を押す回数
+  tap-ms:
+    type: int
+    default: 5
+    description: 各キーを押している時間（ms）
+  wait-ms:
+    type: int
+    default: 5
+    description: 各キーを離した後の待ち時間（ms）
