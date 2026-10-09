@@ -27,3 +27,8 @@ config ZMK_BEHAVIOR_ALT_CODE
     bool "Windows Alt code behavior (zmk,behavior-alt-code)"
     default y
     depends on DT_HAS_ZMK_BEHAVIOR_ALT_CODE_ENABLED
+
+config ZMK_SCROLL_SNAP_GATE
+    bool "Scroll snap hold (zmk,behavior-scroll-snap-hold, zmk,input-processor-scroll-snap-gate)"
+    default y
+    depends on (DT_HAS_ZMK_BEHAVIOR_SCROLL_SNAP_HOLD_ENABLED || DT_HAS_ZMK_INPUT_PROCESSOR_SCROLL_SNAP_GATE_ENABLED) && ZMK_POINTING
