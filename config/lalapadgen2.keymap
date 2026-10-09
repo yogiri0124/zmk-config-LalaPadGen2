@@ -48,24 +48,27 @@
 
         // ===== カスタムキー（エディタで使いたいレイヤーに割り当てる） =====
         // 名前の頭で種類を分けている（clk_: クリック、cur_: カーソル、mod_: 修飾キー、pair_: カッコ、sym_: 記号）。
-        // display-name は付けない（LaLapad-Gen2-Editor がレイヤーと誤認するため）。
+        // display-name は ZMK Studio の一覧とキーの上に出る名前（キーの上は 9 文字まで）。
 
         // --- clk_: クリック押しっぱなし（もう一度押す、または同じボタンのクリックで解除） ---
         // 左クリック押しっぱなし（旧 D.LCK）
         clk_lock_l: clk_lock_l {
             compatible = "zmk,behavior-mouse-button-toggle";
+            display-name = "L Lock";
             #binding-cells = <0>;
             button = <LCLK>;
         };
         // 中クリック押しっぱなし（旧 D.MID）
         clk_lock_m: clk_lock_m {
             compatible = "zmk,behavior-mouse-button-toggle";
+            display-name = "M Lock";
             #binding-cells = <0>;
             button = <MCLK>;
         };
         // 右クリック押しっぱなし（旧 D.RCK）
         clk_lock_r: clk_lock_r {
             compatible = "zmk,behavior-mouse-button-toggle";
+            display-name = "R Lock";
             #binding-cells = <0>;
             button = <RCLK>;
         };
@@ -74,18 +77,21 @@
         // 押している間、カーソル低速（旧 SLOW）
         cur_slow_hold: cur_slow_hold {
             compatible = "zmk,behavior-cursor-slow";
+            display-name = "Slow Hold";
             #binding-cells = <0>;
             mode = <CURSOR_SLOW_HOLD>;
         };
         // 押すたびにカーソル低速のオン・オフ（旧 T.SLO）
         cur_slow_toggle: cur_slow_toggle {
             compatible = "zmk,behavior-cursor-slow";
+            display-name = "Slow Tog";
             #binding-cells = <0>;
             mode = <CURSOR_SLOW_TOGGLE>;
         };
         // 次のキーを押すまでカーソル低速（旧 O.SLO）
         cur_slow_once: cur_slow_once {
             compatible = "zmk,behavior-cursor-slow";
+            display-name = "Slow Once";
             #binding-cells = <0>;
             mode = <CURSOR_SLOW_ONESHOT>;
         };
@@ -94,24 +100,28 @@
         // Left Alt 押しっぱなし（旧 A.LCK）
         mod_lock_alt: mod_lock_alt {
             compatible = "zmk,behavior-key-lock";
+            display-name = "Alt Lock";
             #binding-cells = <0>;
             keycode = <LALT>;
         };
         // Left Ctrl 押しっぱなし（旧 C.LCK）
         mod_lock_ctrl: mod_lock_ctrl {
             compatible = "zmk,behavior-key-lock";
+            display-name = "Ctrl Lock";
             #binding-cells = <0>;
             keycode = <LCTRL>;
         };
         // Left Shift 押しっぱなし（旧 S.LCK）
         mod_lock_shift: mod_lock_shift {
             compatible = "zmk,behavior-key-lock";
+            display-name = "Shft Lock";
             #binding-cells = <0>;
             keycode = <LSHIFT>;
         };
         // Left GUI（Win）押しっぱなし（旧 W.LCK）
         mod_lock_win: mod_lock_win {
             compatible = "zmk,behavior-key-lock";
+            display-name = "Win Lock";
             #binding-cells = <0>;
             keycode = <LGUI>;
         };
@@ -121,8 +131,17 @@
         // Num Lock がオフなら一時的にオンにして、送り終えたら元に戻す（CONFIG_ZMK_HID_INDICATORS）
         sym_hbar: sym_hbar {
             compatible = "zmk,behavior-alt-code";
+            display-name = "―";
             #binding-cells = <0>;
             codes = <33116>;
+        };
+        // ～ （全角チルダ U+FF5E）を入力。日本語 Windows（cp932）の Alt+33120（Shift_JIS 0x8160）で送る。
+        // まだどのレイヤーにも置いていない
+        sym_tilde: sym_tilde {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "～";
+            #binding-cells = <0>;
+            codes = <33120>;
         };
 
         // --- かな入力（自作モジュール kana/）。Keymap Editor が認識できるよう、定義はこのファイルに置く ---
@@ -142,12 +161,12 @@
     };
 
     // --- pair_: カッコの自動補完（開き・閉じを入力して ← でカーソルを中に置く） ---
-    // display-name は付けない（LaLapad-Gen2-Editor がレイヤーと誤認するため）。
     macros {
         // 「」を入力してカーソルを中に。先に IME オン（LANGUAGE_1）を送り、[ ] を Google 日本語入力で「」にする
         // （入力後も IME はオンのまま）
         pair_kagi: pair_kagi {
             compatible = "zmk,behavior-macro";
+            display-name = "「」";
             #binding-cells = <0>;
             wait-ms = <5>;
             tap-ms = <5>;
@@ -156,6 +175,7 @@
         // () を入力してカーソルを中に（IME の切り替えはしない。IME オンなら（）になる）
         pair_paren: pair_paren {
             compatible = "zmk,behavior-macro";
+            display-name = "()";
             #binding-cells = <0>;
             wait-ms = <0>;
             tap-ms = <0>;
@@ -166,6 +186,7 @@
         // … を入力。先に IME オン（LANGUAGE_1）を送り、Google 日本語入力の z. で … にする（入力後も IME はオンのまま）
         sym_ellipsis: sym_ellipsis {
             compatible = "zmk,behavior-macro";
+            display-name = "…";
             #binding-cells = <0>;
             wait-ms = <5>;
             tap-ms = <5>;

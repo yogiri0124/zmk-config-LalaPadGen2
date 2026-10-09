@@ -117,6 +117,10 @@ static int on_mbt_binding_released(struct zmk_behavior_binding *binding,
 static const struct behavior_driver_api behavior_mbt_driver_api = {
     .binding_pressed = on_mbt_binding_pressed,
     .binding_released = on_mbt_binding_released,
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
+    // 引数なしの behavior として ZMK Studio から割り当てられるようにする
+    .get_parameter_metadata = zmk_behavior_get_empty_param_metadata,
+#endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 };
 
 #define MBT_INST(n)                                                                                \
