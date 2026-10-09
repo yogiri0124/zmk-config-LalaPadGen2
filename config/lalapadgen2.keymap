@@ -136,13 +136,15 @@
         };
 
         // --- sym_: 記号（Windows の Alt コードで送るもの。IME の状態やローマ字テーブルに関係なく入る） ---
+        // ふだんは下の macros にあるローマ字テーブル版（sym_hbar_ime など）を使う。こちらは、ローマ字テーブルに
+        // 登録していない PC で使うための予備（どのレイヤーにも置いていない）。
         // commit-ime: 先に IME オフで確定前の文字を確定させ、送り終えたら IME オンに戻す
         // （付けないと、確定前の文字があるときに、続きが記号の前に入ってしまう）
         // ― （ホリゾンタルバー）を入力。日本語 Windows（cp932）の Alt+33116（Shift_JIS 0x815C）で送る。
         // Num Lock がオフなら一時的にオンにして、送り終えたら元に戻す（CONFIG_ZMK_HID_INDICATORS）
         sym_hbar: sym_hbar {
             compatible = "zmk,behavior-alt-code";
-            display-name = "―";
+            display-name = "― Alt";
             #binding-cells = <0>;
             codes = <33116>;
             commit-ime;
@@ -150,7 +152,7 @@
         // ～ （全角チルダ U+FF5E）を入力。日本語 Windows（cp932）の Alt+33120（Shift_JIS 0x8160）で送る。
         sym_tilde: sym_tilde {
             compatible = "zmk,behavior-alt-code";
-            display-name = "～";
+            display-name = "～ Alt";
             #binding-cells = <0>;
             codes = <33120>;
             commit-ime;
@@ -158,7 +160,7 @@
         // “” を入力してカーソルを中に。Alt+33127 = “、Alt+33128 = ”（Shift_JIS 0x8167・0x8168）
         pair_cquote: pair_cquote {
             compatible = "zmk,behavior-alt-code";
-            display-name = "“”";
+            display-name = "“” Alt";
             #binding-cells = <0>;
             codes = <33127 33128>;
             cursor-left = <1>;
@@ -208,6 +210,16 @@
             bindings = <&macro_tap &kp LANGUAGE_1 &kp Z &kp LEFT_BRACKET &kp Z &kp RIGHT_BRACKET &kp LEFT>;
             display-name = "『』";
         };
+        // “” を入力してカーソルを中に。先に IME オン（LANGUAGE_1）を送り、ローマ字テーブルの z{ z} で “ ” にする。
+        // PC 側でローマ字テーブルに「z{ → “」「z} → ”」の登録が必要（標準のテーブルにはない）
+        pair_cquote_ime: pair_cquote_ime {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            wait-ms = <5>;
+            tap-ms = <5>;
+            bindings = <&macro_tap &kp LANGUAGE_1 &kp Z &kp LEFT_BRACE &kp Z &kp RIGHT_BRACE &kp LEFT>;
+            display-name = "“”";
+        };
         // () を入力してカーソルを中に（IME の切り替えはしない。IME オンなら（）になる）
         pair_paren: pair_paren {
             compatible = "zmk,behavior-macro";
@@ -227,6 +239,26 @@
             tap-ms = <5>;
             bindings = <&macro_tap &kp LANGUAGE_1 &kp Z &kp PERIOD>;
             display-name = "…";
+        };
+        // ― を入力。先に IME オン（LANGUAGE_1）を送り、Google 日本語入力のローマ字テーブルの z= で ― にする。
+        // PC 側でローマ字テーブルに「z= → ―」の登録が必要（標準のテーブルにはない）。
+        // IME を通るので、確定前の文字とひと続きになり、かなと同じ送信待ちの列で順番どおりに入る
+        sym_hbar_ime: sym_hbar_ime {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            wait-ms = <5>;
+            tap-ms = <5>;
+            bindings = <&macro_tap &kp LANGUAGE_1 &kp Z &kp EQUAL>;
+            display-name = "―";
+        };
+        // ～ を入力。先に IME オン（LANGUAGE_1）を送り、Google 日本語入力の z- で ～ にする（標準のテーブルにある）
+        sym_tilde_ime: sym_tilde_ime {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            wait-ms = <5>;
+            tap-ms = <5>;
+            bindings = <&macro_tap &kp LANGUAGE_1 &kp Z &kp MINUS>;
+            display-name = "～";
         };
     };
 
@@ -295,7 +327,7 @@
             bindings = <
             &kp EXCL  &kp AT  &kp HASH  &kp DLLR  &kp PRCNT  &kp PAGE_UP  &kp HOME  &kp UP  &kp END  &kp PRINTSCREEN
             &kp CARET  &kp AMPS  &kp ASTRK  &pair_paren  &pair_kagi  &kp PAGE_DOWN  &kp LEFT  &kp DOWN  &kp RIGHT  &kp SCROLLLOCK
-            &kp GRAVE  &kp SQT  &kp SEMI  &sym_ellipsis  &sym_hbar  &trans  &mkp MB4  &sym_tilde  &mkp MB5  &kp PAUSE_BREAK
+            &kp GRAVE  &kp SQT  &kp SEMI  &sym_ellipsis  &sym_hbar_ime  &trans  &mkp MB4  &sym_tilde_ime  &mkp MB5  &kp PAUSE_BREAK
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
@@ -360,7 +392,7 @@
             bindings = <
             &kana_key KN_DO  &kana_key KN_BA  &kana_key KN_BI  &kana_key KN_BU  &kana_key KN_BE  &kana_key KN_BO  &kana_key KN_PA  &kana_key KN_PI  &kana_key KN_PU  &kana_key KN_PE
             &kana_key KN_PO  &kana_key KN_XYA  &kana_key KN_XYU  &kana_key KN_XYO  &kana_key KN_XA  &kana_key KN_XI  &kana_key KN_XU  &kana_key KN_XE  &kana_key KN_XO  &kana_key KN_XTU
-            &kana_key KN_VU  &kana_key KN_TOUTEN  &kana_key KN_KUTEN  &kana_key KN_CHOUON  &kana_key KN_SANTEN  &kana_key KN_EXCL  &kana_key KN_QUES  &kana_key KN_KAGI  &sym_hbar  &kana_key KN_PAREN
+            &kana_key KN_VU  &kana_key KN_TOUTEN  &kana_key KN_KUTEN  &kana_key KN_CHOUON  &kana_key KN_SANTEN  &kana_key KN_EXCL  &kana_key KN_QUES  &kana_key KN_KAGI  &sym_hbar_ime  &kana_key KN_PAREN
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
