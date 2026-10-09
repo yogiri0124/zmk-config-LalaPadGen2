@@ -291,7 +291,7 @@
             bindings = <
             &kana_key KN_DO  &kana_key KN_BA  &kana_key KN_BI  &kana_key KN_BU  &kana_key KN_BE  &kana_key KN_BO  &kana_key KN_PA  &kana_key KN_PI  &kana_key KN_PU  &kana_key KN_PE
             &kana_key KN_PO  &kana_key KN_XYA  &kana_key KN_XYU  &kana_key KN_XYO  &kana_key KN_XA  &kana_key KN_XI  &kana_key KN_XU  &kana_key KN_XE  &kana_key KN_XO  &kana_key KN_XTU
-            &kana_key KN_VU  &kana_key KN_TOUTEN  &kana_key KN_KUTEN  &kana_key KN_CHOUON  &kana_key KN_SANTEN  &kana_key KN_EXCL  &kana_key KN_QUES  &kana_key KN_KAGI  &kana_key KN_NIJUKAGI  &kana_key KN_PAREN
+            &kana_key KN_VU  &kana_key KN_TOUTEN  &kana_key KN_KUTEN  &kana_key KN_CHOUON  &kana_key KN_SANTEN  &kana_key KN_EXCL  &kana_key KN_QUES  &kana_key KN_KAGI  &sym_hbar  &kana_key KN_PAREN
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans

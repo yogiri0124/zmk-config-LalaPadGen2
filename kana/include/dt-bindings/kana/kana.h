@@ -103,15 +103,14 @@
 #define KN_EXCL 86     /* ！ */
 #define KN_QUES 87     /* ？ */
 #define KN_KAGI 88     /* 「」 */
-#define KN_NIJUKAGI 89 /* 『』 */
-#define KN_PAREN 90    /* （） */
+#define KN_PAREN 89    /* （） */
 
 /* 編集用のキー（かなと同じ送信キューで順番どおりに送る。IME オンの再送はしない） */
-#define KN_SPACE 91
-#define KN_ENTER 92
-#define KN_BSPC 93
+#define KN_SPACE 90
+#define KN_ENTER 91
+#define KN_BSPC 92
 
-#define KN_MAX_ID 93
+#define KN_MAX_ID 92
 
 /* &kana_sw のパラメータ */
 #define KANA_SW_ON 1
