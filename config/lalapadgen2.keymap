@@ -118,6 +118,15 @@
             #binding-cells = <0>;
             keycode = <LGUI>;
         };
+
+        // --- sym_: 記号（Windows の Alt コードで送るもの。IME の状態やローマ字テーブルに関係なく入る） ---
+        // ― （ホリゾンタルバー）を入力。日本語 Windows（cp932）の Alt+33116（Shift_JIS 0x815C）で送る。
+        // Num Lock がオフなら一時的にオンにして、送り終えたら元に戻す（CONFIG_ZMK_HID_INDICATORS）
+        sym_hbar: sym_hbar {
+            compatible = "zmk,behavior-alt-code";
+            #binding-cells = <0>;
+            codes = <33116>;
+        };
     };
 
     // --- pair_: カッコの自動補完（開き・閉じを入力して ← でカーソルを中に置く） ---
