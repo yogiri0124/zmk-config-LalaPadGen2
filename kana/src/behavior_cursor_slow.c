@@ -95,6 +95,10 @@ ZMK_SUBSCRIPTION(behavior_cursor_slow, zmk_position_state_changed);
 static const struct behavior_driver_api behavior_cursor_slow_driver_api = {
     .binding_pressed = on_cursor_slow_binding_pressed,
     .binding_released = on_cursor_slow_binding_released,
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
+    // 引数なしの behavior として ZMK Studio から割り当てられるようにする
+    .get_parameter_metadata = zmk_behavior_get_empty_param_metadata,
+#endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 };
 
 #define CURSOR_SLOW_INST(n)                                                                        \

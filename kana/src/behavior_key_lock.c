@@ -41,6 +41,10 @@ static int on_key_lock_binding_released(struct zmk_behavior_binding *binding,
 static const struct behavior_driver_api behavior_key_lock_driver_api = {
     .binding_pressed = on_key_lock_binding_pressed,
     .binding_released = on_key_lock_binding_released,
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
+    // 引数なしの behavior として ZMK Studio から割り当てられるようにする
+    .get_parameter_metadata = zmk_behavior_get_empty_param_metadata,
+#endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 };
 
 #define KEY_LOCK_INST(n)                                                                           \
