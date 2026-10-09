@@ -136,6 +136,8 @@
         };
 
         // --- sym_: 記号（Windows の Alt コードで送るもの。IME の状態やローマ字テーブルに関係なく入る） ---
+        // commit-ime: 先に IME オフで確定前の文字を確定させ、送り終えたら IME オンに戻す
+        // （付けないと、確定前の文字があるときに、続きが記号の前に入ってしまう）
         // ― （ホリゾンタルバー）を入力。日本語 Windows（cp932）の Alt+33116（Shift_JIS 0x815C）で送る。
         // Num Lock がオフなら一時的にオンにして、送り終えたら元に戻す（CONFIG_ZMK_HID_INDICATORS）
         sym_hbar: sym_hbar {
@@ -143,6 +145,7 @@
             display-name = "―";
             #binding-cells = <0>;
             codes = <33116>;
+            commit-ime;
         };
         // ～ （全角チルダ U+FF5E）を入力。日本語 Windows（cp932）の Alt+33120（Shift_JIS 0x8160）で送る。
         sym_tilde: sym_tilde {
@@ -150,6 +153,19 @@
             display-name = "～";
             #binding-cells = <0>;
             codes = <33120>;
+            commit-ime;
+        };
+        // “” を入力してカーソルを中に。Alt+33127 = “、Alt+33128 = ”（Shift_JIS 0x8167・0x8168）
+        pair_cquote: pair_cquote {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "“”";
+            #binding-cells = <0>;
+            codes = <33127 33128>;
+            cursor-left = <1>;
+            commit-ime;
+            // 送る打鍵が多い（最大 34）ので、Bluetooth の送信待ちがあふれないよう間隔を広げる
+            tap-ms = <10>;
+            wait-ms = <10>;
         };
 
         // --- かな入力（自作モジュール kana/）。Keymap Editor が認識できるよう、定義はこのファイルに置く ---
@@ -181,6 +197,16 @@
             tap-ms = <5>;
             bindings = <&macro_tap &kp LANGUAGE_1 &kp LEFT_BRACKET &kp RIGHT_BRACKET &kp LEFT>;
             display-name = "「」";
+        };
+        // 『』を入力してカーソルを中に。先に IME オン（LANGUAGE_1）を送り、Google 日本語入力の z[ z] で『』にする
+        // （入力後も IME はオンのまま）
+        pair_nijukagi: pair_nijukagi {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            wait-ms = <5>;
+            tap-ms = <5>;
+            bindings = <&macro_tap &kp LANGUAGE_1 &kp Z &kp LEFT_BRACKET &kp Z &kp RIGHT_BRACKET &kp LEFT>;
+            display-name = "『』";
         };
         // () を入力してカーソルを中に（IME の切り替えはしない。IME オンなら（）になる）
         pair_paren: pair_paren {
