@@ -14,10 +14,11 @@
  *   使わないので、キューが満杯で「離す」や Num Lock の復元が抜けることはない
  *   （そのかわり、キューに残っている &kana_key やマクロの送信とは順序を保証しない）。
  * - 送信中に押された分は待ち行列に入れ、前の送信が終わってから順に送る。
- * - Num Lock を元に戻した直後は、PC からの点灯状態の報告が遅れて「一時的にオンにした状態」が
- *   残っていることがある。そのため戻してから ASSUME_RESTORED_MS の間は、PC の報告ではなく
- *   「元の状態に戻した」という自分の記録を使う。記録は接続先（USB・BLE プロファイル）ごとに持ち、
- *   別の接続先に切り替えたときには使わない。
+ * - 送信の途中で接続先（USB・BLE プロファイル）が変わったら、残りは送らずに中止する
+ *   （別の PC に数字や Num Lock の復元を送らないため）。
+ * - Num Lock を切り替えた直後は、PC からの点灯状態の報告が遅れて古い状態が残っていることがある。
+ *   そのため切り替えてから ASSUME_MS の間は、PC の報告ではなく「実際に送った Num Lock の回数から
+ *   わかる状態」（元に戻した／中止でオンのまま）という自分の記録を使う。記録は接続先ごとに持つ。
  *   （この間に別のキーボードなどで Num Lock を切り替えた場合は反映されない）
  *
  * behavior のコールバックと k_work はどちらもシステムワークキューで動くので、状態の排他は不要。
@@ -52,8 +53,8 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define MAX_STEPS 128
 /* 送信中に押された分を待たせておける数 */
 #define MAX_PENDING 4
-/* Num Lock を元に戻してから、PC の報告より自分の記録を優先する時間 */
-#define ASSUME_RESTORED_MS 3000
+/* Num Lock を切り替えてから、PC の報告より自分の記録を優先する時間 */
+#define ASSUME_MS 3000
 
 struct behavior_alt_code_config {
     const uint32_t *codes;
@@ -82,12 +83,16 @@ static size_t step_index;
 static bool num_lock_toggled;
 static bool num_lock_original;
 static struct zmk_endpoint_instance active_endpoint;
+/* この送信で実際に送った Num Lock の「押す」の回数（0: 未送信、1: オンにした、2: 元に戻した） */
+static uint8_t num_lock_presses_sent;
+/* この送信でいま押したままにしているキー（中止するときに離す） */
+static bool alt_down;
+static uint32_t key_down;
 
-/* Num Lock を元に戻した後、ASSUME_RESTORED_MS の間だけ使う記録（戻した接続先のものだけ有効） */
-static bool restore_assumed;
-static struct zmk_endpoint_instance assumed_endpoint;
-static bool assumed_num_lock;
-static int64_t assume_until;
+/* Num Lock を切り替えた後、ASSUME_MS の間だけ使う記録（接続先ごと） */
+static bool assumed_valid[ZMK_ENDPOINT_COUNT];
+static bool assumed_num_lock[ZMK_ENDPOINT_COUNT];
+static int64_t assume_until[ZMK_ENDPOINT_COUNT];
 
 static const struct behavior_alt_code_config *pending[MAX_PENDING];
 static size_t pending_count;
@@ -105,17 +110,32 @@ static bool reported_num_lock(struct zmk_endpoint_instance endpoint) {
 #endif
 }
 
-/* 接続先 endpoint の今の Num Lock の状態。同じ接続先で元に戻してから ASSUME_RESTORED_MS の間は自分の記録を使う
+/* 接続先 endpoint の今の Num Lock の状態。その接続先で切り替えてから ASSUME_MS の間は自分の記録を使う
  * （一時的にオンにした報告が、元に戻した報告より後から届くこともあるため、途中で報告に切り替えない） */
 static bool current_num_lock(struct zmk_endpoint_instance endpoint) {
-    if (restore_assumed) {
-        if (k_uptime_get() >= assume_until) {
-            restore_assumed = false;
-        } else if (zmk_endpoint_instance_eq(endpoint, assumed_endpoint)) {
-            return assumed_num_lock;
+    const int idx = zmk_endpoint_instance_to_index(endpoint);
+    if (idx >= 0 && idx < ZMK_ENDPOINT_COUNT && assumed_valid[idx]) {
+        if (k_uptime_get() < assume_until[idx]) {
+            return assumed_num_lock[idx];
         }
+        assumed_valid[idx] = false;
     }
     return reported_num_lock(endpoint);
+}
+
+/* 送信を終えた（または中止した）ときに、実際に送った Num Lock の回数から接続先の状態を記録する */
+static void record_num_lock_state(void) {
+    if (num_lock_presses_sent == 0) {
+        return;
+    }
+    const int idx = zmk_endpoint_instance_to_index(active_endpoint);
+    if (idx < 0 || idx >= ZMK_ENDPOINT_COUNT) {
+        return;
+    }
+    // 1回だけ送った（オンにしたまま中止）なら元の逆、2回送った（元に戻した）なら元の状態
+    assumed_num_lock[idx] = (num_lock_presses_sent == 1) ? !num_lock_original : num_lock_original;
+    assume_until[idx] = k_uptime_get() + ASSUME_MS;
+    assumed_valid[idx] = true;
 }
 
 static void add_step(uint32_t keycode, bool press) {
@@ -198,6 +218,9 @@ static void start_next(void) {
         busy = true;
         active_cfg = cfg;
         step_index = 0;
+        num_lock_presses_sent = 0;
+        alt_down = false;
+        key_down = 0;
         k_work_schedule(&alt_code_work, K_NO_WAIT);
         return;
     }
@@ -207,20 +230,38 @@ static void start_next(void) {
 
 static void alt_code_work_handler(struct k_work *work) {
     if (step_index < step_count) {
+        if (!zmk_endpoint_instance_eq(zmk_endpoints_selected(), active_endpoint)) {
+            // 途中で接続先が変わった: 残りは送らない。押したままのキーは離しておく
+            // （接続先の切り替えで ZMK が HID の状態を消しているが、念のため）
+            LOG_WRN("Endpoint changed during alt code sequence, aborting");
+            const int64_t now = k_uptime_get();
+            if (key_down != 0) {
+                raise_zmk_keycode_state_changed_from_encoded(key_down, false, now);
+            }
+            if (alt_down) {
+                raise_zmk_keycode_state_changed_from_encoded(LALT, false, now);
+            }
+            record_num_lock_state();
+            start_next();
+            return;
+        }
+
         const struct step *s = &steps[step_index++];
         raise_zmk_keycode_state_changed_from_encoded(s->keycode, s->press, k_uptime_get());
+        if (s->keycode == LALT) {
+            alt_down = s->press;
+        } else {
+            key_down = s->press ? s->keycode : 0;
+        }
+        if (s->keycode == KP_NUM && s->press) {
+            num_lock_presses_sent++;
+        }
         const uint32_t delay = s->press ? active_cfg->tap_ms : active_cfg->wait_ms;
         k_work_schedule(&alt_code_work, K_MSEC(delay));
         return;
     }
 
-    if (num_lock_toggled) {
-        // 元に戻したので、しばらくはこの接続先について PC の報告ではなく元の状態として扱う
-        restore_assumed = true;
-        assumed_endpoint = active_endpoint;
-        assumed_num_lock = num_lock_original;
-        assume_until = k_uptime_get() + ASSUME_RESTORED_MS;
-    }
+    record_num_lock_state();
     start_next();
 }
 
