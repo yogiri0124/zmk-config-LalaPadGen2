@@ -1,0 +1,2 @@
+# Google 日本語入力に読み込むローマ字テーブル。どの環境で取り出しても改行を CRLF にする
+docs/google-ime/romantable.txt text eol=crlf
