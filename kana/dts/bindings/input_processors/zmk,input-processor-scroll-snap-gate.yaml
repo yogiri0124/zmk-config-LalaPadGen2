@@ -1,0 +1,14 @@
+# スクロールスナップの入り口の入力処理。zmk,behavior-scroll-snap-hold のキーを押している間だけ、
+# processor で指定した入力処理（zmk,input-processor-scroll-snap）にイベントを渡す。
+
+description: Input processor that forwards events to another processor only while scroll snap is held
+
+compatible: "zmk,input-processor-scroll-snap-gate"
+
+include: ip_zero_param.yaml
+
+properties:
+  processor:
+    type: phandle
+    required: true
+    description: 押している間だけイベントを渡す入力処理（引数なしのもの。例 &zip_scroll_snap_R）

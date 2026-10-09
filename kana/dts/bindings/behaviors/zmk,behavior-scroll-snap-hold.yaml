@@ -1,0 +1,8 @@
+# スクロールスナップを押している間だけオンにする behavior（引数なし）。
+# オンの間、zmk,input-processor-scroll-snap-gate がスクロールスナップの入力処理にイベントを渡す。
+
+description: Hold to enable scroll snap (axis lock) without using a layer
+
+compatible: "zmk,behavior-scroll-snap-hold"
+
+include: zero_param.yaml

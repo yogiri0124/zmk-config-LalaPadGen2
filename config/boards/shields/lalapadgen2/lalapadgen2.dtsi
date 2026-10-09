@@ -182,6 +182,7 @@
                            <&zip_dynamic_xy_scaler>,
                            <&zip_cursor_slow 1 3>,
                            <&zip_dynamic_scroll_scaler>,
+                           <&zip_scroll_snap_gate_R>,
                            <&zip_auto_mouse_layer 5 700>;
         lowspeedmode {
             layers = <2>,<3>;
@@ -190,7 +191,8 @@
                                 <&zip_scroll_scaler 1 40>,
                                 <&zip_dynamic_xy_scaler>,
                                 <&zip_cursor_slow 1 3>,
-                                <&zip_dynamic_scroll_scaler>;
+                                <&zip_dynamic_scroll_scaler>,
+                                <&zip_scroll_snap_gate_R>;
         };
     };
     trackpad_listener_L: trackpad_listener_L {
@@ -203,6 +205,7 @@
                            <&zip_dynamic_xy_scaler>,
                            <&zip_cursor_slow 1 3>,
                            <&zip_dynamic_scroll_scaler>,
+                           <&zip_scroll_snap_gate_L>,
                            <&zip_auto_mouse_layer 5 700>;
         lowspeedmode {
             layers = <2>,<3>;
@@ -211,7 +214,8 @@
                                 <&zip_scroll_scaler 1 40>,
                                 <&zip_dynamic_xy_scaler>,
                                 <&zip_cursor_slow 1 3>,
-                                <&zip_dynamic_scroll_scaler>;
+                                <&zip_dynamic_scroll_scaler>,
+                                <&zip_scroll_snap_gate_L>;
         };
     };
 
@@ -256,9 +260,11 @@ status = "okay";
 };
 
 // スクロールスナップ (kot149/zmk-scroll-snap): 2本指スクロールを近いほうの軸 (X/Y) に揃える。
-// 既定では使わない（斜めスクロールできるように、どのリスナーからも参照していない）。
-// 特定のレイヤーでだけ有効にするときは、各リスナー（trackpad_listener_R / _L）に次のような子ノードを
-// lowspeedmode より前に追加する（先に書いた子ノードが優先される。<N> はレイヤー番号、_R / _L は左右で合わせる）:
+// ふだんは使わない（斜めスクロールできるように）。keymap の &scr_snap_hold のキーを押している間だけ、
+// 各リスナー（trackpad_listener_R / _L）に入れた &zip_scroll_snap_gate_R / _L がここへイベントを渡す
+// （レイヤーは使わない。自作: kana/src/input_processor_scroll_snap_gate.c）。
+// 特定のレイヤーで常に有効にしたいときは、次のような子ノードを lowspeedmode より前に追加する
+// （先に書いた子ノードが優先される。<N> はレイヤー番号、_R / _L は左右で合わせる）:
 //     snapmode {
 //         layers = <N>;
 //         input-processors = <&trackpad_key_behaviors_R>,
@@ -297,5 +303,18 @@ status = "okay";
         lock-duration-ms = <200>;
         lock-for-next-n-events = <10>;
         idle-reset-timeout-ms = <200>;
+    };
+
+    // &scr_snap_hold のキーを押している間だけ、上のスクロールスナップにイベントを渡す入り口
+    zip_scroll_snap_gate_R: zip_scroll_snap_gate_R {
+        compatible = "zmk,input-processor-scroll-snap-gate";
+        #input-processor-cells = <0>;
+        processor = <&zip_scroll_snap_R>;
+    };
+
+    zip_scroll_snap_gate_L: zip_scroll_snap_gate_L {
+        compatible = "zmk,input-processor-scroll-snap-gate";
+        #input-processor-cells = <0>;
+        processor = <&zip_scroll_snap_L>;
     };
 };

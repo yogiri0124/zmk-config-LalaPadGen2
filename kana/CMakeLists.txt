@@ -1,4 +1,4 @@
-# このリポジトリの自作モジュール（かな入力、マウスボタン・キーの押しっぱなし切り替え、カーソル低速、オートマウスレイヤー、Alt コード入力）。
+# このリポジトリの自作モジュール（かな入力、マウスボタン・キーの押しっぱなし切り替え、カーソル低速、オートマウスレイヤー、Alt コード入力、スクロールスナップの切り替え）。
 # behavior は keymap を処理する側（central）でだけビルドする。
 if(CONFIG_ZMK_BEHAVIOR_KANA OR CONFIG_ZMK_CURSOR_SLOW)
   target_include_directories(app PRIVATE include)
@@ -24,6 +24,10 @@ if((NOT CONFIG_ZMK_SPLIT) OR CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
   )
   target_sources_ifdef(CONFIG_ZMK_AUTO_MOUSE_LAYER app PRIVATE
     src/input_processor_auto_mouse_layer.c
+  )
+  target_sources_ifdef(CONFIG_ZMK_SCROLL_SNAP_GATE app PRIVATE
+    src/behavior_scroll_snap_hold.c
+    src/input_processor_scroll_snap_gate.c
   )
   target_sources_ifdef(CONFIG_ZMK_CURSOR_SLOW app PRIVATE
     src/behavior_cursor_slow.c

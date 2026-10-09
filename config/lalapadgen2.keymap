@@ -47,7 +47,7 @@
         };
 
         // ===== カスタムキー（エディタで使いたいレイヤーに割り当てる） =====
-        // 名前の頭で種類を分けている（clk_: クリック、cur_: カーソル、mod_: 修飾キー、pair_: カッコ、sym_: 記号）。
+        // 名前の頭で種類を分けている（clk_: クリック、cur_: カーソル、mod_: 修飾キー、scr_: スクロール、pair_: カッコ、sym_: 記号）。
         // display-name は ZMK Studio の一覧とキーの上に出る名前（キーの上は 9 文字まで）。
 
         // --- clk_: クリック押しっぱなし（もう一度押す、または同じボタンのクリックで解除） ---
@@ -124,6 +124,15 @@
             display-name = "Win Lock";
             #binding-cells = <0>;
             keycode = <LGUI>;
+        };
+
+        // --- scr_: スクロール ---
+        // 押している間だけ、トラックパッドの2本指スクロールを縦か横のどちらかにそろえる（スクロールスナップ）。
+        // レイヤーは使わない。実際の処理は lalapadgen2.dtsi の &zip_scroll_snap_gate_R / _L
+        scr_snap_hold: scr_snap_hold {
+            compatible = "zmk,behavior-scroll-snap-hold";
+            display-name = "Snap Hold";
+            #binding-cells = <0>;
         };
 
         // --- sym_: 記号（Windows の Alt コードで送るもの。IME の状態やローマ字テーブルに関係なく入る） ---
@@ -284,11 +293,11 @@
         MOUSE_LAYER {
             display-name = "mouse_layer";
             bindings = <
-            &none  &kp LC(W)  &none  &clk_lock_l  &none  &none  &none  &none  &none  &none
+            &none  &kp LC(W)  &none  &clk_lock_l  &kp LC(LS(T))  &kp LC(LS(TAB))  &kp LC(TAB)  &none  &none  &none
             &none  &mkp MCLK  &mkp RCLK  &mkp LCLK  &none  &none  &none  &none  &none  &none
             &none  &kp LC(X)  &kp LC(C)  &kp LC(V)  &none  &none  &none  &none  &none  &none
-            &trans  &trans  &trans  &none  &none  &none  &none  &none  &none  &none  &none  &none
-            &trans  &kp LC(TAB)  &trans  &kp LC(LS(TAB))  &trans  &trans  &kp LC(LS(TAB))  &trans  &kp LC(TAB)  &trans
+            &trans  &trans  &trans  &none  &scr_snap_hold  &none  &none  &none  &none  &none  &none  &none
+            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             >;
