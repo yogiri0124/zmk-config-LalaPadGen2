@@ -327,7 +327,7 @@
             bindings = <
             &kp EXCL  &kp AT  &kp HASH  &kp DLLR  &kp PRCNT  &kp PAGE_UP  &kp HOME  &kp UP  &kp END  &kp PRINTSCREEN
             &kp CARET  &kp AMPS  &kp ASTRK  &pair_paren  &pair_kagi  &kp PAGE_DOWN  &kp LEFT  &kp DOWN  &kp RIGHT  &kp SCROLLLOCK
-            &kp GRAVE  &kp SQT  &kp SEMI  &sym_ellipsis  &sym_hbar_ime  &trans  &mkp MB4  &sym_tilde_ime  &mkp MB5  &kp PAUSE_BREAK
+            &kp GRAVE  &kp SQT  &kp SEMI  &sym_ellipsis  &sym_hbar_ime  &pair_cquote_ime  &mkp MB4  &sym_tilde_ime  &mkp MB5  &kp PAUSE_BREAK
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
