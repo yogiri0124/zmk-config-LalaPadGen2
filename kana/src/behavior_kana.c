@@ -5,7 +5,7 @@
  * ZMK の behavior queue（マクロと同じ仕組み）経由で &kp として順に送る。
  * かな漢字変換はホスト側の IME（ローマ字入力モード）が行う。
  * ホストのキーボード配列は英語配列 (US) を前提にしている。
- * 記号の一部（… 『』）は Google 日本語入力の標準ローマ字テーブル（z. z[ z]）を前提にしている。
+ * 記号の一部（…）は Google 日本語入力の標準ローマ字テーブル（z.）を前提にしている。
  * 親指キーのタップ（スペース／エンター）も同じキューで送り、かな列を追い越さないようにする。
  * キューへの登録・押しっぱなし防止・かな配列モードの状態は kana_output.c にまとめている。
  */
@@ -77,7 +77,6 @@ static const struct kana_entry kana_table[KN_MAX_ID + 1] = {
     [KN_EXCL] = K1(EXCLAMATION),     /* ！ */
     [KN_QUES] = K1(QUESTION),        /* ？ */
     [KN_KAGI] = K3(LBKT, RBKT, LEFT),              /* 「」 → ← でカーソルを中へ */
-    [KN_NIJUKAGI] = K5(Z, LBKT, Z, RBKT, LEFT),    /* 『』 （Google 日本語入力: z[ z]）→ ← */
     [KN_PAREN] = K3(LPAR, RPAR, LEFT),             /* （） → ← でカーソルを中へ */
 
     [KN_SPACE] = K1(SPACE),
@@ -97,7 +96,7 @@ static uint32_t held_keycode[ZMK_KEYMAP_LEN];
 
 static bool is_hold_key(uint32_t id) { return id == KN_SPACE || id == KN_ENTER || id == KN_BSPC; }
 
-/* 最後にかな・記号（ID 1〜90）を送った時刻。IME オンの再送の判定に使う */
+/* 最後にかな・記号（ID 1〜89）を送った時刻。IME オンの再送の判定に使う */
 static int64_t last_char_ms;
 static bool char_sent;
 
@@ -125,7 +124,7 @@ static const struct behavior_parameter_value_metadata param_values[] = {
     KV(KN_XI, "ぃ"),  KV(KN_XU, "ぅ"),  KV(KN_XE, "ぇ"),  KV(KN_XO, "ぉ"),  KV(KN_XTU, "っ"),
     KV(KN_VU, "ゔ"),  KV(KN_TOUTEN, "、"), KV(KN_KUTEN, "。"), KV(KN_CHOUON, "ー"),
     KV(KN_SANTEN, "…"), KV(KN_EXCL, "！"), KV(KN_QUES, "？"), KV(KN_KAGI, "「」"),
-    KV(KN_NIJUKAGI, "『』"), KV(KN_PAREN, "（）"),
+    KV(KN_PAREN, "（）"),
     KV(KN_SPACE, "スペース"), KV(KN_ENTER, "エンター"), KV(KN_BSPC, "バックスペース"),
 };
 
