@@ -23,7 +23,9 @@
  *   同じ ZMK 本体の動作で、behavior からは送信先を固定できない。防ぐには hog.c のキューに
  *   送信先を持たせる ZMK 本体の変更が必要）。このため中止したときは、どちらの PC の Num Lock が
  *   どうなったか確定できないものとして自分の記録は作らず（あれば消し）、PC から届く点灯状態に従う。
- *   接続先が切り替わったとき（zmk_endpoint_changed）も、同じ理由で記録をすべて捨てる。
+ *   接続先が切り替わったとき（zmk_endpoint_changed）も、同じ理由で記録を使わない。記録には
+ *   送信を始めたときの世代番号を付け、使うときに今の世代番号と同じものだけを有効とする
+ *   （切り替え前の送信の結果を、切り替え後に引き継がない）。
  *   切り替えは世代番号（endpoint_generation）で数え、A → B → A のように元の接続先へ戻った場合も
  *   「切り替わった」と判定する（切り替え時に ZMK が HID の状態を消し、Alt コードが途切れるため）。
  * - Num Lock を切り替えた直後は、PC からの点灯状態の報告が遅れて古い状態が残っていることがある。
@@ -33,7 +35,7 @@
  *
  * behavior のコールバックと k_work はどちらもシステムワークキューで動くので、送信の状態の排他は不要。
  * 接続先の切り替えの通知（zmk_endpoint_changed）は別のスレッドから届くことがあるので、
- * そこでは世代番号（atomic）を進めるだけにし、記録の消去などはシステムワークキュー側で行う。
+ * そこでは世代番号（atomic）を進めるだけにする。記録は世代番号つきで持ち、使うときに照合する。
  */
 
 #define DT_DRV_COMPAT zmk_behavior_alt_code
@@ -111,8 +113,8 @@ static uint32_t key_down;
 static bool assumed_valid[ZMK_ENDPOINT_COUNT];
 static bool assumed_num_lock[ZMK_ENDPOINT_COUNT];
 static int64_t assume_until[ZMK_ENDPOINT_COUNT];
-/* 上の記録を作ったときの接続先の世代番号。接続先が切り替わっていたら記録はすべて捨てる */
-static atomic_val_t records_generation;
+/* 記録のもとになった送信を始めたときの世代番号。今の世代番号と違う記録は使わない */
+static atomic_val_t assumed_generation[ZMK_ENDPOINT_COUNT];
 
 struct pending_press {
     const struct behavior_alt_code_config *cfg;
@@ -137,23 +139,13 @@ static bool reported_num_lock(struct zmk_endpoint_instance endpoint) {
 
 /* 接続先 endpoint の今の Num Lock の状態。その接続先で切り替えてから ASSUME_MS の間は自分の記録を使う
  * （一時的にオンにした報告が、元に戻した報告より後から届くこともあるため、途中で報告に切り替えない） */
-/* 接続先が切り替わっていたら、Num Lock の記録をすべて捨てる（切り替えの前後に送った操作が
- * どちらの PC に届いたか確定できないため。以後は PC から届く点灯状態に従う） */
-static void drop_records_if_endpoint_changed(void) {
-    const atomic_val_t generation = atomic_get(&endpoint_generation);
-    if (records_generation != generation) {
-        for (int i = 0; i < ZMK_ENDPOINT_COUNT; i++) {
-            assumed_valid[i] = false;
-        }
-        records_generation = generation;
-    }
-}
-
 static bool current_num_lock(struct zmk_endpoint_instance endpoint) {
-    drop_records_if_endpoint_changed();
     const int idx = zmk_endpoint_instance_to_index(endpoint);
     if (idx >= 0 && idx < ZMK_ENDPOINT_COUNT && assumed_valid[idx]) {
-        if (k_uptime_get() < assume_until[idx]) {
+        // 接続先が切り替わる前の送信の記録は使わない（切り替えの前後に送った操作が
+        // どちらの PC に届いたか確定できないため。PC から届く点灯状態に従う）
+        if (assumed_generation[idx] == atomic_get(&endpoint_generation) &&
+            k_uptime_get() < assume_until[idx]) {
             return assumed_num_lock[idx];
         }
         assumed_valid[idx] = false;
@@ -166,13 +158,14 @@ static void record_num_lock_restored(void) {
     if (num_lock_presses_sent != 2) {
         return;
     }
-    drop_records_if_endpoint_changed();
     const int idx = zmk_endpoint_instance_to_index(active_endpoint);
     if (idx < 0 || idx >= ZMK_ENDPOINT_COUNT) {
         return;
     }
     assumed_num_lock[idx] = num_lock_original;
     assume_until[idx] = k_uptime_get() + ASSUME_MS;
+    // この送信を始めたときの世代番号を付ける（この後に接続先が切り替わっていれば、使うときに無効になる）
+    assumed_generation[idx] = active_generation;
     assumed_valid[idx] = true;
 }
 
