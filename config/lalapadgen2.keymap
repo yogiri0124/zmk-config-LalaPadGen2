@@ -161,36 +161,38 @@
     };
 
     // --- pair_: カッコの自動補完（開き・閉じを入力して ← でカーソルを中に置く） ---
+    // マクロの display-name は bindings より後ろに書く（LaLapad-Gen2-Editor は、display-name の後に
+    // bindings がある定義をレイヤーと見なすため。順番を入れ替えるとレイヤーが増えて見える）。
     macros {
         // 「」を入力してカーソルを中に。先に IME オン（LANGUAGE_1）を送り、[ ] を Google 日本語入力で「」にする
         // （入力後も IME はオンのまま）
         pair_kagi: pair_kagi {
             compatible = "zmk,behavior-macro";
-            display-name = "「」";
             #binding-cells = <0>;
             wait-ms = <5>;
             tap-ms = <5>;
             bindings = <&macro_tap &kp LANGUAGE_1 &kp LEFT_BRACKET &kp RIGHT_BRACKET &kp LEFT>;
+            display-name = "「」";
         };
         // () を入力してカーソルを中に（IME の切り替えはしない。IME オンなら（）になる）
         pair_paren: pair_paren {
             compatible = "zmk,behavior-macro";
-            display-name = "()";
             #binding-cells = <0>;
             wait-ms = <0>;
             tap-ms = <0>;
             bindings = <&macro_tap &kp LPAR &kp RPAR &kp LEFT>;
+            display-name = "()";
         };
 
         // --- sym_: 記号 ---
         // … を入力。先に IME オン（LANGUAGE_1）を送り、Google 日本語入力の z. で … にする（入力後も IME はオンのまま）
         sym_ellipsis: sym_ellipsis {
             compatible = "zmk,behavior-macro";
-            display-name = "…";
             #binding-cells = <0>;
             wait-ms = <5>;
             tap-ms = <5>;
             bindings = <&macro_tap &kp LANGUAGE_1 &kp Z &kp PERIOD>;
+            display-name = "…";
         };
     };
 
