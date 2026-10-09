@@ -25,3 +25,10 @@ properties:
     type: int
     default: 5
     description: 各キーを離した後の待ち時間（ms）
+  commit-ime:
+    type: boolean
+    description: Alt コードの前に IME オフ (LANGUAGE_2)、後に IME オン (LANGUAGE_1) を送る（確定前の文字を確定させてから送る）
+  ime-wait-ms:
+    type: int
+    default: 30
+    description: commit-ime で IME オフを送った後、Alt コードを送るまでに待つ時間（ms）

@@ -6,6 +6,12 @@
  * 最後に ← を cursor-left 回送る（カッコの間にカーソルを置く用。不要なら 0）。
  * IME の状態やローマ字テーブルに関係なく、確定済みの文字として入る（Windows の機能）。
  *
+ * commit-ime を付けたインスタンスは、Alt コードの前に IME オフ (LANGUAGE_2)、後に IME オン (LANGUAGE_1) を送る。
+ * Alt コードの文字は IME を通らずアプリに直接入るので、確定前の文字（下線付き）があるときに送ると、
+ * IME のカーソルが確定前の文字の末尾に残り、続きがその文字の前に入ってしまう。IME オフで確定前の文字を
+ * 確定させてから送ることで、これを防ぐ（Google 日本語入力では IME オフで確定される）。
+ * IME がオフのときに押した場合も、送り終えた後は IME オンになる。
+ *
  * テンキーの数字は Num Lock がオフだと矢印キーなどとして扱われるため、
  * PC から届いている Num Lock の点灯状態（HID インジケーター）を見て、オフのときだけ
  * 前後で Num Lock を押して一時的にオンにし、送り終わったら元に戻す。
@@ -79,11 +85,15 @@ struct behavior_alt_code_config {
     uint32_t cursor_left;
     uint32_t tap_ms;
     uint32_t wait_ms;
+    bool commit_ime;
+    uint32_t ime_wait_ms;
 };
 
 struct step {
     uint32_t keycode;
     bool press;
+    /* この操作の後に、通常の待ち時間に加えて待つ時間（IME の切り替えが済むのを待つ用） */
+    uint32_t extra_wait_ms;
 };
 
 static const uint32_t keypad_digits[10] = {
@@ -181,6 +191,13 @@ static void add_step(uint32_t keycode, bool press) {
     steps[step_count++] = (struct step){.keycode = keycode, .press = press};
 }
 
+/* タップして、離した後に extra_wait_ms だけ余分に待つ */
+static void add_tap_then_wait(uint32_t keycode, uint32_t extra_wait_ms) {
+    add_step(keycode, true);
+    steps[step_count++] =
+        (struct step){.keycode = keycode, .press = false, .extra_wait_ms = extra_wait_ms};
+}
+
 static void add_tap(uint32_t keycode) {
     add_step(keycode, true);
     add_step(keycode, false);
@@ -198,7 +215,7 @@ static size_t count_digits(uint32_t code) {
 /* 送る操作の一覧を作る。上限を超える設定なら何も作らずに false（途中まで送ることはしない） */
 static bool build_steps(const struct behavior_alt_code_config *cfg) {
     // 途中で上限を超えたらその時点で打ち切る（大きな設定値でも計算があふれないように）
-    size_t needed = num_lock_toggled ? 4 : 0;
+    size_t needed = (num_lock_toggled ? 4 : 0) + (cfg->commit_ime ? 4 : 0);
     bool too_long = cfg->cursor_left > MAX_STEPS / 2;
     if (!too_long) {
         needed += 2 * (size_t)cfg->cursor_left;
@@ -213,6 +230,10 @@ static bool build_steps(const struct behavior_alt_code_config *cfg) {
     }
 
     step_count = 0;
+    if (cfg->commit_ime) {
+        // 確定前の文字を確定させる（IME オフ）。IME の処理が済むのを少し待つ
+        add_tap_then_wait(LANGUAGE_2, cfg->ime_wait_ms);
+    }
     if (num_lock_toggled) {
         add_tap(KP_NUM);
     }
@@ -237,6 +258,10 @@ static bool build_steps(const struct behavior_alt_code_config *cfg) {
     }
     if (num_lock_toggled) {
         add_tap(KP_NUM);
+    }
+    if (cfg->commit_ime) {
+        // 続きを日本語で打てるように IME オンに戻す
+        add_tap(LANGUAGE_1);
     }
     return true;
 }
@@ -311,7 +336,8 @@ static void alt_code_work_handler(struct k_work *work) {
         if (s->keycode == KP_NUM && s->press) {
             num_lock_presses_sent++;
         }
-        const uint32_t delay = s->press ? active_cfg->tap_ms : active_cfg->wait_ms;
+        const uint32_t delay =
+            (s->press ? active_cfg->tap_ms : active_cfg->wait_ms) + s->extra_wait_ms;
         k_work_schedule(&alt_code_work, K_MSEC(delay));
         return;
     }
@@ -371,6 +397,8 @@ static const struct behavior_driver_api behavior_alt_code_driver_api = {
         .cursor_left = DT_INST_PROP(n, cursor_left),                                               \
         .tap_ms = DT_INST_PROP(n, tap_ms),                                                         \
         .wait_ms = DT_INST_PROP(n, wait_ms),                                                       \
+        .commit_ime = DT_INST_PROP(n, commit_ime),                                                 \
+        .ime_wait_ms = DT_INST_PROP(n, ime_wait_ms),                                               \
     };                                                                                             \
     BEHAVIOR_DT_INST_DEFINE(n, NULL, NULL, NULL, &behavior_alt_code_config_##n, POST_KERNEL,       \
                             CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &behavior_alt_code_driver_api);
