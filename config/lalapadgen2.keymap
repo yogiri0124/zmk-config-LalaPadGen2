@@ -24,9 +24,6 @@
 
 &lt { quick-tap-ms = <200>; };
 
-// かな配列モードのオン／オフ（&kana_sw）で有効にするかな単打面
-&kana_sw { layer = <KANA_LAYER>; };
-
 / {
     behaviors {
         zip_dyn_scale: zip_dyn_scale {
@@ -126,6 +123,21 @@
             compatible = "zmk,behavior-alt-code";
             #binding-cells = <0>;
             codes = <33116>;
+        };
+
+        // --- かな入力（自作モジュール kana/）。Keymap Editor が認識できるよう、定義はこのファイルに置く ---
+        // かな1文字を送る（&kana_key KN_A など。ID は kana/include/dt-bindings/kana/kana.h）
+        kana_key: kana_key {
+            compatible = "zmk,behavior-kana";
+            #binding-cells = <1>;
+            display-name = "Kana";
+        };
+        // かな配列モードのオン／オフ（&kana_sw KANA_SW_ON / KANA_SW_OFF）。layer はかな単打面
+        kana_sw: kana_sw {
+            compatible = "zmk,behavior-kana-mode";
+            #binding-cells = <1>;
+            display-name = "Kana Mode";
+            layer = <KANA_LAYER>;
         };
     };
 
