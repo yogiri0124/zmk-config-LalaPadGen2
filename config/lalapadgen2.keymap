@@ -136,7 +136,6 @@
             codes = <33116>;
         };
         // ～ （全角チルダ U+FF5E）を入力。日本語 Windows（cp932）の Alt+33120（Shift_JIS 0x8160）で送る。
-        // まだどのレイヤーにも置いていない
         sym_tilde: sym_tilde {
             compatible = "zmk,behavior-alt-code";
             display-name = "～";
@@ -220,7 +219,7 @@
             &kp B  &kp F  &kp L  &kp K  &kp Q  &kp P  &kp G  &kp O  &kp U  &kp PERIOD
             &kp N  &kp S  &kp H  &kp T  &kp M  &kp Y  &kp C  &kp A  &kp E  &kp I
             &mt2 LEFT_SHIFT X  &kp V  &kp J  &kp D  &kp Z  &kp SQT  &kp W  &kp SLASH  &kp SEMI  &kp COMMA
-            &kp LEFT_CONTROL  &kp LWIN  &kp LEFT_ALT  &mo SECONDARY_LAYER  &mt2 LEFT_SHIFT R  &kp ENTER  &kp BACKSPACE  &mt2 RIGHT_SHIFT SPACE  &mo TERTIARY_LAYER  &kp LANGUAGE_2  &kp LANGUAGE_1  &kp BACKSLASH
+            &kp LEFT_CONTROL  &kp LWIN  &kp LEFT_ALT  &mo SECONDARY_LAYER  &mt2 LEFT_SHIFT R  &kp ENTER  &kp BACKSPACE  &kp SPACE  &mo TERTIARY_LAYER  &kp LANGUAGE_2  &kp LANGUAGE_1  &kp BACKSLASH
             &tog QWERTY_LAYER  &kp RIGHT  &kp DOWN  &kp LEFT  &kp UP  &kp UP  &kp LEFT  &kp DOWN  &kp RIGHT  &kana_sw KANA_SW_ON
             &mkp LCLK  &mkp RCLK  &mkp MCLK  &mkp LCLK  &mkp RCLK  &mkp MCLK
             &mkp MB4  &mkp MB5  &kp LG(TAB)  &kp LG(D)  &kp LEFT_CONTROL  &mkp MB4  &mkp MB5  &kp LG(TAB)  &kp LG(D)  &kp LEFT_CONTROL
@@ -261,7 +260,7 @@
             bindings = <
             &kp EXCL  &kp AT  &kp HASH  &kp DLLR  &kp PRCNT  &kp PAGE_UP  &kp HOME  &kp UP  &kp END  &kp PRINTSCREEN
             &kp CARET  &kp AMPS  &kp ASTRK  &pair_paren  &pair_kagi  &kp PAGE_DOWN  &kp LEFT  &kp DOWN  &kp RIGHT  &kp SCROLLLOCK
-            &kp GRAVE  &kp SQT  &kp SEMI  &sym_ellipsis  &sym_hbar  &trans  &mkp MB4  &trans  &mkp MB5  &kp PAUSE_BREAK
+            &kp GRAVE  &kp SQT  &kp SEMI  &sym_ellipsis  &sym_hbar  &trans  &mkp MB4  &sym_tilde  &mkp MB5  &kp PAUSE_BREAK
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
