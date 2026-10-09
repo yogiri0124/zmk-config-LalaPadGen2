@@ -24,12 +24,16 @@
  *   送信先を持たせる ZMK 本体の変更が必要）。このため中止したときは、どちらの PC の Num Lock が
  *   どうなったか確定できないものとして自分の記録は作らず（あれば消し）、PC から届く点灯状態に従う。
  *   接続先が切り替わったとき（zmk_endpoint_changed）も、同じ理由で記録をすべて捨てる。
+ *   切り替えは世代番号（endpoint_generation）で数え、A → B → A のように元の接続先へ戻った場合も
+ *   「切り替わった」と判定する（切り替え時に ZMK が HID の状態を消し、Alt コードが途切れるため）。
  * - Num Lock を切り替えた直後は、PC からの点灯状態の報告が遅れて古い状態が残っていることがある。
  *   そのため切り替えてから ASSUME_MS の間は、PC の報告ではなく「実際に送った Num Lock の回数から
  *   わかる状態」（元に戻した／中止でオンのまま）という自分の記録を使う。記録は接続先ごとに持つ。
  *   （この間に別のキーボードなどで Num Lock を切り替えた場合は反映されない）
  *
- * behavior のコールバックと k_work はどちらもシステムワークキューで動くので、状態の排他は不要。
+ * behavior のコールバックと k_work はどちらもシステムワークキューで動くので、送信の状態の排他は不要。
+ * 接続先の切り替えの通知（zmk_endpoint_changed）は別のスレッドから届くことがあるので、
+ * そこでは世代番号（atomic）を進めるだけにし、記録の消去などはシステムワークキュー側で行う。
  */
 
 #define DT_DRV_COMPAT zmk_behavior_alt_code
@@ -38,6 +42,7 @@
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/atomic.h>
 #include <drivers/behavior.h>
 
 #include <zmk/behavior.h>
@@ -93,6 +98,9 @@ static size_t step_index;
 static bool num_lock_toggled;
 static bool num_lock_original;
 static struct zmk_endpoint_instance active_endpoint;
+/* 接続先が切り替わるたびに増える番号と、この送信を始めたときの番号 */
+static atomic_t endpoint_generation;
+static atomic_val_t active_generation;
 /* この送信で実際に送った Num Lock の「押す」の回数（0: 未送信、1: オンにした、2: 元に戻した） */
 static uint8_t num_lock_presses_sent;
 /* この送信でいま押したままにしているキー（中止するときに離す） */
@@ -103,10 +111,12 @@ static uint32_t key_down;
 static bool assumed_valid[ZMK_ENDPOINT_COUNT];
 static bool assumed_num_lock[ZMK_ENDPOINT_COUNT];
 static int64_t assume_until[ZMK_ENDPOINT_COUNT];
+/* 上の記録を作ったときの接続先の世代番号。接続先が切り替わっていたら記録はすべて捨てる */
+static atomic_val_t records_generation;
 
 struct pending_press {
     const struct behavior_alt_code_config *cfg;
-    struct zmk_endpoint_instance endpoint; /* 押したときの接続先 */
+    atomic_val_t generation; /* 押したときの接続先の世代番号 */
 };
 
 static struct pending_press pending[MAX_PENDING];
@@ -127,7 +137,20 @@ static bool reported_num_lock(struct zmk_endpoint_instance endpoint) {
 
 /* 接続先 endpoint の今の Num Lock の状態。その接続先で切り替えてから ASSUME_MS の間は自分の記録を使う
  * （一時的にオンにした報告が、元に戻した報告より後から届くこともあるため、途中で報告に切り替えない） */
+/* 接続先が切り替わっていたら、Num Lock の記録をすべて捨てる（切り替えの前後に送った操作が
+ * どちらの PC に届いたか確定できないため。以後は PC から届く点灯状態に従う） */
+static void drop_records_if_endpoint_changed(void) {
+    const atomic_val_t generation = atomic_get(&endpoint_generation);
+    if (records_generation != generation) {
+        for (int i = 0; i < ZMK_ENDPOINT_COUNT; i++) {
+            assumed_valid[i] = false;
+        }
+        records_generation = generation;
+    }
+}
+
 static bool current_num_lock(struct zmk_endpoint_instance endpoint) {
+    drop_records_if_endpoint_changed();
     const int idx = zmk_endpoint_instance_to_index(endpoint);
     if (idx >= 0 && idx < ZMK_ENDPOINT_COUNT && assumed_valid[idx]) {
         if (k_uptime_get() < assume_until[idx]) {
@@ -143,6 +166,7 @@ static void record_num_lock_restored(void) {
     if (num_lock_presses_sent != 2) {
         return;
     }
+    drop_records_if_endpoint_changed();
     const int idx = zmk_endpoint_instance_to_index(active_endpoint);
     if (idx < 0 || idx >= ZMK_ENDPOINT_COUNT) {
         return;
@@ -228,16 +252,17 @@ static bool build_steps(const struct behavior_alt_code_config *cfg) {
 static void start_next(void) {
     while (pending_count > 0) {
         const struct behavior_alt_code_config *cfg = pending[0].cfg;
-        const struct zmk_endpoint_instance pressed_endpoint = pending[0].endpoint;
+        const atomic_val_t pressed_generation = pending[0].generation;
         pending_count--;
         memmove(&pending[0], &pending[1], pending_count * sizeof(pending[0]));
 
-        active_endpoint = zmk_endpoints_selected();
-        if (!zmk_endpoint_instance_eq(active_endpoint, pressed_endpoint)) {
-            // 押したときと接続先が違う: 押し直していない入力を別の PC には送らない
+        if (pressed_generation != atomic_get(&endpoint_generation)) {
+            // 押した後に接続先が切り替わった: 押し直していない入力は送らない
             LOG_WRN("Endpoint changed since alt code key press, dropping");
             continue;
         }
+        active_endpoint = zmk_endpoints_selected();
+        active_generation = pressed_generation;
         num_lock_original = current_num_lock(active_endpoint);
         num_lock_toggled = !num_lock_original;
         if (!build_steps(cfg)) {
@@ -256,25 +281,33 @@ static void start_next(void) {
     active_cfg = NULL;
 }
 
-static void alt_code_work_handler(struct k_work *work) {
-    if (step_index < step_count) {
-        if (!zmk_endpoint_instance_eq(zmk_endpoints_selected(), active_endpoint)) {
-            // 途中で接続先が変わった: 残りは送らない。押したままのキーは離しておく
-            // （接続先の切り替えで ZMK が HID の状態を消しているが、念のため）
-            LOG_WRN("Endpoint changed during alt code sequence, aborting");
-            const int64_t now = k_uptime_get();
-            if (key_down != 0) {
-                raise_zmk_keycode_state_changed_from_encoded(key_down, false, now);
-            }
-            if (alt_down) {
-                raise_zmk_keycode_state_changed_from_encoded(LALT, false, now);
-            }
-            forget_num_lock_state(active_endpoint);
-            forget_num_lock_state(zmk_endpoints_selected());
-            start_next();
-            return;
-        }
+/* この送信を始めてから接続先が切り替わったか（元の接続先に戻った場合も含む） */
+static bool endpoint_changed_since_start(void) {
+    return active_generation != atomic_get(&endpoint_generation) ||
+           !zmk_endpoint_instance_eq(zmk_endpoints_selected(), active_endpoint);
+}
 
+static void alt_code_work_handler(struct k_work *work) {
+    if (endpoint_changed_since_start()) {
+        // 途中（最後の操作の後の待ち時間も含む）で接続先が変わった: 残りは送らず、記録も作らない。
+        // 押したままのキーは離しておく（接続先の切り替えで ZMK が HID の状態を消しているが、念のため）
+        LOG_WRN("Endpoint changed during alt code sequence, aborting");
+        const int64_t now = k_uptime_get();
+        if (key_down != 0) {
+            raise_zmk_keycode_state_changed_from_encoded(key_down, false, now);
+        }
+        if (alt_down) {
+            raise_zmk_keycode_state_changed_from_encoded(LALT, false, now);
+        }
+        key_down = 0;
+        alt_down = false;
+        forget_num_lock_state(active_endpoint);
+        forget_num_lock_state(zmk_endpoints_selected());
+        start_next();
+        return;
+    }
+
+    if (step_index < step_count) {
         const struct step *s = &steps[step_index++];
         raise_zmk_keycode_state_changed_from_encoded(s->keycode, s->press, k_uptime_get());
         if (s->keycode == LALT) {
@@ -294,12 +327,9 @@ static void alt_code_work_handler(struct k_work *work) {
     start_next();
 }
 
-/* 接続先が切り替わったら、Num Lock の記録はすべて捨てる（切り替えの前後に送った操作が
- * どちらの PC に届いたか確定できないため。以後は PC から届く点灯状態に従う） */
+/* 接続先が切り替わったら世代番号を進める（別のスレッドから呼ばれることがあるので、ここでは数えるだけ） */
 static int alt_code_endpoint_listener(const zmk_event_t *eh) {
-    for (int i = 0; i < ZMK_ENDPOINT_COUNT; i++) {
-        assumed_valid[i] = false;
-    }
+    atomic_inc(&endpoint_generation);
     return ZMK_EV_EVENT_BUBBLE;
 }
 
@@ -317,7 +347,7 @@ static int on_alt_code_binding_pressed(struct zmk_behavior_binding *binding,
     }
     pending[pending_count++] = (struct pending_press){
         .cfg = cfg,
-        .endpoint = zmk_endpoints_selected(),
+        .generation = atomic_get(&endpoint_generation),
     };
 
     if (!busy) {
