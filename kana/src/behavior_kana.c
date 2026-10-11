@@ -83,6 +83,8 @@ static const struct kana_entry kana_table[KN_MAX_ID + 1] = {
     [KE_SPACE] = K1(SPACE),
     [KE_ENTER] = K1(ENTER),
     [KE_BSPC] = K1(BACKSPACE),
+
+    [KS_HBAR] = K2(Z, EQUAL), /* ― （ローマ字テーブルに追加した z=。docs/google-ime） */
 };
 
 struct behavior_kana_config {
@@ -97,7 +99,7 @@ static uint32_t held_keycode[ZMK_KEYMAP_LEN];
 
 static bool is_hold_key(uint32_t id) { return id == KE_SPACE || id == KE_ENTER || id == KE_BSPC; }
 
-/* 最後にかな・記号（ID 1〜KANA_LAST_CHAR_ID）を送った時刻。IME オンの再送の判定に使う */
+/* 最後にかな・記号（編集用のキー以外）を送った時刻。IME オンの再送の判定に使う */
 static int64_t last_char_ms;
 static bool char_sent;
 
@@ -127,6 +129,7 @@ static const struct behavior_parameter_value_metadata param_values[] = {
     KV(KS_SANTEN, "…"), KV(KS_EXCL, "！"), KV(KS_QUES, "？"), KV(KS_KAGI, "「」"),
     KV(KS_PAREN, "（）"),
     KV(KE_SPACE, "スペース"), KV(KE_ENTER, "エンター"), KV(KE_BSPC, "バックスペース"),
+    KV(KS_HBAR, "―"),
 };
 
 BUILD_ASSERT(ARRAY_SIZE(param_values) == KN_MAX_ID, "kana metadata must cover every kana ID");
@@ -175,7 +178,7 @@ static int on_kana_binding_pressed(struct zmk_behavior_binding *binding,
 
     // かな・記号の前だけ、しばらく打っていなかったら IME オンを先に送る（LANGUAGE_1 はトグルではないので重ねても害がない）。
     // スペース・エンター・バックスペースの前には送らない（IME オフのときに全角スペースなどにならないように）
-    const bool is_char = id <= KANA_LAST_CHAR_ID;
+    const bool is_char = !is_hold_key(id);
     if (is_char && cfg->ime_resync_ms > 0) {
         const int64_t now = k_uptime_get();
         if (!char_sent || now - last_char_ms >= cfg->ime_resync_ms) {

@@ -5,9 +5,9 @@
  *
  * 名前の頭で種類を分けている（エディタの一覧で名前順に並んだときに、種類ごとにまとまる）。
  *   KN_ : かな（清音・濁音・半濁音・小書き）
- *   KS_ : かなと一緒に打つ記号（、。ー…！？「」（））
+ *   KS_ : かなと一緒に打つ記号（、。ー…！？「」（）―）
  *   KE_ : 編集用のキー（スペース・エンター・バックスペース）
- * … 「」 （） は、同じ文字を送る keymap のマクロ（sym_ellipsis・pair_kagi・pair_paren）もある。
+ * … 「」 （） ― は、同じ文字を送る keymap のマクロ（sym_ellipsis・pair_kagi・pair_paren・sym_hbar_ime）もある。
  * かなのレイヤーには、こちらの KS_ を置く（かな配列モードの解除中の入力を捨てる・送信待ちがあふれたときに
  * 順番を守る、という &kana_key の安全処理が効くのは、こちらだけ）。
  */
@@ -118,9 +118,10 @@
 #define KE_ENTER 91
 #define KE_BSPC 92
 
-/* 文字（かな・記号）の最後の ID と、全体の最後の ID */
-#define KANA_LAST_CHAR_ID KS_PAREN
-#define KN_MAX_ID 92
+/* 後から足した記号（Studio に保存した配置がずれないよう、既存の番号は動かさず、末尾に足す） */
+#define KS_HBAR 93 /* ― （Google 日本語入力のローマ字テーブルに z= → ― の登録が必要） */
+
+#define KN_MAX_ID 93
 
 /* &kana_sw のパラメータ */
 #define KANA_SW_ON 1
