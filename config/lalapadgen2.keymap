@@ -171,7 +171,8 @@
         };
 
         // --- かな入力（自作モジュール kana/）。Keymap Editor が認識できるよう、定義はこのファイルに置く ---
-        // かな1文字を送る（&kana_key KN_A など。ID は kana/include/dt-bindings/kana/kana.h）
+        // かな・記号・編集用のキーを送る（&kana_key KN_A など。ID は kana/include/dt-bindings/kana/kana.h。
+        // KN_ = かな、KS_ = かなと一緒に打つ記号（、。ー…！？「」（））、KE_ = スペース・エンター・バックスペース）
         kana_key: kana_key {
             compatible = "zmk,behavior-kana";
             #binding-cells = <1>;
@@ -294,7 +295,7 @@
         };
 
         // QWERTY 配列（Default は Night 配列 https://valorance.net/night/ ）。Default の上に重ねる。文字以外は透過で Default のまま。
-        // 42 で Default（Night）と切り替える。親指は 34 = Space、35 = Shift、36 = BS、37 = Enter。
+        // 42 で Default（Night）と切り替える。親指は 34 = Shift だけを置き、ほかは Default のまま（35 = Enter、36 = BS、37 = Space）。
         // 番号の大きいレイヤーが優先されるので、数字・記号・マウス・かなが隠れないよう Default のすぐ上に置く。
         QWERTY_LAYER {
             display-name = "qwerty";
@@ -302,7 +303,7 @@
             &kp Q  &kp W  &kp E  &kp R  &kp T  &kp Y  &kp U  &kp I  &kp O  &kp P
             &kp A  &kp S  &kp D  &kp F  &kp G  &kp H  &kp J  &kp K  &kp L  &mt2 EQUAL MINUS
             &mt2 LEFT_SHIFT Z  &kp X  &kp C  &kp V  &kp B  &kp N  &kp M  &kp COMMA  &kp PERIOD  &kp SLASH
-            &trans  &trans  &trans  &trans  &kp SPACE  &kp LEFT_SHIFT  &kp BACKSPACE  &kp ENTER  &trans  &trans  &trans  &trans
+            &trans  &trans  &trans  &trans  &kp LEFT_SHIFT  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &tog QWERTY_LAYER  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
@@ -312,10 +313,10 @@
         SECONDARY_LAYER {
             display-name = "secondary_layer";
             bindings = <
-            &kp NUMBER_1  &kp NUMBER_2  &kp NUMBER_3  &kp NUMBER_4  &kp NUMBER_5  &kp KP_NUMLOCK  &kp KP_NUMBER_7  &kp KP_NUMBER_8  &kp KP_NUMBER_9  &kp KP_PLUS
-            &kp NUMBER_6  &kp NUMBER_7  &kp NUMBER_8  &kp NUMBER_9  &kp NUMBER_0  &kp MINUS  &kp KP_NUMBER_4  &kp KP_NUMBER_5  &kp KP_NUMBER_6  &kp KP_MINUS
-            &kp F6  &kp F7  &kp F8  &kp F9  &kp F10  &kp EQUAL  &kp KP_NUMBER_1  &kp KP_NUMBER_2  &kp KP_NUMBER_3  &kp KP_ASTERISK
-            &trans  &trans  &trans  &trans  &trans  &trans  &kp DELETE  &trans  &trans  &kp KP_NUMBER_0  &kp KP_DOT  &kp KP_DIVIDE
+            &kp NUMBER_1  &kp NUMBER_2  &kp NUMBER_3  &kp NUMBER_4  &kp NUMBER_5  &none  &none  &sym_tilde_ime  &kp HASH  &none
+            &kp NUMBER_6  &kp NUMBER_7  &kp NUMBER_8  &kp NUMBER_9  &kp NUMBER_0  &none  &sym_ellipsis  &pair_kagi  &pair_nijukagi  &pair_paren
+            &none  &none  &none  &none  &none  &none  &kp PRCNT  &kp ASTRK  &kp GRAVE  &kp EQUAL
+            &trans  &trans  &trans  &trans  &kp LEFT_SHIFT  &trans  &kp DELETE  &trans  &trans  &trans  &trans  &kp KP_NUMLOCK
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
             &kp LC(LG(LEFT))  &kp LC(LG(RIGHT))  &trans  &trans  &trans  &kp LC(LG(LEFT))  &kp LC(LG(RIGHT))  &trans  &trans  &trans
@@ -325,10 +326,10 @@
         TERTIARY_LAYER {
             display-name = "tertiary_layer";
             bindings = <
-            &kp EXCL  &kp AT  &kp HASH  &kp DLLR  &kp PRCNT  &kp PAGE_UP  &kp HOME  &kp UP  &kp END  &kp PRINTSCREEN
-            &kp CARET  &kp AMPS  &kp ASTRK  &pair_paren  &pair_kagi  &kp PAGE_DOWN  &kp LEFT  &kp DOWN  &kp RIGHT  &kp SCROLLLOCK
-            &kp GRAVE  &kp SQT  &kp SEMI  &sym_ellipsis  &sym_hbar_ime  &pair_cquote_ime  &mkp MB4  &sym_tilde_ime  &mkp MB5  &kp PAUSE_BREAK
-            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
+            &none  &kp AMPS  &pair_cquote_ime  &none  &none  &kp PAGE_UP  &kp HOME  &kp UP  &kp END  &kp PRINTSCREEN
+            &kp AT  &kp EXCL  &kp MINUS  &sym_hbar_ime  &none  &kp PAGE_DOWN  &kp LEFT  &kp DOWN  &kp RIGHT  &none
+            &kp BACKSLASH  &kp DLLR  &kp CARET  &none  &none  &none  &none  &none  &none  &none
+            &trans  &trans  &trans  &trans  &kp LEFT_SHIFT  &trans  &trans  &trans  &trans  &trans  &trans  &kp CAPS
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
@@ -351,10 +352,10 @@
         MOUSE_LAYER {
             display-name = "mouse_layer";
             bindings = <
-            &none  &kp LC(W)  &none  &clk_lock_l  &kp LC(LS(T))  &kp LC(LS(TAB))  &kp LC(TAB)  &none  &none  &none
-            &none  &mkp MCLK  &mkp RCLK  &mkp LCLK  &none  &none  &none  &none  &none  &none
-            &none  &kp LC(X)  &kp LC(C)  &kp LC(V)  &none  &none  &none  &none  &none  &none
-            &trans  &trans  &trans  &none  &scr_snap_hold  &none  &none  &none  &none  &none  &none  &none
+            &none  &kp LC(W)  &kp LC(LS(T))  &clk_lock_l  &kp UP  &kp LC(LS(TAB))  &kp LC(TAB)  &none  &none  &none
+            &kp LC(A)  &mkp MCLK  &mkp RCLK  &mkp LCLK  &kp DOWN  &kp LEFT  &kp RIGHT  &none  &none  &none
+            &kp LC(Z)  &kp LC(X)  &kp LC(C)  &kp LC(V)  &none  &none  &none  &none  &none  &none
+            &trans  &trans  &trans  &trans  &scr_snap_hold  &trans  &trans  &trans  &trans  &none  &none  &none
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
@@ -367,7 +368,7 @@
             &kana_key KN_A  &kana_key KN_I  &kana_key KN_U  &kana_key KN_E  &kana_key KN_O  &kana_key KN_KA  &kana_key KN_KI  &kana_key KN_KU  &kana_key KN_KE  &kana_key KN_KO
             &kana_key KN_SA  &kana_key KN_SI  &kana_key KN_SU  &kana_key KN_SE  &kana_key KN_SO  &kana_key KN_TA  &kana_key KN_TI  &kana_key KN_TU  &kana_key KN_TE  &kana_key KN_TO
             &kana_key KN_NA  &kana_key KN_NI  &kana_key KN_NU  &kana_key KN_NE  &kana_key KN_NO  &kana_key KN_HA  &kana_key KN_HI  &kana_key KN_HU  &kana_key KN_HE  &kana_key KN_HO
-            &none  &none  &none  &kana_key KN_SPACE  &mo KANA_L_LAYER  &kana_key KN_BSPC  &kana_key KN_ENTER  &mo KANA_R_LAYER  &none  &mo KANA_SYM_LAYER  &none  &none
+            &none  &none  &none  &kana_key KE_SPACE  &mo KANA_L_LAYER  &kana_key KE_ENTER  &kana_key KE_BSPC  &mo KANA_R_LAYER  &mo KANA_SYM_LAYER  &none  &none  &none
             &none  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &kana_sw KANA_SW_OFF
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
@@ -392,7 +393,7 @@
             bindings = <
             &kana_key KN_DO  &kana_key KN_BA  &kana_key KN_BI  &kana_key KN_BU  &kana_key KN_BE  &kana_key KN_BO  &kana_key KN_PA  &kana_key KN_PI  &kana_key KN_PU  &kana_key KN_PE
             &kana_key KN_PO  &kana_key KN_XYA  &kana_key KN_XYU  &kana_key KN_XYO  &kana_key KN_XA  &kana_key KN_XI  &kana_key KN_XU  &kana_key KN_XE  &kana_key KN_XO  &kana_key KN_XTU
-            &kana_key KN_VU  &kana_key KN_TOUTEN  &kana_key KN_KUTEN  &kana_key KN_CHOUON  &kana_key KN_SANTEN  &kana_key KN_EXCL  &kana_key KN_QUES  &kana_key KN_KAGI  &sym_hbar_ime  &kana_key KN_PAREN
+            &kana_key KN_VU  &kana_key KS_TOUTEN  &kana_key KS_KUTEN  &kana_key KS_CHOUON  &kana_key KS_SANTEN  &kana_key KS_EXCL  &kana_key KS_QUES  &kana_key KS_KAGI  &sym_hbar_ime  &kana_key KS_PAREN
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
@@ -400,7 +401,7 @@
             >;
         };
 
-        // かな記号面（かな単打面の位置39を押している間）。記号は後で配置する。今は文字キー（0〜29）を空にしている
+        // かな記号面（かな単打面の位置38を押している間）。記号は後で配置する。今は文字キー（0〜29）を空にしている
         KANA_SYM_LAYER {
             display-name = "kana_symbol";
             bindings = <
