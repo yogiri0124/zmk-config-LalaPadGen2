@@ -2,6 +2,12 @@
  * かな入力モジュール (&kana_key) の文字 ID。
  * keymap では `&kana_key KN_KA` のように使う。ID から送るローマ字は src/behavior_kana.c の表で決まる。
  * 0 は未定義（何も送らない）。
+ *
+ * 名前の頭で種類を分けている（エディタの一覧で名前順に並んだときに、種類ごとにまとまる）。
+ *   KN_ : かな（清音・濁音・半濁音・小書き）
+ *   KS_ : かなと一緒に打つ記号（、。ー！？）
+ *   KE_ : 編集用のキー（スペース・エンター・バックスペース）
+ * … 「」 （） などは、keymap のマクロ（sym_ellipsis・pair_kagi・pair_paren など）を使う。
  */
 
 #pragma once
@@ -95,22 +101,21 @@
 #define KN_XTU 80
 #define KN_VU 81
 
-/* 記号 */
-#define KN_TOUTEN 82   /* 、 */
-#define KN_KUTEN 83    /* 。 */
-#define KN_CHOUON 84   /* ー */
-#define KN_SANTEN 85   /* … */
-#define KN_EXCL 86     /* ！ */
-#define KN_QUES 87     /* ？ */
-#define KN_KAGI 88     /* 「」 */
-#define KN_PAREN 89    /* （） */
+/* かなと一緒に打つ記号（かなと同じく、しばらく打っていなければ先に IME オンを送る） */
+#define KS_TOUTEN 82 /* 、 */
+#define KS_KUTEN 83  /* 。 */
+#define KS_CHOUON 84 /* ー */
+#define KS_EXCL 85   /* ！ */
+#define KS_QUES 86   /* ？ */
 
-/* 編集用のキー（かなと同じ送信キューで順番どおりに送る。IME オンの再送はしない） */
-#define KN_SPACE 90
-#define KN_ENTER 91
-#define KN_BSPC 92
+/* 編集用のキー（かなと同じ送信キューで順番どおりに送る。押している間は押しっぱなし。IME オンの再送はしない） */
+#define KE_SPACE 87
+#define KE_ENTER 88
+#define KE_BSPC 89
 
-#define KN_MAX_ID 92
+/* 文字（かな・記号）の最後の ID と、全体の最後の ID */
+#define KANA_LAST_CHAR_ID KS_QUES
+#define KN_MAX_ID 89
 
 /* &kana_sw のパラメータ */
 #define KANA_SW_ON 1

@@ -5,7 +5,8 @@
  * ZMK の behavior queue（マクロと同じ仕組み）経由で &kp として順に送る。
  * かな漢字変換はホスト側の IME（ローマ字入力モード）が行う。
  * ホストのキーボード配列は英語配列 (US) を前提にしている。
- * 記号の一部（…）は Google 日本語入力の標準ローマ字テーブル（z.）を前提にしている。
+ * 送るのは、かな（KN_）、かなと一緒に打つ記号（KS_: 、。ー！？）、編集用のキー（KE_）だけ。
+ * … 「」 （） などは keymap のマクロで送る（マクロも同じ behavior queue を通るので、順番は崩れない）。
  * 親指キーのタップ（スペース／エンター）も同じキューで送り、かな列を追い越さないようにする。
  * キューへの登録・押しっぱなし防止・かな配列モードの状態は kana_output.c にまとめている。
  */
@@ -70,18 +71,15 @@ static const struct kana_entry kana_table[KN_MAX_ID + 1] = {
     [KN_XI] = K2(X, I),     [KN_XU] = K2(X, U),     [KN_XE] = K2(X, E),     [KN_XO] = K2(X, O),
     [KN_XTU] = K3(X, T, U), [KN_VU] = K2(V, U),
 
-    [KN_TOUTEN] = K1(COMMA),         /* 、 */
-    [KN_KUTEN] = K1(DOT),            /* 。 */
-    [KN_CHOUON] = K1(MINUS),         /* ー */
-    [KN_SANTEN] = K2(Z, DOT),        /* … （Google 日本語入力: z.） */
-    [KN_EXCL] = K1(EXCLAMATION),     /* ！ */
-    [KN_QUES] = K1(QUESTION),        /* ？ */
-    [KN_KAGI] = K3(LBKT, RBKT, LEFT),              /* 「」 → ← でカーソルを中へ */
-    [KN_PAREN] = K3(LPAR, RPAR, LEFT),             /* （） → ← でカーソルを中へ */
+    [KS_TOUTEN] = K1(COMMA),     /* 、 */
+    [KS_KUTEN] = K1(DOT),        /* 。 */
+    [KS_CHOUON] = K1(MINUS),     /* ー */
+    [KS_EXCL] = K1(EXCLAMATION), /* ！ */
+    [KS_QUES] = K1(QUESTION),    /* ？ */
 
-    [KN_SPACE] = K1(SPACE),
-    [KN_ENTER] = K1(ENTER),
-    [KN_BSPC] = K1(BACKSPACE),
+    [KE_SPACE] = K1(SPACE),
+    [KE_ENTER] = K1(ENTER),
+    [KE_BSPC] = K1(BACKSPACE),
 };
 
 struct behavior_kana_config {
@@ -94,9 +92,9 @@ struct behavior_kana_config {
  * 離したとき「離す」を送る。キー位置ごとに押しているキーコードを覚えておく（0 = 押していない） */
 static uint32_t held_keycode[ZMK_KEYMAP_LEN];
 
-static bool is_hold_key(uint32_t id) { return id == KN_SPACE || id == KN_ENTER || id == KN_BSPC; }
+static bool is_hold_key(uint32_t id) { return id == KE_SPACE || id == KE_ENTER || id == KE_BSPC; }
 
-/* 最後にかな・記号（ID 1〜89）を送った時刻。IME オンの再送の判定に使う */
+/* 最後にかな・記号（ID 1〜KANA_LAST_CHAR_ID）を送った時刻。IME オンの再送の判定に使う */
 static int64_t last_char_ms;
 static bool char_sent;
 
@@ -122,10 +120,9 @@ static const struct behavior_parameter_value_metadata param_values[] = {
     KV(KN_BO, "ぼ"),  KV(KN_PA, "ぱ"),  KV(KN_PI, "ぴ"),  KV(KN_PU, "ぷ"),  KV(KN_PE, "ぺ"),
     KV(KN_PO, "ぽ"),  KV(KN_XYA, "ゃ"), KV(KN_XYU, "ゅ"), KV(KN_XYO, "ょ"), KV(KN_XA, "ぁ"),
     KV(KN_XI, "ぃ"),  KV(KN_XU, "ぅ"),  KV(KN_XE, "ぇ"),  KV(KN_XO, "ぉ"),  KV(KN_XTU, "っ"),
-    KV(KN_VU, "ゔ"),  KV(KN_TOUTEN, "、"), KV(KN_KUTEN, "。"), KV(KN_CHOUON, "ー"),
-    KV(KN_SANTEN, "…"), KV(KN_EXCL, "！"), KV(KN_QUES, "？"), KV(KN_KAGI, "「」"),
-    KV(KN_PAREN, "（）"),
-    KV(KN_SPACE, "スペース"), KV(KN_ENTER, "エンター"), KV(KN_BSPC, "バックスペース"),
+    KV(KN_VU, "ゔ"),  KV(KS_TOUTEN, "、"), KV(KS_KUTEN, "。"), KV(KS_CHOUON, "ー"),
+    KV(KS_EXCL, "！"), KV(KS_QUES, "？"),
+    KV(KE_SPACE, "スペース"), KV(KE_ENTER, "エンター"), KV(KE_BSPC, "バックスペース"),
 };
 
 BUILD_ASSERT(ARRAY_SIZE(param_values) == KN_MAX_ID, "kana metadata must cover every kana ID");
@@ -174,7 +171,7 @@ static int on_kana_binding_pressed(struct zmk_behavior_binding *binding,
 
     // かな・記号の前だけ、しばらく打っていなかったら IME オンを先に送る（LANGUAGE_1 はトグルではないので重ねても害がない）。
     // スペース・エンター・バックスペースの前には送らない（IME オフのときに全角スペースなどにならないように）
-    const bool is_char = id <= KN_PAREN;
+    const bool is_char = id <= KANA_LAST_CHAR_ID;
     if (is_char && cfg->ime_resync_ms > 0) {
         const int64_t now = k_uptime_get();
         if (!char_sent || now - last_char_ms >= cfg->ime_resync_ms) {

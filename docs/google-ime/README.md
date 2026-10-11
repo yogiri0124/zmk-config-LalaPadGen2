@@ -23,7 +23,7 @@ PC ごとに読み込む必要があります（キーボードに書き込む�
 | `z}` | ”（U+201D） | `pair_cquote_ime` |
 
 標準のテーブルにある `z.`（…）、`z[` `z]`（『』）、`[` `]`（「」）も、キーボード側のキー
-（`sym_ellipsis`、`pair_nijukagi`、`pair_kagi`、かなの `KN_SANTEN`・`KN_KAGI`）が使っています。
+（`sym_ellipsis`、`pair_nijukagi`、`pair_kagi`）が使っています。
 
 ## 登録していない PC では
 
