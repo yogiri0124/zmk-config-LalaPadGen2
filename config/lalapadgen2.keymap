@@ -172,7 +172,7 @@
 
         // --- かな入力（自作モジュール kana/）。Keymap Editor が認識できるよう、定義はこのファイルに置く ---
         // かな・記号・編集用のキーを送る（&kana_key KN_A など。ID は kana/include/dt-bindings/kana/kana.h。
-        // KN_ = かな、KS_ = かなと一緒に打つ記号（、。ー！？）、KE_ = スペース・エンター・バックスペース）
+        // KN_ = かな、KS_ = かなと一緒に打つ記号（、。ー…！？「」（））、KE_ = スペース・エンター・バックスペース）
         kana_key: kana_key {
             compatible = "zmk,behavior-kana";
             #binding-cells = <1>;
@@ -295,7 +295,7 @@
         };
 
         // QWERTY 配列（Default は Night 配列 https://valorance.net/night/ ）。Default の上に重ねる。文字以外は透過で Default のまま。
-        // 42 で Default（Night）と切り替える。親指は 34 = Space、35 = Shift、36 = BS、37 = Enter。
+        // 42 で Default（Night）と切り替える。親指は 34 = Shift だけを置き、ほかは Default のまま（35 = Enter、36 = BS、37 = Space）。
         // 番号の大きいレイヤーが優先されるので、数字・記号・マウス・かなが隠れないよう Default のすぐ上に置く。
         QWERTY_LAYER {
             display-name = "qwerty";
@@ -393,7 +393,7 @@
             bindings = <
             &kana_key KN_DO  &kana_key KN_BA  &kana_key KN_BI  &kana_key KN_BU  &kana_key KN_BE  &kana_key KN_BO  &kana_key KN_PA  &kana_key KN_PI  &kana_key KN_PU  &kana_key KN_PE
             &kana_key KN_PO  &kana_key KN_XYA  &kana_key KN_XYU  &kana_key KN_XYO  &kana_key KN_XA  &kana_key KN_XI  &kana_key KN_XU  &kana_key KN_XE  &kana_key KN_XO  &kana_key KN_XTU
-            &kana_key KN_VU  &kana_key KS_TOUTEN  &kana_key KS_KUTEN  &kana_key KS_CHOUON  &sym_ellipsis  &kana_key KS_EXCL  &kana_key KS_QUES  &pair_kagi  &sym_hbar_ime  &pair_paren
+            &kana_key KN_VU  &kana_key KS_TOUTEN  &kana_key KS_KUTEN  &kana_key KS_CHOUON  &kana_key KS_SANTEN  &kana_key KS_EXCL  &kana_key KS_QUES  &kana_key KS_KAGI  &sym_hbar_ime  &kana_key KS_PAREN
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
@@ -401,7 +401,7 @@
             >;
         };
 
-        // かな記号面（かな単打面の位置39を押している間）。記号は後で配置する。今は文字キー（0〜29）を空にしている
+        // かな記号面（かな単打面の位置38を押している間）。記号は後で配置する。今は文字キー（0〜29）を空にしている
         KANA_SYM_LAYER {
             display-name = "kana_symbol";
             bindings = <

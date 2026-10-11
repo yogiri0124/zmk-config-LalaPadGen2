@@ -5,9 +5,11 @@
  *
  * 名前の頭で種類を分けている（エディタの一覧で名前順に並んだときに、種類ごとにまとまる）。
  *   KN_ : かな（清音・濁音・半濁音・小書き）
- *   KS_ : かなと一緒に打つ記号（、。ー！？）
+ *   KS_ : かなと一緒に打つ記号（、。ー…！？「」（））
  *   KE_ : 編集用のキー（スペース・エンター・バックスペース）
- * … 「」 （） などは、keymap のマクロ（sym_ellipsis・pair_kagi・pair_paren など）を使う。
+ * … 「」 （） は、同じ文字を送る keymap のマクロ（sym_ellipsis・pair_kagi・pair_paren）もある。
+ * かなのレイヤーには、こちらの KS_ を置く（かな配列モードの解除中の入力を捨てる・送信待ちがあふれたときに
+ * 順番を守る、という &kana_key の安全処理が効くのは、こちらだけ）。
  */
 
 #pragma once
@@ -105,17 +107,20 @@
 #define KS_TOUTEN 82 /* 、 */
 #define KS_KUTEN 83  /* 。 */
 #define KS_CHOUON 84 /* ー */
-#define KS_EXCL 85   /* ！ */
-#define KS_QUES 86   /* ？ */
+#define KS_SANTEN 85 /* … */
+#define KS_EXCL 86   /* ！ */
+#define KS_QUES 87   /* ？ */
+#define KS_KAGI 88   /* 「」 */
+#define KS_PAREN 89  /* （） */
 
 /* 編集用のキー（かなと同じ送信キューで順番どおりに送る。押している間は押しっぱなし。IME オンの再送はしない） */
-#define KE_SPACE 87
-#define KE_ENTER 88
-#define KE_BSPC 89
+#define KE_SPACE 90
+#define KE_ENTER 91
+#define KE_BSPC 92
 
 /* 文字（かな・記号）の最後の ID と、全体の最後の ID */
-#define KANA_LAST_CHAR_ID KS_QUES
-#define KN_MAX_ID 89
+#define KANA_LAST_CHAR_ID KS_PAREN
+#define KN_MAX_ID 92
 
 /* &kana_sw のパラメータ */
 #define KANA_SW_ON 1
