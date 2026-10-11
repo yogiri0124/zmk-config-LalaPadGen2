@@ -105,7 +105,7 @@ X V J D Z        ' W / ; ,
 | 頭 | 種類 | 例 |
 | --- | --- | --- |
 | `KN_` | かな | `KN_A`（あ）、`KN_KA`（か）、`KN_XTU`（っ） |
-| `KS_` | かなと一緒に打つ記号 | `KS_TOUTEN`（、）、`KS_KUTEN`（。）、`KS_CHOUON`（ー）、`KS_SANTEN`（…）、`KS_EXCL`（！）、`KS_QUES`（？）、`KS_KAGI`（「」）、`KS_PAREN`（（）） |
+| `KS_` | かなと一緒に打つ記号 | `KS_TOUTEN`（、）、`KS_KUTEN`（。）、`KS_CHOUON`（ー）、`KS_SANTEN`（…）、`KS_EXCL`（！）、`KS_QUES`（？）、`KS_KAGI`（「」）、`KS_PAREN`（（））、`KS_HBAR`（―） |
 | `KE_` | 編集用のキー | `KE_SPACE`、`KE_ENTER`、`KE_BSPC` |
 
 ## カスタムキー

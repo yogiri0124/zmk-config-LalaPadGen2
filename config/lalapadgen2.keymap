@@ -172,7 +172,7 @@
 
         // --- かな入力（自作モジュール kana/）。Keymap Editor が認識できるよう、定義はこのファイルに置く ---
         // かな・記号・編集用のキーを送る（&kana_key KN_A など。ID は kana/include/dt-bindings/kana/kana.h。
-        // KN_ = かな、KS_ = かなと一緒に打つ記号（、。ー…！？「」（））、KE_ = スペース・エンター・バックスペース）
+        // KN_ = かな、KS_ = かなと一緒に打つ記号（、。ー…！？「」（）―）、KE_ = スペース・エンター・バックスペース）
         kana_key: kana_key {
             compatible = "zmk,behavior-kana";
             #binding-cells = <1>;
@@ -393,7 +393,7 @@
             bindings = <
             &kana_key KN_DO  &kana_key KN_BA  &kana_key KN_BI  &kana_key KN_BU  &kana_key KN_BE  &kana_key KN_BO  &kana_key KN_PA  &kana_key KN_PI  &kana_key KN_PU  &kana_key KN_PE
             &kana_key KN_PO  &kana_key KN_XYA  &kana_key KN_XYU  &kana_key KN_XYO  &kana_key KN_XA  &kana_key KN_XI  &kana_key KN_XU  &kana_key KN_XE  &kana_key KN_XO  &kana_key KN_XTU
-            &kana_key KN_VU  &kana_key KS_TOUTEN  &kana_key KS_KUTEN  &kana_key KS_CHOUON  &kana_key KS_SANTEN  &kana_key KS_EXCL  &kana_key KS_QUES  &kana_key KS_KAGI  &sym_hbar_ime  &kana_key KS_PAREN
+            &kana_key KN_VU  &kana_key KS_TOUTEN  &kana_key KS_KUTEN  &kana_key KS_CHOUON  &kana_key KS_SANTEN  &kana_key KS_EXCL  &kana_key KS_QUES  &kana_key KS_KAGI  &kana_key KS_HBAR  &kana_key KS_PAREN
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
