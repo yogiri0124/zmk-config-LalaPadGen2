@@ -9,6 +9,7 @@ if((NOT CONFIG_ZMK_SPLIT) OR CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
     target_sources(app PRIVATE
       src/kana_output.c
       src/behavior_kana.c
+      src/behavior_kana_seq.c
       src/behavior_kana_mode.c
       src/behavior_kana_sync.c
     )

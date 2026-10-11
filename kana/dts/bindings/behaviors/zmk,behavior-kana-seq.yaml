@@ -1,0 +1,35 @@
+# 決まった打鍵の列を送る behavior（引数なし）。送る打鍵は keys に書く。
+# ZMK 標準のマクロと違い、&kana_key と同じ送り方をする（かな配列モードの解除処理中は捨てる、
+# 送信キューが満杯なら残りを打ち切る、かなと同じキューに並ぶので追い越さない）。
+# かな配列モードでないときも使える。
+
+description: Fixed key sequence sent through the kana output queue
+
+compatible: "zmk,behavior-kana-seq"
+
+include: zero_param.yaml
+
+properties:
+  keys:
+    type: array
+    required: true
+    description: 順に1回ずつタップするキー（dt-bindings/zmk/keys.h の名前。LS(N9) のような修飾つきも可）
+  ime-on:
+    type: boolean
+    description: >
+      かな配列モードでないときも、打鍵の前に IME オン (LANGUAGE_1) を毎回送る
+      （IME のローマ字テーブルを前提にした記号用）
+  tap-ms:
+    type: int
+    default: 5
+    description: 1キーを押してから離すまでの時間 (ms)
+  wait-ms:
+    type: int
+    default: 5
+    description: キーを離してから次のキーを押すまでの時間 (ms)
+  ime-resync-ms:
+    type: int
+    default: 1000
+    description: >
+      かな配列モード中、かな・記号をこの時間 (ms) 以上打っていなかったら、打鍵の前に IME オン (LANGUAGE_1) を送る
+      （&kana_key の ime-resync-ms と同じ働き）。0 で無効

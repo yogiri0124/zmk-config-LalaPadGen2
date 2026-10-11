@@ -47,7 +47,7 @@
         };
 
         // ===== カスタムキー（エディタで使いたいレイヤーに割り当てる） =====
-        // 名前の頭で種類を分けている（clk_: クリック、cur_: カーソル、mod_: 修飾キー、scr_: スクロール、pair_: カッコ、sym_: 記号）。
+        // 名前の頭で種類を分けている（clk_: クリック、cur_: カーソル、mod_: 修飾キー、scr_: スクロール、ks_: かなと一緒に打つ記号、pair_: カッコ、sym_: 記号）。
         // display-name は ZMK Studio の一覧とキーの上に出る名前（キーの上は 9 文字まで）。
 
         // --- clk_: クリック押しっぱなし（もう一度押す、または同じボタンのクリックで解除） ---
@@ -136,7 +136,7 @@
         };
 
         // --- sym_: 記号（Windows の Alt コードで送るもの。IME の状態やローマ字テーブルに関係なく入る） ---
-        // ふだんは下の macros にあるローマ字テーブル版（sym_hbar_ime など）を使う。こちらは、ローマ字テーブルに
+        // ふだんは下のほうにあるローマ字テーブル版（sym_hbar_ime など）を使う。こちらは、ローマ字テーブルに
         // 登録していない PC で使うための予備（どのレイヤーにも置いていない）。
         // commit-ime: 先に IME オフで確定前の文字を確定させ、送り終えたら IME オンに戻す
         // （付けないと、確定前の文字があるときに、続きが記号の前に入ってしまう）
@@ -171,8 +171,8 @@
         };
 
         // --- かな入力（自作モジュール kana/）。Keymap Editor が認識できるよう、定義はこのファイルに置く ---
-        // かな・記号・編集用のキーを送る（&kana_key KN_A など。ID は kana/include/dt-bindings/kana/kana.h。
-        // KN_ = かな、KS_ = かなと一緒に打つ記号（、。ー…！？「」（）―）、KE_ = スペース・エンター・バックスペース）
+        // かな・編集用のキーを送る（&kana_key KN_A など。ID は kana/include/dt-bindings/kana/kana.h。
+        // KN_ = かな、KE_ = スペース・エンター・バックスペース）。記号は、下の zmk,behavior-kana-seq のキーで送る
         kana_key: kana_key {
             compatible = "zmk,behavior-kana";
             #binding-cells = <1>;
@@ -185,82 +185,116 @@
             display-name = "Kana Mode";
             layer = <KANA_LAYER>;
         };
-    };
 
-    // --- pair_: カッコの自動補完（開き・閉じを入力して ← でカーソルを中に置く） ---
-    // マクロの display-name は bindings より後ろに書く（LaLapad-Gen2-Editor は、display-name の後に
-    // bindings がある定義をレイヤーと見なすため。順番を入れ替えるとレイヤーが増えて見える）。
-    macros {
-        // 「」を入力してカーソルを中に。先に IME オン（LANGUAGE_1）を送り、[ ] を Google 日本語入力で「」にする
-        // （入力後も IME はオンのまま）
+        // --- 記号・カッコ（自作モジュール kana/ の zmk,behavior-kana-seq。keys に書いた打鍵を順に送る） ---
+        // かな（&kana_key）と同じ送信待ちの列に並ぶので、かなのレイヤーにも、ほかのレイヤーにも置ける。
+        // かなモードを抜ける処理の最中に押したときは捨て、送信待ちがあふれたときは順番を守って打ち切る
+        // （ZMK 標準のマクロには、この処理がない）。新しい記号は、ここに同じ形で書き足すだけでよい。
+        // ime-on: 打鍵の前に IME オン（LANGUAGE_1）を送る（入力後も IME はオンのまま）。
+        // かなモード中は、ime-on がなくても、しばらく打っていなければ IME オンを先に送る。
+
+        // --- ks_: かなと一緒に打つ記号 ---
+        ks_touten: ks_touten {
+            compatible = "zmk,behavior-kana-seq";
+            display-name = "、";
+            #binding-cells = <0>;
+            keys = <COMMA>;
+            ime-on;
+        };
+        ks_kuten: ks_kuten {
+            compatible = "zmk,behavior-kana-seq";
+            display-name = "。";
+            #binding-cells = <0>;
+            keys = <DOT>;
+            ime-on;
+        };
+        ks_chouon: ks_chouon {
+            compatible = "zmk,behavior-kana-seq";
+            display-name = "ー";
+            #binding-cells = <0>;
+            keys = <MINUS>;
+            ime-on;
+        };
+        ks_excl: ks_excl {
+            compatible = "zmk,behavior-kana-seq";
+            display-name = "！";
+            #binding-cells = <0>;
+            keys = <EXCLAMATION>;
+            ime-on;
+        };
+        ks_ques: ks_ques {
+            compatible = "zmk,behavior-kana-seq";
+            display-name = "？";
+            #binding-cells = <0>;
+            keys = <QUESTION>;
+            ime-on;
+        };
+
+        // --- pair_: カッコの自動補完（開き・閉じを入力して ← でカーソルを中に置く） ---
+        // 「」を入力してカーソルを中に。[ ] を Google 日本語入力で「」にする
         pair_kagi: pair_kagi {
-            compatible = "zmk,behavior-macro";
-            #binding-cells = <0>;
-            wait-ms = <5>;
-            tap-ms = <5>;
-            bindings = <&macro_tap &kp LANGUAGE_1 &kp LEFT_BRACKET &kp RIGHT_BRACKET &kp LEFT>;
+            compatible = "zmk,behavior-kana-seq";
             display-name = "「」";
-        };
-        // 『』を入力してカーソルを中に。先に IME オン（LANGUAGE_1）を送り、Google 日本語入力の z[ z] で『』にする
-        // （入力後も IME はオンのまま）
-        pair_nijukagi: pair_nijukagi {
-            compatible = "zmk,behavior-macro";
             #binding-cells = <0>;
-            wait-ms = <5>;
-            tap-ms = <5>;
-            bindings = <&macro_tap &kp LANGUAGE_1 &kp Z &kp LEFT_BRACKET &kp Z &kp RIGHT_BRACKET &kp LEFT>;
-            display-name = "『』";
+            keys = <LEFT_BRACKET RIGHT_BRACKET LEFT>;
+            ime-on;
         };
-        // “” を入力してカーソルを中に。先に IME オン（LANGUAGE_1）を送り、ローマ字テーブルの z{ z} で “ ” にする。
+        // 『』を入力してカーソルを中に。Google 日本語入力の z[ z] で『』にする
+        pair_nijukagi: pair_nijukagi {
+            compatible = "zmk,behavior-kana-seq";
+            display-name = "『』";
+            #binding-cells = <0>;
+            keys = <Z LEFT_BRACKET Z RIGHT_BRACKET LEFT>;
+            ime-on;
+        };
+        // “” を入力してカーソルを中に。ローマ字テーブルの z{ z} で “ ” にする。
         // PC 側でローマ字テーブルに「z{ → “」「z} → ”」の登録が必要（標準のテーブルにはない）
         pair_cquote_ime: pair_cquote_ime {
-            compatible = "zmk,behavior-macro";
-            #binding-cells = <0>;
-            wait-ms = <5>;
-            tap-ms = <5>;
-            bindings = <&macro_tap &kp LANGUAGE_1 &kp Z &kp LEFT_BRACE &kp Z &kp RIGHT_BRACE &kp LEFT>;
+            compatible = "zmk,behavior-kana-seq";
             display-name = "“”";
-        };
-        // () を入力してカーソルを中に（IME の切り替えはしない。IME オンなら（）になる）
-        pair_paren: pair_paren {
-            compatible = "zmk,behavior-macro";
             #binding-cells = <0>;
-            wait-ms = <0>;
-            tap-ms = <0>;
-            bindings = <&macro_tap &kp LPAR &kp RPAR &kp LEFT>;
+            keys = <Z LEFT_BRACE Z RIGHT_BRACE LEFT>;
+            ime-on;
+        };
+        // () を入力してカーソルを中に（かなモード以外では IME を切り替えない。IME オンなら（）になる）
+        pair_paren: pair_paren {
+            compatible = "zmk,behavior-kana-seq";
             display-name = "()";
+            #binding-cells = <0>;
+            keys = <LPAR RPAR LEFT>;
         };
 
-        // --- sym_: 記号 ---
-        // … を入力。先に IME オン（LANGUAGE_1）を送り、Google 日本語入力の z. で … にする（入力後も IME はオンのまま）
+        // --- sym_: 記号（Google 日本語入力のローマ字テーブル経由） ---
+        // … を入力。Google 日本語入力の z. で … にする
         sym_ellipsis: sym_ellipsis {
-            compatible = "zmk,behavior-macro";
-            #binding-cells = <0>;
-            wait-ms = <5>;
-            tap-ms = <5>;
-            bindings = <&macro_tap &kp LANGUAGE_1 &kp Z &kp PERIOD>;
+            compatible = "zmk,behavior-kana-seq";
             display-name = "…";
+            #binding-cells = <0>;
+            keys = <Z PERIOD>;
+            ime-on;
         };
-        // ― を入力。先に IME オン（LANGUAGE_1）を送り、Google 日本語入力のローマ字テーブルの z= で ― にする。
-        // PC 側でローマ字テーブルに「z= → ―」の登録が必要（標準のテーブルにはない）。
-        // IME を通るので、確定前の文字とひと続きになり、かなと同じ送信待ちの列で順番どおりに入る
+        // ― を入力。ローマ字テーブルの z= で ― にする。
+        // PC 側でローマ字テーブルに「z= → ―」の登録が必要（標準のテーブルにはない）
         sym_hbar_ime: sym_hbar_ime {
-            compatible = "zmk,behavior-macro";
-            #binding-cells = <0>;
-            wait-ms = <5>;
-            tap-ms = <5>;
-            bindings = <&macro_tap &kp LANGUAGE_1 &kp Z &kp EQUAL>;
+            compatible = "zmk,behavior-kana-seq";
             display-name = "―";
-        };
-        // ～ を入力。先に IME オン（LANGUAGE_1）を送り、Google 日本語入力の z- で ～ にする（標準のテーブルにある）
-        sym_tilde_ime: sym_tilde_ime {
-            compatible = "zmk,behavior-macro";
             #binding-cells = <0>;
-            wait-ms = <5>;
-            tap-ms = <5>;
-            bindings = <&macro_tap &kp LANGUAGE_1 &kp Z &kp MINUS>;
-            display-name = "～";
+            keys = <Z EQUAL>;
+            ime-on;
         };
+        // ～ を入力。Google 日本語入力の z- で ～ にする（標準のテーブルにある）
+        sym_tilde_ime: sym_tilde_ime {
+            compatible = "zmk,behavior-kana-seq";
+            display-name = "～";
+            #binding-cells = <0>;
+            keys = <Z MINUS>;
+            ime-on;
+        };
+    };
+
+    // エディタ（LaLapad-Gen2-Editor）が作るマクロ用。マクロの display-name は bindings より後ろに書く
+    // （LaLapad-Gen2-Editor は、display-name の後に bindings がある定義をレイヤーと見なすため）。
+    macros {
     };
 
     combos {
@@ -329,7 +363,7 @@
             &none  &kp AMPS  &pair_cquote_ime  &none  &none  &kp PAGE_UP  &kp HOME  &kp UP  &kp END  &kp PRINTSCREEN
             &kp AT  &kp EXCL  &kp MINUS  &sym_hbar_ime  &none  &kp PAGE_DOWN  &kp LEFT  &kp DOWN  &kp RIGHT  &none
             &kp BACKSLASH  &kp DLLR  &kp CARET  &none  &none  &none  &none  &none  &none  &none
-            &trans  &trans  &trans  &trans  &kp LEFT_SHIFT  &trans  &trans  &trans  &trans  &trans  &trans  &kp CAPS
+            &trans  &trans  &trans  &trans  &kp LEFT_SHIFT  &kp LS(ENTER)  &trans  &trans  &trans  &trans  &trans  &kp CAPS
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
@@ -393,7 +427,7 @@
             bindings = <
             &kana_key KN_DO  &kana_key KN_BA  &kana_key KN_BI  &kana_key KN_BU  &kana_key KN_BE  &kana_key KN_BO  &kana_key KN_PA  &kana_key KN_PI  &kana_key KN_PU  &kana_key KN_PE
             &kana_key KN_PO  &kana_key KN_XYA  &kana_key KN_XYU  &kana_key KN_XYO  &kana_key KN_XA  &kana_key KN_XI  &kana_key KN_XU  &kana_key KN_XE  &kana_key KN_XO  &kana_key KN_XTU
-            &kana_key KN_VU  &kana_key KS_TOUTEN  &kana_key KS_KUTEN  &kana_key KS_CHOUON  &kana_key KS_SANTEN  &kana_key KS_EXCL  &kana_key KS_QUES  &kana_key KS_KAGI  &kana_key KS_HBAR  &kana_key KS_PAREN
+            &kana_key KN_VU  &ks_touten  &ks_kuten  &ks_chouon  &sym_ellipsis  &ks_excl  &ks_ques  &pair_kagi  &sym_hbar_ime  &pair_paren
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
