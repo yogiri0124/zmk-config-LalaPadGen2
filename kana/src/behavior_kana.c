@@ -5,8 +5,8 @@
  * ZMK の behavior queue（マクロと同じ仕組み）経由で &kp として順に送る。
  * かな漢字変換はホスト側の IME（ローマ字入力モード）が行う。
  * ホストのキーボード配列は英語配列 (US) を前提にしている。
- * 送るのは、かな（KN_）、かなと一緒に打つ記号（KS_）、編集用のキー（KE_）。
- * 記号の一部（…）は Google 日本語入力の標準ローマ字テーブル（z.）を前提にしている。
+ * 送るのは、かな（KN_）と、編集用のキー（KE_）。
+ * 記号（、。… など）は、keymap で定義する zmk,behavior-kana-seq のキー（behavior_kana_seq.c）で送る。
  * 親指キーのタップ（スペース／エンター）も同じキューで送り、かな列を追い越さないようにする。
  * キューへの登録・押しっぱなし防止・かな配列モードの状態は kana_output.c にまとめている。
  */
@@ -71,20 +71,9 @@ static const struct kana_entry kana_table[KN_MAX_ID + 1] = {
     [KN_XI] = K2(X, I),     [KN_XU] = K2(X, U),     [KN_XE] = K2(X, E),     [KN_XO] = K2(X, O),
     [KN_XTU] = K3(X, T, U), [KN_VU] = K2(V, U),
 
-    [KS_TOUTEN] = K1(COMMA),           /* 、 */
-    [KS_KUTEN] = K1(DOT),              /* 。 */
-    [KS_CHOUON] = K1(MINUS),           /* ー */
-    [KS_SANTEN] = K2(Z, DOT),          /* … （Google 日本語入力: z.） */
-    [KS_EXCL] = K1(EXCLAMATION),       /* ！ */
-    [KS_QUES] = K1(QUESTION),          /* ？ */
-    [KS_KAGI] = K3(LBKT, RBKT, LEFT),  /* 「」 → ← でカーソルを中へ */
-    [KS_PAREN] = K3(LPAR, RPAR, LEFT), /* （） → ← でカーソルを中へ */
-
     [KE_SPACE] = K1(SPACE),
     [KE_ENTER] = K1(ENTER),
     [KE_BSPC] = K1(BACKSPACE),
-
-    [KS_HBAR] = K2(Z, EQUAL), /* ― （ローマ字テーブルに追加した z=。docs/google-ime） */
 };
 
 struct behavior_kana_config {
@@ -98,10 +87,6 @@ struct behavior_kana_config {
 static uint32_t held_keycode[ZMK_KEYMAP_LEN];
 
 static bool is_hold_key(uint32_t id) { return id == KE_SPACE || id == KE_ENTER || id == KE_BSPC; }
-
-/* 最後にかな・記号（編集用のキー以外）を送った時刻。IME オンの再送の判定に使う */
-static int64_t last_char_ms;
-static bool char_sent;
 
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 
@@ -125,14 +110,12 @@ static const struct behavior_parameter_value_metadata param_values[] = {
     KV(KN_BO, "ぼ"),  KV(KN_PA, "ぱ"),  KV(KN_PI, "ぴ"),  KV(KN_PU, "ぷ"),  KV(KN_PE, "ぺ"),
     KV(KN_PO, "ぽ"),  KV(KN_XYA, "ゃ"), KV(KN_XYU, "ゅ"), KV(KN_XYO, "ょ"), KV(KN_XA, "ぁ"),
     KV(KN_XI, "ぃ"),  KV(KN_XU, "ぅ"),  KV(KN_XE, "ぇ"),  KV(KN_XO, "ぉ"),  KV(KN_XTU, "っ"),
-    KV(KN_VU, "ゔ"),  KV(KS_TOUTEN, "、"), KV(KS_KUTEN, "。"), KV(KS_CHOUON, "ー"),
-    KV(KS_SANTEN, "…"), KV(KS_EXCL, "！"), KV(KS_QUES, "？"), KV(KS_KAGI, "「」"),
-    KV(KS_PAREN, "（）"),
+    KV(KN_VU, "ゔ"),
     KV(KE_SPACE, "スペース"), KV(KE_ENTER, "エンター"), KV(KE_BSPC, "バックスペース"),
-    KV(KS_HBAR, "―"),
 };
 
-BUILD_ASSERT(ARRAY_SIZE(param_values) == KN_MAX_ID, "kana metadata must cover every kana ID");
+/* かな（1〜KN_VU）と、編集用のキー3つ。その間の番号は欠番 */
+BUILD_ASSERT(ARRAY_SIZE(param_values) == KN_VU + 3, "kana metadata must cover every kana ID");
 
 static const struct behavior_parameter_metadata_set param_metadata_set[] = {{
     .param1_values = param_values,
@@ -176,27 +159,16 @@ static int on_kana_binding_pressed(struct zmk_behavior_binding *binding,
         return ZMK_BEHAVIOR_OPAQUE;
     }
 
-    // かな・記号の前だけ、しばらく打っていなかったら IME オンを先に送る（LANGUAGE_1 はトグルではないので重ねても害がない）。
+    // かなの前だけ、しばらく打っていなかったら IME オンを先に送る（LANGUAGE_1 はトグルではないので重ねても害がない）。
     // スペース・エンター・バックスペースの前には送らない（IME オフのときに全角スペースなどにならないように）
-    const bool is_char = !is_hold_key(id);
-    if (is_char && cfg->ime_resync_ms > 0) {
-        const int64_t now = k_uptime_get();
-        if (!char_sent || now - last_char_ms >= cfg->ime_resync_ms) {
-            const int ret = kana_output_tap(&event, LANGUAGE_1, cfg->tap_ms, cfg->wait_ms);
-            if (ret == -EBUSY || ret == -ENOSPC) {
-                // IME オンを登録できなかった: この文字は送らず、次の入力で改めて IME オンを試す
-                LOG_WRN("Could not queue IME on (err %d), dropped kana id %d", ret, id);
-                return ZMK_BEHAVIOR_OPAQUE;
-            }
-            last_char_ms = now;
-            char_sent = true;
-            if (ret == -EAGAIN) {
-                // IME オンの「押す」は登録済み（「離す」は自動で再試行される）。順番を守るため、この文字は送らない
-                LOG_WRN("Behavior queue full after IME on, dropped kana id %d", id);
-                return ZMK_BEHAVIOR_OPAQUE;
-            }
-        } else {
-            last_char_ms = now;
+    if (cfg->ime_resync_ms > 0) {
+        const int ret = kana_output_ime_on(&event, cfg->tap_ms, cfg->wait_ms, cfg->ime_resync_ms);
+        if (ret < 0) {
+            // -EBUSY / -ENOSPC: IME オンを登録できなかった。次の入力で改めて IME オンを試す。
+            // -EAGAIN: IME オンの「押す」は登録済み（「離す」は自動で再試行される）。
+            // いずれも順番を守るため、この文字は送らない
+            LOG_WRN("Could not queue IME on (err %d), dropped kana id %d", ret, id);
+            return ZMK_BEHAVIOR_OPAQUE;
         }
     }
 

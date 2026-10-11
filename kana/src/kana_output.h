@@ -1,6 +1,6 @@
 /*
  * かな入力モジュールの共通部分（送信キューと、かな配列モードの状態）。
- * behavior_kana.c（文字）と behavior_kana_mode.c（オン／オフ）から使う。
+ * behavior_kana.c（かな）・behavior_kana_seq.c（記号などの打鍵の列）・behavior_kana_mode.c（オン／オフ）から使う。
  */
 
 #pragma once
@@ -27,8 +27,20 @@ int kana_output_press(const struct zmk_behavior_binding_event *event, uint32_t k
 void kana_output_release(const struct zmk_behavior_binding_event *event, uint32_t keycode,
                          uint32_t wait_ms);
 
+/* 必要なら IME オン (LANGUAGE_1) のタップをキューに並べる（かな・記号を送る前に呼ぶ）。
+ * resync_ms > 0: 最後にこの関数を呼んでから resync_ms 以上たっているときだけ送る（続けて打っている間は送らない）。
+ * resync_ms = 0: 毎回送る。
+ * 戻り値: 0 = 送らなくてよい、または登録できた / -EBUSY・-ENOSPC = 登録できなかった（次に呼んだときに改めて送る）
+ *         -EAGAIN = 「押す」だけ登録できた（「離す」は自動で再試行する）。
+ * 負の値のとき、呼び出し側は続く文字を送らずに打ち切ること */
+int kana_output_ime_on(const struct zmk_behavior_binding_event *event, uint32_t tap_ms,
+                       uint32_t wait_ms, uint32_t resync_ms);
+
 /* かな配列モード中で、かつ解除処理中でなければ true（&kana_key の入力を受け付ける） */
 bool kana_input_enabled(void);
+
+/* かな配列モードの解除処理中（受付停止からレイヤー解除まで）なら true。この間の入力は捨てる */
+bool kana_mode_exiting(void);
 
 /* かな配列モードをオンにする: かなレイヤーを即座に有効化し、IME オン (LANGUAGE_1) をキューに並べる */
 void kana_mode_on(const struct zmk_behavior_binding_event *event, uint8_t layer_index,

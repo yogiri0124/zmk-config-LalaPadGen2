@@ -128,6 +128,31 @@ void kana_output_release(const struct zmk_behavior_binding_event *event, uint32_
     }
 }
 
+/* ---- IME オンの送り直し ---- */
+
+/* 最後にかな・記号を送った（kana_output_ime_on を呼んだ）時刻 */
+static int64_t last_char_ms;
+static bool char_sent;
+
+int kana_output_ime_on(const struct zmk_behavior_binding_event *event, uint32_t tap_ms,
+                       uint32_t wait_ms, uint32_t resync_ms) {
+    const int64_t now = k_uptime_get();
+
+    if (resync_ms > 0 && char_sent && now - last_char_ms < resync_ms) {
+        last_char_ms = now;
+        return 0;
+    }
+
+    const int ret = kana_output_tap(event, LANGUAGE_1, tap_ms, wait_ms);
+    if (ret == -EBUSY || ret == -ENOSPC) {
+        // 登録できなかった: 時刻は更新しない（次に呼ばれたときに改めて送る）
+        return ret;
+    }
+    last_char_ms = now;
+    char_sent = true;
+    return ret;
+}
+
 /* ---- かな配列モード ---- */
 
 static bool kana_active;
@@ -193,6 +218,8 @@ void kana_output_on_sync(uint32_t token) {
 }
 
 bool kana_input_enabled(void) { return kana_active && off_stage == KANA_OFF_NONE; }
+
+bool kana_mode_exiting(void) { return off_stage != KANA_OFF_NONE; }
 
 void kana_mode_on(const struct zmk_behavior_binding_event *event, uint8_t layer_index,
                   uint32_t tap_ms, uint32_t wait_ms) {

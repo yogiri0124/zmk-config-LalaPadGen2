@@ -100,13 +100,32 @@ X V J D Z        ' W / ; ,
 - スペース（33）・エンター（35）・バックスペース（36）は、かなと同じ順番で送られるので、速く打っても追い越しません。
 - しばらく打っていなかった後の最初の 1 文字の前に、IME オンを自動で送り直します。
 
-かな用のキーは `&kana_key 名前` の形で、名前の頭で種類を分けています。
+かなのレイヤーに置くキーは、次の 2 種類です。
 
-| 頭 | 種類 | 例 |
+| 書き方 | 種類 | 例 |
 | --- | --- | --- |
-| `KN_` | かな | `KN_A`（あ）、`KN_KA`（か）、`KN_XTU`（っ） |
-| `KS_` | かなと一緒に打つ記号 | `KS_TOUTEN`（、）、`KS_KUTEN`（。）、`KS_CHOUON`（ー）、`KS_SANTEN`（…）、`KS_EXCL`（！）、`KS_QUES`（？）、`KS_KAGI`（「」）、`KS_PAREN`（（））、`KS_HBAR`（―） |
-| `KE_` | 編集用のキー | `KE_SPACE`、`KE_ENTER`、`KE_BSPC` |
+| `&kana_key KN_…` | かな | `KN_A`（あ）、`KN_KA`（か）、`KN_XTU`（っ） |
+| `&kana_key KE_…` | 編集用のキー | `KE_SPACE`、`KE_ENTER`、`KE_BSPC` |
+| `&ks_…` `&sym_…` `&pair_…` | 記号・カッコ | `ks_touten`（、）、`ks_kuten`（。）、`ks_chouon`（ー）、`ks_excl`（！）、`ks_ques`（？）、`sym_ellipsis`（…）、`pair_kagi`（「」） |
+
+### 記号のキーを足すには
+
+記号とカッコのキーは、キーマップ（`config/lalapadgen2.keymap`）の `behaviors` の中に、送る打鍵を並べて書くだけで作れます（プログラムの変更は要りません）。
+
+```
+ks_touten: ks_touten {
+    compatible = "zmk,behavior-kana-seq";
+    display-name = "、";
+    #binding-cells = <0>;
+    keys = <COMMA>;
+    ime-on;
+};
+```
+
+- `keys`: 順に 1 回ずつ押すキー。
+- `ime-on`: 打つ前に IME をオンにする（IME のローマ字テーブルで出す記号に付ける）。
+- かなと同じ送信待ちの列に並ぶので、かなのレイヤーにも、ほかのレイヤーにも置けます。速く打っても順番は変わりません。
+- かなモードを抜ける途中に押したときは、送らずに捨てます（IME をオフにした後に、打鍵が出てしまわないように）。
 
 ## カスタムキー
 
@@ -119,10 +138,11 @@ X V J D Z        ' W / ; ,
 | `cur_slow_hold` / `_toggle` / `_once` | カーソルを 1/3 の速さにする（押している間／押すたびに切り替え／次のキーまで） |
 | `mod_lock_alt` / `_ctrl` / `_shift` / `_win` | 修飾キーを押しっぱなしにする（もう一度押すと解除） |
 | `scr_snap_hold` | 押している間だけ、スクロールを縦か横にそろえる |
+| `ks_touten` / `ks_kuten` / `ks_chouon` / `ks_excl` / `ks_ques` | 、／。／ー／！／？ を入力する（先に IME をオンにする） |
 | `pair_kagi` / `pair_nijukagi` / `pair_paren` / `pair_cquote_ime` | 「」／『』／()／“” を入力して、カーソルを中に入れる |
 | `sym_ellipsis` / `sym_hbar_ime` / `sym_tilde_ime` | … ／ ― ／ ～ を入力する（Google 日本語入力のローマ字テーブル経由） |
 | `sym_hbar` / `sym_tilde` / `pair_cquote` | ― ／ ～ ／ “” を Windows の Alt コードで入力する予備のキー（ローマ字テーブルを登録していない PC 用） |
-| `kana_key` / `kana_sw` | かなを送る／かなモードのオン・オフ |
+| `kana_key` / `kana_sw` | かなと編集用のキーを送る／かなモードのオン・オフ |
 
 まだどのレイヤーにも置いていないキーもあります（`clk_lock_m`・`clk_lock_r`、`cur_slow_*`、`mod_lock_*`、Alt コード版の 3 つ）。エディタで好きな位置に置けます。
 
