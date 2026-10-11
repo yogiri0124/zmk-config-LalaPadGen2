@@ -363,7 +363,7 @@
             &none  &kp AMPS  &pair_cquote_ime  &none  &none  &kp PAGE_UP  &kp HOME  &kp UP  &kp END  &kp PRINTSCREEN
             &kp AT  &kp EXCL  &kp MINUS  &sym_hbar_ime  &none  &kp PAGE_DOWN  &kp LEFT  &kp DOWN  &kp RIGHT  &none
             &kp BACKSLASH  &kp DLLR  &kp CARET  &none  &none  &none  &none  &none  &none  &none
-            &trans  &trans  &trans  &trans  &kp LEFT_SHIFT  &trans  &trans  &trans  &trans  &trans  &trans  &kp CAPS
+            &trans  &trans  &trans  &trans  &kp LEFT_SHIFT  &kp LS(ENTER)  &trans  &trans  &trans  &trans  &trans  &kp CAPS
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
