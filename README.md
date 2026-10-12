@@ -24,7 +24,7 @@
 | 項目 | 元（ShiniNet 版） | このリポジトリ |
 | --- | --- | --- |
 | 親機（PC とつながる側） | 右 | **左** |
-| 基本の配列 | QWERTY | **Night 配列** |
+| 基本の配列 | QWERTY | **Racket 配列** |
 | レイヤー | 4 個 | **9 個** |
 | かな入力 | なし | **独自のかな配列**（親指シフト方式） |
 | マウス操作 | クリックは決まった位置のキー | **オートマウスレイヤー**（トラックパッドを操作している間だけ、文字キーがクリックなどに変わる） |
@@ -116,7 +116,7 @@ GitHub に push すると、GitHub Actions が次の 3 つを作ります。Acti
 
 | 番号 | 名前 | 入り方 | 内容 |
 | --- | --- | --- | --- |
-| 0 | Default | — | Night 配列 |
+| 0 | Default | — | Racket 配列 |
 | 1 | secondary_layer（数字） | 33 を押している間 | 数字と記号 |
 | 2 | tertiary_layer（記号） | 38 を押している間 | 記号と、矢印などの移動キー |
 | 3 | system_layer | 33 と 38 を両方押している間 | F キー、Bluetooth、速度の調整、リセット |
@@ -128,15 +128,15 @@ GitHub に push すると、GitHub Actions が次の 3 つを作ります。Acti
 
 以下の表は、左 5 列が左手、右 5 列が右手です。「·」は何も割り当てていないキー、空欄は下のレイヤーのキーがそのまま出るキーです。
 
-### 0：Default（Night 配列）
+### 0：Default（Racket 配列）
 
-[Night 配列](https://valorance.net/night/) は、親指に文字（R）を置く配列です。
+Racket 配列は、親指に文字（R）を置く配列です。
 
 | | | | | | | | | | | |
 | :-: | :-: | :-: | :-: | :-: | --- | :-: | :-: | :-: | :-: | :-: |
-| B | F | L | K | Q | | P | G | O | U | . |
-| N | S | H | T | M | | Y | C | A | E | I |
-| X | V | J | D | Z | | ' | W | / | ; | , |
+| F | D | L | W | J | | ; | B | O | U | , |
+| S | T | H | C | Y | | Q | N | A | E | I |
+| X | K | M | G | V | | Z | P | ' | / | . |
 
 親指の段と、その下の段は次のとおりです。
 
@@ -387,6 +387,6 @@ ks_touten: ks_touten {
 - 元のファームウェア設定・キーボード本体・トラックパッドのドライバ：[ShiniNet](https://github.com/ShiniNet)
 - スクロールスナップ：[kot149/zmk-scroll-snap](https://github.com/kot149/zmk-scroll-snap)
 - LED ウィジェット：[caksoylar/zmk-rgbled-widget](https://github.com/caksoylar/zmk-rgbled-widget)
-- Night 配列：[Valorance](https://valorance.net/night/)
+- Racket 配列（Default の配列）
 
 ライセンスは、元のリポジトリと同じ MIT です（[LICENSE](LICENSE)）。
