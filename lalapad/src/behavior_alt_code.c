@@ -20,6 +20,11 @@
  *   使わないので、キューが満杯で「離す」や Num Lock の復元が抜けることはない
  *   （そのかわり、キューに残っている &kana_key やマクロの送信とは順序を保証しない）。
  * - 送信中に押された分は待ち行列に入れ、前の送信が終わってから順に送る。
+ * - 送信中にほかから届いたキー入力（通常のキー、&kana_key やマクロの送信など）は、いったん預かり
+ *   （ZMK のイベントを capture する）、送り終えてから届いた順に通す。Alt を押したままの間に通常の
+ *   キーが PC に届くと Alt+キー（メニュー操作など）になってしまうため。
+ *   送信を始める前から押していたキーの「離す」は預からずにそのまま通す（押しっぱなしにしないため）。
+ *   預かった「押す」の「離す」は、必ず預かる（順番を守るため、預かる数には「離す」の分の空きを残す）。
  * - 送信の途中で接続先（USB・BLE プロファイル）が変わったら、残りは送らずに中止する
  *   （別の PC に数字や Num Lock の復元を送らないため）。送信中に押されて待っていた分も、
  *   押したときと接続先が違えば送らない。
@@ -100,6 +105,26 @@ static const uint32_t keypad_digits[10] = {
     KP_N0, KP_N1, KP_N2, KP_N3, KP_N4, KP_N5, KP_N6, KP_N7, KP_N8, KP_N9,
 };
 
+/* ---- 送信中に預かるキー入力 ---- */
+
+/* 預かれるイベントの数 */
+#define MAX_CAPTURED 32
+
+/* 預かったイベント（ZMK のイベントは送り手のスタックにあるので、中身を写して持つ） */
+static struct zmk_keycode_state_changed_event captured[MAX_CAPTURED];
+static size_t captured_count;
+/* 預かった「押す」のうち、まだ「離す」を預かっていない数（その分の空きを残しておく） */
+static size_t captured_open_presses;
+/* 預かる状態か（送信中）。キー入力はほかのスレッドから届くこともあるので、ロックで守る */
+static bool capturing;
+static struct k_spinlock capture_lock;
+/* 預かったイベントを通すときに使う。ロックの外で通すため、別の置き場に移してから通す */
+static struct zmk_keycode_state_changed_event releasing[MAX_CAPTURED];
+
+/* 自分が送っているキー入力か（送っているスレッドで、送っている間だけ true） */
+static bool raising_own;
+static k_tid_t raising_thread;
+
 /* ---- 送信の状態 ---- */
 
 static bool busy;
@@ -136,6 +161,48 @@ static size_t pending_count;
 
 static void alt_code_work_handler(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(alt_code_work, alt_code_work_handler);
+
+/* 自分の送るキー入力。預からずに PC へ通すよう印を付けて送る */
+static void raise_own(uint32_t keycode, bool pressed, int64_t timestamp) {
+    raising_thread = k_current_get();
+    raising_own = true;
+    raise_zmk_keycode_state_changed_from_encoded(keycode, pressed, timestamp);
+    raising_own = false;
+}
+
+/* 送信を始める: ここからのほかのキー入力を預かる */
+static void start_capturing(void) {
+    k_spinlock_key_t key = k_spin_lock(&capture_lock);
+    capturing = true;
+    k_spin_unlock(&capture_lock, key);
+}
+
+/* 送信が終わった: 預かったキー入力を、届いた順に PC へ通す */
+static void release_captured(void) {
+    k_spinlock_key_t key = k_spin_lock(&capture_lock);
+    capturing = false;
+    const size_t count = captured_count;
+    memcpy(releasing, captured, count * sizeof(captured[0]));
+    captured_count = 0;
+    captured_open_presses = 0;
+    k_spin_unlock(&capture_lock, key);
+
+    for (size_t i = 0; i < count; i++) {
+        // 預かったところ（このモジュールの listener）の次から、残りの listener に通す
+        ZMK_EVENT_RELEASE(releasing[i]);
+    }
+}
+
+/* 預かっている「押す」で、まだ「離す」を預かっていないものがあるか（ロックを取った状態で呼ぶ） */
+static bool has_open_captured_press(const struct zmk_keycode_state_changed *ev) {
+    for (size_t i = captured_count; i > 0; i--) {
+        const struct zmk_keycode_state_changed *c = &captured[i - 1].data;
+        if (c->usage_page == ev->usage_page && c->keycode == ev->keycode) {
+            return c->state;
+        }
+    }
+    return false;
+}
 
 static bool reported_num_lock(struct zmk_endpoint_instance endpoint) {
 #if IS_ENABLED(CONFIG_ZMK_HID_INDICATORS)
@@ -286,6 +353,9 @@ static void start_next(void) {
         if (!build_steps(cfg)) {
             continue;
         }
+        if (!busy) {
+            start_capturing();
+        }
         busy = true;
         active_cfg = cfg;
         step_index = 0;
@@ -297,6 +367,7 @@ static void start_next(void) {
     }
     busy = false;
     active_cfg = NULL;
+    release_captured();
 }
 
 /* この送信を始めてから接続先が切り替わったか（元の接続先に戻った場合も含む） */
@@ -312,10 +383,10 @@ static void alt_code_work_handler(struct k_work *work) {
         LOG_WRN("Endpoint changed during alt code sequence, aborting");
         const int64_t now = k_uptime_get();
         if (key_down != 0) {
-            raise_zmk_keycode_state_changed_from_encoded(key_down, false, now);
+            raise_own(key_down, false, now);
         }
         if (alt_down) {
-            raise_zmk_keycode_state_changed_from_encoded(LALT, false, now);
+            raise_own(LALT, false, now);
         }
         key_down = 0;
         alt_down = false;
@@ -327,7 +398,7 @@ static void alt_code_work_handler(struct k_work *work) {
 
     if (step_index < step_count) {
         const struct step *s = &steps[step_index++];
-        raise_zmk_keycode_state_changed_from_encoded(s->keycode, s->press, k_uptime_get());
+        raise_own(s->keycode, s->press, k_uptime_get());
         if (s->keycode == LALT) {
             alt_down = s->press;
         } else {
@@ -354,6 +425,48 @@ static int alt_code_endpoint_listener(const zmk_event_t *eh) {
 
 ZMK_LISTENER(behavior_alt_code, alt_code_endpoint_listener);
 ZMK_SUBSCRIPTION(behavior_alt_code, zmk_endpoint_changed);
+
+/* 送信中に届いたほかのキー入力を預かる。
+ * この listener は ZMK 本体の HID への反映（hid_listener）より前に呼ばれる（このモジュールの
+ * listener は ZMK 本体より先にリンクされるため）。 */
+static int alt_code_keycode_listener(const zmk_event_t *eh) {
+    const struct zmk_keycode_state_changed *ev = as_zmk_keycode_state_changed(eh);
+    if (ev == NULL) {
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+    if (raising_own && raising_thread == k_current_get()) {
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+
+    bool capture = false;
+    k_spinlock_key_t key = k_spin_lock(&capture_lock);
+    if (capturing) {
+        if (ev->state) {
+            // 「押す」: 自分と、預かっている「押す」それぞれの「離す」の分の空きを残せるときだけ預かる
+            if (captured_count + captured_open_presses + 2 <= MAX_CAPTURED) {
+                capture = true;
+                captured_open_presses++;
+            }
+        } else if (has_open_captured_press(ev)) {
+            // 預かった「押す」の「離す」: 空きは残してあるので必ず預かる
+            capture = true;
+            captured_open_presses--;
+        }
+        // それ以外の「離す」（送信の前から押していたキー）は、そのまま通す
+        if (capture) {
+            captured[captured_count++] = copy_raised_zmk_keycode_state_changed(ev);
+        }
+    }
+    k_spin_unlock(&capture_lock, key);
+
+    if (!capture && capturing && ev->state) {
+        LOG_WRN("Too many key events during alt code sequence, passing through");
+    }
+    return capture ? ZMK_EV_EVENT_CAPTURED : ZMK_EV_EVENT_BUBBLE;
+}
+
+ZMK_LISTENER(behavior_alt_code_keys, alt_code_keycode_listener);
+ZMK_SUBSCRIPTION(behavior_alt_code_keys, zmk_keycode_state_changed);
 
 static int on_alt_code_binding_pressed(struct zmk_behavior_binding *binding,
                                        struct zmk_behavior_binding_event event) {

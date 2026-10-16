@@ -5,10 +5,11 @@
  * トラックパッドの操作でレイヤー param1 を有効にし、操作が止まって param2 ms たったら解除する。
  * ZMK 標準の zmk,input-processor-temp-layer と同じ使い方で、次の点が違う。
  *
- * - マウスレイヤー上で何か割り当ててあるキー（&trans / &none 以外）と excluded-positions のキーは
+ * - マウスレイヤー上で &trans 以外のキー（&none を含む）と excluded-positions のキーは
  *   「マウス操作」として扱う。押してもレイヤーを解除せず、押している間は時間切れにしない。
  *   離したときから param2 ms を数え直す（クリック → ダブルクリックの間に解除されないように）。
- * - それ以外のキーを押すと、すぐに解除する。
+ *   &none のキーは「マウスレイヤーの間は何もしないキー」になる。
+ * - &trans のキーを押すと、すぐに解除する（そのキーは下のレイヤーのキーとして入力される）。
  * - touch-devices に指定した入力デバイスから INPUT_BTN_TOUCH（トラックパッドに触れている／離れた）が届く場合、
  *   触れている間は時間切れにしない。離れてから param2 ms で解除する（触れただけでは有効にしない）。
  *   そのデバイスからの入力は、触れている間のものだけを有効化・延長のきっかけにする
@@ -45,7 +46,6 @@
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #define TRANS_BEHAVIOR_NAME DEVICE_DT_NAME(DT_NODELABEL(trans))
-#define NONE_BEHAVIOR_NAME DEVICE_DT_NAME(DT_NODELABEL(none))
 
 /* touch-devices に指定できる入力デバイスの数 */
 #define MAX_TOUCH_DEVICES 8
@@ -104,15 +104,15 @@ static bool position_is_excluded(const struct auto_mouse_config *cfg, uint32_t p
     return false;
 }
 
-/* マウスレイヤー上で何か割り当ててあるキーか（&trans / &none は割り当てなしとみなす） */
+/* マウスレイヤー上で &trans 以外が割り当ててあるキーか（&none も割り当てありとみなす。
+ * keymap で &none にした位置は、マウスレイヤーの間は押しても何もせず、レイヤーも解除しない） */
 static bool position_is_bound(zmk_keymap_layer_id_t layer, uint32_t position) {
     const struct zmk_behavior_binding *binding =
         zmk_keymap_get_layer_binding_at_idx(layer, position);
     if (binding == NULL || binding->behavior_dev == NULL) {
         return false;
     }
-    return strcmp(binding->behavior_dev, TRANS_BEHAVIOR_NAME) != 0 &&
-           strcmp(binding->behavior_dev, NONE_BEHAVIOR_NAME) != 0;
+    return strcmp(binding->behavior_dev, TRANS_BEHAVIOR_NAME) != 0;
 }
 
 static bool is_mouse_key(const struct device *dev, uint32_t position) {

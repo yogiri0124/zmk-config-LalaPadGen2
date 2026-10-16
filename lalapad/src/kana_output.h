@@ -49,8 +49,10 @@ void kana_mode_on(const struct zmk_behavior_binding_event *event, zmk_keymap_lay
                   uint32_t tap_ms, uint32_t wait_ms);
 
 /* かな配列モードをオフにする: 即座に &kana_key の受付を止め、IME オフ (LANGUAGE_2) と完了の合図を
- * キューに並べ、合図が処理された（それより前の送信がすべて実行された）時点でかなレイヤーを解除する */
-void kana_mode_off(const struct zmk_behavior_binding_event *event, uint32_t tap_ms,
+ * キューに並べ、合図が処理された（それより前の送信がすべて実行された）時点でかなレイヤーを解除する。
+ * sub_layers（親指シフト面など）も同じ時点で解除する（親指を押したまま抜けてもシフト面を残さない） */
+void kana_mode_off(const struct zmk_behavior_binding_event *event,
+                   const zmk_keymap_layer_id_t *sub_layers, size_t sub_layers_len, uint32_t tap_ms,
                    uint32_t wait_ms);
 
 /* 完了の合図 (&kana_sync) がキューで処理されたときに behavior_kana_sync.c から呼ばれる */

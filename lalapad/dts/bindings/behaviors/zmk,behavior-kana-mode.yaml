@@ -11,6 +11,12 @@ properties:
     type: int
     required: true
     description: かな単打面のレイヤー番号（keymap で &kana_sw { layer = <...>; }; と指定する）
+  sub-layers:
+    type: array
+    default: []
+    description: >
+      かなモードを抜けるときに、かな単打面といっしょに消すレイヤーの番号（親指シフト面など。&mo で入るレイヤー）。
+      親指シフトのキーを押したままかなモードを抜けても、シフト面が残らないようにする
   tap-ms:
     type: int
     default: 5

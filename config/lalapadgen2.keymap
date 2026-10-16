@@ -177,12 +177,14 @@
             #binding-cells = <1>;
             display-name = "Kana";
         };
-        // かな配列モードのオン／オフ（&kana_sw KANA_SW_ON / KANA_SW_OFF）。layer はかな単打面
+        // かな配列モードのオン／オフ（&kana_sw KANA_SW_ON / KANA_SW_OFF）。layer はかな単打面。
+        // sub-layers は、かなモードを抜けるときにいっしょに解除するレイヤー（親指を押したまま抜けても残らないように）
         kana_sw: kana_sw {
             compatible = "zmk,behavior-kana-mode";
             #binding-cells = <1>;
             display-name = "Kana Mode";
             layer = <KANA_LAYER>;
+            sub-layers = <KANA_L_LAYER KANA_R_LAYER KANA_SYM_LAYER>;
         };
 
         // --- 記号・カッコ（自作モジュール lalapad/ の zmk,behavior-kana-seq。keys に書いた打鍵を順に送る） ---

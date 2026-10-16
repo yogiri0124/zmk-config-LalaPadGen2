@@ -167,6 +167,9 @@ enum kana_off_stage {
 
 static enum kana_off_stage off_stage = KANA_OFF_NONE;
 static struct zmk_behavior_binding_event off_event;
+/* かなモードを抜けるときに、かな単打面といっしょに解除するレイヤー（keymap の &kana_sw の sub-layers） */
+static const zmk_keymap_layer_id_t *off_sub_layers;
+static size_t off_sub_layers_len;
 static uint32_t off_tap_ms;
 static uint32_t off_wait_ms;
 static uint32_t sync_token;
@@ -210,7 +213,14 @@ void kana_output_on_sync(uint32_t token) {
         return;
     }
 
-    // ここに来た時点で、合図より前に並べた送信（かな・IME オフ）はすべて実行済み
+    // ここに来た時点で、合図より前に並べた送信（かな・IME オフ）はすべて実行済み。
+    // 親指シフト面などを押したまま抜けた場合に備えて、それらも解除する
+    // （後で親指を離したときの &mo の解除は、すでに解除済みなので何も起きない）
+    for (size_t i = 0; i < off_sub_layers_len; i++) {
+        if (zmk_keymap_layer_active(off_sub_layers[i])) {
+            zmk_keymap_layer_deactivate(off_sub_layers[i]);
+        }
+    }
     zmk_keymap_layer_deactivate(kana_layer);
     kana_active = false;
     off_stage = KANA_OFF_NONE;
@@ -238,7 +248,8 @@ void kana_mode_on(const struct zmk_behavior_binding_event *event, zmk_keymap_lay
     LOG_DBG("Kana mode on (layer %d)", kana_layer);
 }
 
-void kana_mode_off(const struct zmk_behavior_binding_event *event, uint32_t tap_ms,
+void kana_mode_off(const struct zmk_behavior_binding_event *event,
+                   const zmk_keymap_layer_id_t *sub_layers, size_t sub_layers_len, uint32_t tap_ms,
                    uint32_t wait_ms) {
     if (!kana_active || off_stage != KANA_OFF_NONE) {
         return;
@@ -247,6 +258,8 @@ void kana_mode_off(const struct zmk_behavior_binding_event *event, uint32_t tap_
     // この時点から &kana_key の入力は受け付けない（レイヤー解除までの間の入力は捨てる）
     off_stage = KANA_OFF_SEND_IME_OFF;
     off_event = *event;
+    off_sub_layers = sub_layers;
+    off_sub_layers_len = sub_layers_len;
     off_tap_ms = tap_ms;
     off_wait_ms = wait_ms;
     kana_off_work_handler(&kana_off_work.work);
