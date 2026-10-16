@@ -139,13 +139,13 @@
         // 登録していない PC で使うための予備（どのレイヤーにも置いていない）。
         // commit-ime: 先に IME オフで確定前の文字を確定させ、送り終えたら IME オンに戻す
         // （付けないと、確定前の文字があるときに、続きが記号の前に入ってしまう）
-        // ― （ホリゾンタルバー）を入力。日本語 Windows（cp932）の Alt+33116（Shift_JIS 0x815C）で送る。
+        // ―― （ホリゾンタルバー2つ。ダッシュ）を入力。日本語 Windows（cp932）の Alt+33116（Shift_JIS 0x815C）を2回送る。
         // Num Lock がオフなら一時的にオンにして、送り終えたら元に戻す（CONFIG_ZMK_HID_INDICATORS）
         sym_hbar: sym_hbar {
             compatible = "zmk,behavior-alt-code";
-            display-name = "― Alt";
+            display-name = "―― Alt";
             #binding-cells = <0>;
-            codes = <33116>;
+            codes = <33116 33116>;
             commit-ime;
         };
         // ～ （全角チルダ U+FF5E）を入力。日本語 Windows（cp932）の Alt+33120（Shift_JIS 0x8160）で送る。
@@ -272,13 +272,13 @@
             keys = <Z PERIOD>;
             ime-on;
         };
-        // ― を入力。ローマ字テーブルの z= で ― にする。
+        // ―― （ホリゾンタルバー2つ。ダッシュ）を入力。ローマ字テーブルの z= で ― にするのを2回送る。
         // PC 側でローマ字テーブルに「z= → ―」の登録が必要（標準のテーブルにはない）
         sym_hbar_ime: sym_hbar_ime {
             compatible = "zmk,behavior-kana-seq";
-            display-name = "―";
+            display-name = "――";
             #binding-cells = <0>;
-            keys = <Z EQUAL>;
+            keys = <Z EQUAL Z EQUAL>;
             ime-on;
         };
         // ～ を入力。ローマ字テーブルの z- で ～（全角チルダ）にする（標準のテーブルの z- は 〜（波ダッシュ）。
