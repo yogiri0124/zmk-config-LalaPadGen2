@@ -28,9 +28,12 @@ Claude Code（編集担当）と Codex（レビュー担当）の両者がこの
   - `config/lalapadgen2.keymap`
   - `config/*.conf`
   - `config/boards/shields/lalapadgen2/*.conf`
+- 依頼があるときに編集するファイル：
+  - `lalapad/`（自作の ZMK モジュール。かな入力・記号キー・オートマウスレイヤーなどの C ソース、DT バインディング）
+  - `README.md`、`docs/google-ime/`
 - 生成物として書き込んでよい場所（ソースではない。git 管理外）：`.review/`（レビュー結果）、`firmware/`（ビルド成果物）
 - 頼まれない限り変更しない：
-  - `*.dtsi`、`*.overlay`、`config/west.yml`、`build.yaml`、`.github/workflows/`、`zephyr/module.yml`、`remap_lalapad_tdq/`
+  - `*.dtsi`、`*.overlay`、`config/west.yml`、`build.yaml`、`.github/workflows/`、`zephyr/module.yml`
   - 修正に上記の変更が必要と判断した場合は、勝手に変更せず理由を報告する。
 - GUIツール「LaLapad-Gen2-Editor」と併用している。エディタ管理のマクロ（`&mc0`〜）とタップダンス（`&td0`〜）は、定義・参照・番号の対応を一体で扱い、頼まれない限り書き換えない。
 - 依頼にない変更（空白整形、並べ替え、コメント削除を含む）は入れない。
@@ -87,7 +90,7 @@ Claude Code（編集担当）と Codex（レビュー担当）の両者がこの
   - 個数が同じでも位置がずれていないか。依頼した位置以外の割り当てが変わっていないか。特に 52〜67 はトラックパッド由来の入力に対応する（`lalapadgen2.dtsi` の `POS_TP_*`：52〜54 左クリック群、55〜57 右クリック群、58〜62 左ジェスチャー群、63〜67 右ジェスチャー群）。
   - 参照している behavior・キーコードが存在し、引数の個数・種類が正しいか（独自 behavior から呼ぶ内側の binding も含む）。
 - **独自定義と combos**
-  - 独自 behavior（`mt2`、`zip_dyn_scale`、`zip_dyn_scale_set`）と `combos` の各ノードが消えていないか。消失だけでなく、ラベル・引数・時間設定・参照先・キー位置が依頼なく変わっていないかを基準コミットと比較する。
+  - 独自 behavior（`mt2`、`zip_dyn_scale`、`zip_dyn_scale_set`、keymap で定義している `lalapad/` の behavior。一覧は [docs/reference/zmk-behaviors.md](docs/reference/zmk-behaviors.md)）と `combos` の各ノードが消えていないか。消失だけでなく、ラベル・引数・時間設定・参照先・キー位置が依頼なく変わっていないかを基準コミットと比較する。
   - エディタ管理の `&mc*` / `&td*` の定義・参照・番号対応が崩れていないか。
 - **レイヤー参照**
   - `&mo` / `&lt`（`&tog`、`&to`、`&sl`、タップダンス・マクロ内の参照、combos の `layers`、`conditional_layers` を含む）のレイヤー番号が実在するレイヤーを指しているか。
@@ -129,7 +132,7 @@ Claude Code（編集担当）と Codex（レビュー担当）の両者がこの
 - push 成功後、workflow・ブランチ・イベント・コミットで絞り込んで run を特定する。
   例：`gh run list --workflow build.yml --branch <branch> --commit <SHA> --event push --json databaseId,headSha,status,conclusion`
 - run がまだ現れない場合は待つ。10分以内に現れなければ止めて報告する。取得した run の `headSha` が対象 SHA と一致することを確かめる。
-- `gh run watch <id> --exit-status` の成功に加えて、`build.yaml` の全ビルド対象（右＋rgbled_adapter＋studio-rpc-usb-uart、左＋rgbled_adapter、settings_reset）のジョブが成功していることを確認する。キャンセル・スキップ・欠落は成功扱いにしない。
+- `gh run watch <id> --exit-status` の成功に加えて、`build.yaml` の全ビルド対象（右＋rgbled_adapter、左＋rgbled_adapter＋studio-rpc-usb-uart、settings_reset）のジョブが成功していることを確認する。キャンセル・スキップ・欠落は成功扱いにしない。
 - run ID と URL を記録する。
 
 ## マージと成果物

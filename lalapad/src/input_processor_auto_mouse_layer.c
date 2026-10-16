@@ -70,12 +70,14 @@ struct auto_mouse_data {
     struct k_work_delayable disable_work;
 
     /* トラックパッドの操作で指定された値（入力スレッドから書く） */
-    uint8_t requested_layer;
+    zmk_keymap_layer_id_t requested_layer;
     uint32_t timeout_ms;
 
     /* レイヤーの状態 */
     bool active;
-    uint8_t layer; /* 有効にしたレイヤーの番号（keymap の宣言順） */
+    /* 有効にしたレイヤーの ID（keymap の宣言順の番号。&mo などと同じく ID として扱うので、
+     * ZMK Studio でレイヤーの順番を入れ替えても同じレイヤーを指す） */
+    zmk_keymap_layer_id_t layer;
     int64_t last_tapped;
     /* 解除する時刻。解除ワークが遅れて動いても、この時刻まではまだ解除しない */
     int64_t deadline;
@@ -103,9 +105,9 @@ static bool position_is_excluded(const struct auto_mouse_config *cfg, uint32_t p
 }
 
 /* マウスレイヤー上で何か割り当ててあるキーか（&trans / &none は割り当てなしとみなす） */
-static bool position_is_bound(uint8_t layer, uint32_t position) {
+static bool position_is_bound(zmk_keymap_layer_id_t layer, uint32_t position) {
     const struct zmk_behavior_binding *binding =
-        zmk_keymap_get_layer_binding_at_idx(zmk_keymap_layer_index_to_id(layer), position);
+        zmk_keymap_get_layer_binding_at_idx(layer, position);
     if (binding == NULL || binding->behavior_dev == NULL) {
         return false;
     }
@@ -127,7 +129,7 @@ static void deactivate(struct auto_mouse_data *data) {
     }
     data->active = false;
     k_work_cancel_delayable(&data->disable_work);
-    zmk_keymap_layer_deactivate(zmk_keymap_layer_index_to_id(data->layer));
+    zmk_keymap_layer_deactivate(data->layer);
     LOG_DBG("Auto mouse layer %d deactivated", data->layer);
 }
 
@@ -204,7 +206,7 @@ static void activity_work_cb(struct k_work *work) {
         data->layer = data->requested_layer;
         data->active = true;
         recount_held(data->dev, data);
-        zmk_keymap_layer_activate(zmk_keymap_layer_index_to_id(data->layer));
+        zmk_keymap_layer_activate(data->layer);
         LOG_DBG("Auto mouse layer %d activated", data->layer);
     } else if (data->requested_layer != data->layer) {
         LOG_WRN("Auto mouse: layer %d requested while layer %d is active (use separate instances)",
@@ -352,7 +354,7 @@ static void handle_layer_state(const struct device *dev) {
     struct auto_mouse_data *data = dev->data;
     k_mutex_lock(&data->lock, K_FOREVER);
     // ほかの操作（&tog や &to など）でレイヤーが解除されたら、こちらの状態も合わせる
-    if (data->active && !zmk_keymap_layer_active(zmk_keymap_layer_index_to_id(data->layer))) {
+    if (data->active && !zmk_keymap_layer_active(data->layer)) {
         data->active = false;
         k_work_cancel_delayable(&data->disable_work);
     }

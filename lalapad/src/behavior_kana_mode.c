@@ -10,6 +10,7 @@
 #include <drivers/behavior.h>
 
 #include <zmk/behavior.h>
+#include <zmk/keymap.h>
 
 #include <dt-bindings/kana/kana.h>
 
@@ -18,7 +19,7 @@
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 struct behavior_kana_mode_config {
-    uint8_t layer;
+    zmk_keymap_layer_id_t layer;
     uint32_t tap_ms;
     uint32_t wait_ms;
 };
@@ -76,6 +77,8 @@ static const struct behavior_driver_api behavior_kana_mode_driver_api = {
 };
 
 #define KANA_MODE_INST(n)                                                                          \
+    BUILD_ASSERT(DT_INST_PROP(n, layer) < ZMK_KEYMAP_LAYERS_LEN,                                   \
+                 "kana_sw: layer is out of range");                                                \
     static const struct behavior_kana_mode_config behavior_kana_mode_config_##n = {               \
         .layer = DT_INST_PROP(n, layer),                                                           \
         .tap_ms = DT_INST_PROP(n, tap_ms),                                                         \

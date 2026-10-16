@@ -30,7 +30,8 @@
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
-#define KANA_MAX_KEYS 5
+/* かな1文字の最大打鍵数（ゃ = x y a など） */
+#define KANA_MAX_KEYS 3
 
 struct kana_entry {
     uint8_t len;
@@ -40,8 +41,6 @@ struct kana_entry {
 #define K1(a) {.len = 1, .keys = {a}}
 #define K2(a, b) {.len = 2, .keys = {a, b}}
 #define K3(a, b, c) {.len = 3, .keys = {a, b, c}}
-#define K4(a, b, c, d) {.len = 4, .keys = {a, b, c, d}}
-#define K5(a, b, c, d, e) {.len = 5, .keys = {a, b, c, d, e}}
 
 /* 文字 ID → 送るキー列（英語配列・ローマ字入力） */
 static const struct kana_entry kana_table[KN_MAX_ID + 1] = {

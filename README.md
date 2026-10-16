@@ -41,7 +41,7 @@
 | [yogiri0124/zmk-driver-iqs9151](https://github.com/yogiri0124/zmk-driver-iqs9151) `v1.0.0-lalapad-touch.1` | トラックパッドのドライバ。ShiniNet 版 v1.0.0 に「指が触れている／離れた」の通知を足した複製 |
 | [kot149/zmk-scroll-snap](https://github.com/kot149/zmk-scroll-snap) | スクロールを縦か横にそろえる |
 | [caksoylar/zmk-rgbled-widget](https://github.com/caksoylar/zmk-rgbled-widget)、[ShiniNet/zmk-easy-charge-indicator](https://github.com/ShiniNet/zmk-easy-charge-indicator) | LED の表示（元と同じ） |
-| `kana/`（このリポジトリの自作） | かな入力、オートマウスレイヤー、記号キーなど |
+| `lalapad/`（このリポジトリの自作） | かな入力、オートマウスレイヤー、記号キーなど |
 
 ## 使い始める
 
@@ -258,7 +258,6 @@ Racket 配列は、親指に文字（R）を置く配列です。
 
 - 割り当てのないキーを押してオフになったとき、そのキーは普通の文字として入力されます。
 - 30〜32（Ctrl・Win・Alt）と 35（Enter）は、押してもオフにならず、そのキーとして働きます（Ctrl+クリックなどのため）。
-- 17・18 は、押してもオフにならず、何も入力されません。
 - 文字を打った直後（150ms 以内）は、トラックパッドを操作してもオンになりません（打鍵中の誤動作を防ぐため）。
 - 数字・記号レイヤーのキー（33・38）を押している間は、トラックパッドを操作しても新しくオンにはなりません。
 
@@ -377,7 +376,7 @@ ks_touten: ks_touten {
 | --- | --- |
 | `config/lalapadgen2.keymap` | キーマップ（レイヤーと、カスタムキーの定義） |
 | `config/*.conf`、`config/boards/shields/lalapadgen2/` | ファームウェアとトラックパッドの設定、シールドの定義 |
-| `kana/` | 自作モジュール（かな入力、記号キー、オートマウスレイヤー、カーソル低速、クリック・修飾キーの押しっぱなし、スクロールスナップの切り替え、Alt コード入力） |
+| `lalapad/` | 自作モジュール（かな入力、記号キー、オートマウスレイヤー、カーソル低速、クリック・修飾キーの押しっぱなし、スクロールスナップの切り替え、Alt コード入力） |
 | `docs/google-ime/` | Google 日本語入力のローマ字テーブルと、読み込みの手順 |
 | `docs/reference/` | キーコードや設定項目の資料 |
 | `AGENTS.md`、`CLAUDE.md` | AI エージェント（Claude Code・Codex）で編集するときの運用ルール |
