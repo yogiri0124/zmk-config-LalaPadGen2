@@ -140,7 +140,7 @@ static bool capturing;
 static struct zmk_keycode_state_changed_event captured[MAX_CAPTURED];
 static size_t captured_head;
 static size_t captured_count;
-/* 預かった「押す」の数 − 預かった「離す」の数（その分の「離す」の空きを残しておく） */
+/* 預かった「押す」のうち、まだ「離す」を預かっていないものの数（その分の「離す」の空きを残しておく） */
 static size_t captured_open;
 /* PC 側で押されているキーの数（この listener を通した入力と、預かって通し終えた入力から数える） */
 static struct key_count held[MAX_HELD];
@@ -241,6 +241,15 @@ static bool same_key_queued(const struct zmk_keycode_state_changed *ev) {
         }
     }
     return false;
+}
+
+/* PC 側で押されているキーの数の合計。ロックを取った状態で呼ぶ */
+static size_t held_total(void) {
+    size_t total = 0;
+    for (size_t i = 0; i < MAX_HELD; i++) {
+        total += held[i].count;
+    }
+    return total;
 }
 
 /* PC 側へ通した入力で、押されているキーの数を合わせる。ロックを取った状態で呼ぶ */
@@ -545,9 +554,11 @@ static int alt_code_keycode_listener(const zmk_event_t *eh) {
         // 同じキーのイベントが待っていれば、それを追い越さないよう後ろに並べる（下）
         track_held(ev);
     } else if (ev->state) {
-        // 「押す」: 自分と、預かっている「押す」それぞれの「離す」の分の空きを残せるときだけ預かる。
+        // 「押す」: これから預かるかもしれない「離す」すべての空きを残せるときだけ預かる。
+        // 預かる「離す」は、預かった「押す」のもの（captured_open）か、PC 側で押されているキーのもの
+        // （held_total。同じキーが待っている間は預かるため）のどちらか。自分とその「離す」で +2。
         // 空きがなければ捨てる（通すと、Alt を押している間なら Alt+キーになるため）
-        if (captured_count + captured_open + 2 <= MAX_CAPTURED) {
+        if (captured_count + captured_open + held_total() + 2 <= MAX_CAPTURED) {
             captured[(captured_head + captured_count) % MAX_CAPTURED] =
                 copy_raised_zmk_keycode_state_changed(ev);
             captured_count++;
@@ -561,15 +572,19 @@ static int alt_code_keycode_listener(const zmk_event_t *eh) {
             ret = ZMK_EV_EVENT_HANDLED;
         }
     } else if (captured_count < MAX_CAPTURED) {
-        // 預かった（または通している最中の）「押す」の「離す」: 押す より先に通さないよう後ろに並べる。
-        // 空きは「押す」を預かるときに残してある
+        // 同じキーのイベントが待っている（通している最中のものも含む）「離す」: 追い越さないよう後ろに並べる。
+        // 空きは「押す」を預かるときに残してある。PC 側で押されているキーのものなら held の数は
+        // 通し終えたときに減らす（それまでは空きの見積もりに残す。多めに見積もるだけで害はない）
+        if (find_key(held, MAX_HELD, ev) == NULL && captured_open > 0) {
+            captured_open--;
+        }
         captured[(captured_head + captured_count) % MAX_CAPTURED] =
             copy_raised_zmk_keycode_state_changed(ev);
         captured_count++;
-        if (captured_open > 0) {
-            captured_open--;
-        }
         ret = ZMK_EV_EVENT_CAPTURED;
+    } else {
+        // 空きの見積もりにより、ここには来ない（来た場合は、押す より先に通る可能性がある）
+        LOG_ERR("Alt code capture queue full, passing release 0x%02X", ev->keycode);
     }
     k_spin_unlock(&capture_lock, key);
 
