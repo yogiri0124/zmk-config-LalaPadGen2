@@ -17,7 +17,7 @@ PC ごとに読み込む必要があります（キーボードに書き込む�
 
 | 入力 | 出力 | 使っているキー（`config/lalapadgen2.keymap`） |
 | --- | --- | --- |
-| `z=` | ―（ホリゾンタルバー U+2015） | `sym_hbar_ime` |
+| `z=` | ―（ホリゾンタルバー U+2015） | `sym_hbar_ime`（2 回送って ―― にする） |
 | `z-` | ～（全角チルダ U+FF5E。標準は波ダッシュ 〜 U+301C） | `sym_tilde_ime` |
 | `z{` | “（U+201C） | `pair_cquote_ime` |
 | `z}` | ”（U+201D） | `pair_cquote_ime` |

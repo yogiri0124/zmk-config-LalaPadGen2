@@ -11,4 +11,5 @@ properties:
   mode:
     type: int
     required: true
+    enum: [1, 2, 3]
     description: CURSOR_SLOW_HOLD（押している間）/ CURSOR_SLOW_TOGGLE（入れ切り）/ CURSOR_SLOW_ONESHOT（次のキーまで）

@@ -139,13 +139,13 @@
         // 登録していない PC で使うための予備（どのレイヤーにも置いていない）。
         // commit-ime: 先に IME オフで確定前の文字を確定させ、送り終えたら IME オンに戻す
         // （付けないと、確定前の文字があるときに、続きが記号の前に入ってしまう）
-        // ― （ホリゾンタルバー）を入力。日本語 Windows（cp932）の Alt+33116（Shift_JIS 0x815C）で送る。
+        // ―― （ホリゾンタルバー2つ。ダッシュ）を入力。日本語 Windows（cp932）の Alt+33116（Shift_JIS 0x815C）を2回送る。
         // Num Lock がオフなら一時的にオンにして、送り終えたら元に戻す（CONFIG_ZMK_HID_INDICATORS）
         sym_hbar: sym_hbar {
             compatible = "zmk,behavior-alt-code";
-            display-name = "― Alt";
+            display-name = "―― Alt";
             #binding-cells = <0>;
-            codes = <33116>;
+            codes = <33116 33116>;
             commit-ime;
         };
         // ～ （全角チルダ U+FF5E）を入力。日本語 Windows（cp932）の Alt+33120（Shift_JIS 0x8160）で送る。
@@ -169,8 +169,8 @@
             wait-ms = <10>;
         };
 
-        // --- かな入力（自作モジュール kana/）。Keymap Editor が認識できるよう、定義はこのファイルに置く ---
-        // かな・編集用のキーを送る（&kana_key KN_A など。ID は kana/include/dt-bindings/kana/kana.h。
+        // --- かな入力（自作モジュール lalapad/）。Keymap Editor が認識できるよう、定義はこのファイルに置く ---
+        // かな・編集用のキーを送る（&kana_key KN_A など。ID は lalapad/include/dt-bindings/kana/kana.h。
         // KN_ = かな、KE_ = スペース・エンター・バックスペース）。記号は、下の zmk,behavior-kana-seq のキーで送る
         kana_key: kana_key {
             compatible = "zmk,behavior-kana";
@@ -185,7 +185,7 @@
             layer = <KANA_LAYER>;
         };
 
-        // --- 記号・カッコ（自作モジュール kana/ の zmk,behavior-kana-seq。keys に書いた打鍵を順に送る） ---
+        // --- 記号・カッコ（自作モジュール lalapad/ の zmk,behavior-kana-seq。keys に書いた打鍵を順に送る） ---
         // かな（&kana_key）と同じ送信待ちの列に並ぶので、かなのレイヤーにも、ほかのレイヤーにも置ける。
         // かなモードを抜ける処理の最中に押したときは捨て、送信待ちがあふれたときは順番を守って打ち切る
         // （ZMK 標準のマクロには、この処理がない）。新しい記号は、ここに同じ形で書き足すだけでよい。
@@ -272,16 +272,17 @@
             keys = <Z PERIOD>;
             ime-on;
         };
-        // ― を入力。ローマ字テーブルの z= で ― にする。
+        // ―― （ホリゾンタルバー2つ。ダッシュ）を入力。ローマ字テーブルの z= で ― にするのを2回送る。
         // PC 側でローマ字テーブルに「z= → ―」の登録が必要（標準のテーブルにはない）
         sym_hbar_ime: sym_hbar_ime {
             compatible = "zmk,behavior-kana-seq";
-            display-name = "―";
+            display-name = "――";
             #binding-cells = <0>;
-            keys = <Z EQUAL>;
+            keys = <Z EQUAL Z EQUAL>;
             ime-on;
         };
-        // ～ を入力。Google 日本語入力の z- で ～ にする（標準のテーブルにある）
+        // ～ を入力。ローマ字テーブルの z- で ～（全角チルダ）にする（標準のテーブルの z- は 〜（波ダッシュ）。
+        // docs/google-ime/romantable.txt で ～ に変えている）
         sym_tilde_ime: sym_tilde_ime {
             compatible = "zmk,behavior-kana-seq";
             display-name = "～";

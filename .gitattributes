@@ -1,2 +1,6 @@
 # Google 日本語入力に読み込むローマ字テーブル。どの環境で取り出しても改行を CRLF にする
 docs/google-ime/romantable.txt text eol=crlf
+
+# ZMK の設定ファイル。エディタ（LaLapad-Gen2-Editor など）が LF で書き戻しても、改行の違いだけで
+# 変更ありと表示されないよう、取り出したときの改行を LF にそろえる
+*.conf text eol=lf

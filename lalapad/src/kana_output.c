@@ -221,13 +221,13 @@ bool kana_input_enabled(void) { return kana_active && off_stage == KANA_OFF_NONE
 
 bool kana_mode_exiting(void) { return off_stage != KANA_OFF_NONE; }
 
-void kana_mode_on(const struct zmk_behavior_binding_event *event, uint8_t layer_index,
+void kana_mode_on(const struct zmk_behavior_binding_event *event, zmk_keymap_layer_id_t layer,
                   uint32_t tap_ms, uint32_t wait_ms) {
     if (kana_active) {
         return;
     }
 
-    kana_layer = zmk_keymap_layer_index_to_id(layer_index);
+    kana_layer = layer;
     kana_active = true;
 
     // IME オンを先に並べるので、この後に押したかなは必ず IME オンの後に送られる

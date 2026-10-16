@@ -29,7 +29,7 @@
 | かな入力 | なし | **独自のかな配列**（親指シフト方式） |
 | マウス操作 | クリックは決まった位置のキー | **オートマウスレイヤー**（トラックパッドを操作している間だけ、文字キーがクリックなどに変わる） |
 | スクロール | 縦横自由 | 加えて、**押している間だけ縦か横にそろえる**キー |
-| カッコ・記号 | 通常のキーだけ | **「」『』()“” の自動補完**、**… ― ～** のキー |
+| カッコ・記号 | 通常のキーだけ | **「」『』()“” の自動補完**、**… ―― ～** のキー |
 | 2 本指ピンチ（拡大縮小） | 有効 | 無効 |
 | レイヤー切り替え時の LED | 点灯する | 点灯しない |
 | 長押しキーの判定時間 | 200ms | 350ms |
@@ -41,7 +41,7 @@
 | [yogiri0124/zmk-driver-iqs9151](https://github.com/yogiri0124/zmk-driver-iqs9151) `v1.0.0-lalapad-touch.1` | トラックパッドのドライバ。ShiniNet 版 v1.0.0 に「指が触れている／離れた」の通知を足した複製 |
 | [kot149/zmk-scroll-snap](https://github.com/kot149/zmk-scroll-snap) | スクロールを縦か横にそろえる |
 | [caksoylar/zmk-rgbled-widget](https://github.com/caksoylar/zmk-rgbled-widget)、[ShiniNet/zmk-easy-charge-indicator](https://github.com/ShiniNet/zmk-easy-charge-indicator) | LED の表示（元と同じ） |
-| `kana/`（このリポジトリの自作） | かな入力、オートマウスレイヤー、記号キーなど |
+| `lalapad/`（このリポジトリの自作） | かな入力、オートマウスレイヤー、記号キーなど |
 
 ## 使い始める
 
@@ -73,7 +73,7 @@ GitHub に push すると、GitHub Actions が次の 3 つを作ります。Acti
 
 ### 4. Google 日本語入力にローマ字テーブルを読み込む
 
-`…` `―` `～` `「」` `『』` `“”` のキーは、Google 日本語入力のローマ字テーブルに登録した打ち方を使います。
+`…` `――` `～` `「」` `『』` `“”` のキーは、Google 日本語入力のローマ字テーブルに登録した打ち方を使います。
 [docs/google-ime/romantable.txt](docs/google-ime/romantable.txt) を PC ごとに読み込んでください。手順は [docs/google-ime/README.md](docs/google-ime/README.md) にあります。
 
 | 打ち方 | 出る文字 | 標準のテーブルとの違い |
@@ -174,7 +174,7 @@ Racket 配列は、親指に文字（R）を置く配列です。
 | | | | | | | | | | | |
 | :-: | :-: | :-: | :-: | :-: | --- | :-: | :-: | :-: | :-: | :-: |
 | · | & | “” | · | · | | PgUp | Home | ↑ | End | PrtSc |
-| @ | ! | - | ― | · | | PgDn | ← | ↓ | → | · |
+| @ | ! | - | ―― | · | | PgDn | ← | ↓ | → | · |
 | \ | $ | ^ | · | · | | · | · | · | · | · |
 
 - 34 は左 Shift、35 は Shift+Enter、41 は Caps Lock です。
@@ -258,7 +258,6 @@ Racket 配列は、親指に文字（R）を置く配列です。
 
 - 割り当てのないキーを押してオフになったとき、そのキーは普通の文字として入力されます。
 - 30〜32（Ctrl・Win・Alt）と 35（Enter）は、押してもオフにならず、そのキーとして働きます（Ctrl+クリックなどのため）。
-- 17・18 は、押してもオフにならず、何も入力されません。
 - 文字を打った直後（150ms 以内）は、トラックパッドを操作してもオンになりません（打鍵中の誤動作を防ぐため）。
 - 数字・記号レイヤーのキー（33・38）を押している間は、トラックパッドを操作しても新しくオンにはなりません。
 
@@ -300,7 +299,7 @@ Racket 配列は、親指に文字（R）を置く配列です。
 | :-: | :-: | :-: | :-: | :-: | --- | :-: | :-: | :-: | :-: | :-: |
 | ど | ば | び | ぶ | べ | | ぼ | ぱ | ぴ | ぷ | ぺ |
 | ぽ | ゃ | ゅ | ょ | ぁ | | ぃ | ぅ | ぇ | ぉ | っ |
-| ゔ | 、 | 。 | ー | … | | ！ | ？ | 「」 | ― | （） |
+| ゔ | 、 | 。 | ー | … | | ！ | ？ | 「」 | ―― | （） |
 
 ### 速く打っても順番が変わらない仕組み
 
@@ -341,8 +340,8 @@ Racket 配列は、親指に文字（R）を置く配列です。
 | `scr_` | `scr_snap_hold` | 押している間だけ、スクロールを縦か横にそろえる |
 | `ks_` | `ks_touten` `ks_kuten` `ks_chouon` `ks_excl` `ks_ques` | 、 。 ー ！ ？ を入力する |
 | `pair_` | `pair_kagi` `pair_nijukagi` `pair_paren` `pair_cquote_ime` | 「」 『』 () “” を入力して、カーソルを中に入れる |
-| `sym_` | `sym_ellipsis` `sym_hbar_ime` `sym_tilde_ime` | … ― ～ を入力する |
-| | `sym_hbar` `sym_tilde` `pair_cquote` | ― ～ “” を Windows の Alt コードで入力する予備（ローマ字テーブルを読み込んでいない PC 用） |
+| `sym_` | `sym_ellipsis` `sym_hbar_ime` `sym_tilde_ime` | … ―― ～ を入力する（―― は 1 回押すと ― が 2 つ入る） |
+| | `sym_hbar` `sym_tilde` `pair_cquote` | ―― ～ “” を Windows の Alt コードで入力する予備（ローマ字テーブルを読み込んでいない PC 用） |
 | `kana_` | `kana_key` `kana_sw` | かなと Space・Enter・Backspace を送る／かなモードのオン・オフ |
 | | `mt2` | 押すとキー、長押し（350ms）で別のキー。`&mt2 長押しのキー 押したときのキー` |
 
@@ -377,7 +376,7 @@ ks_touten: ks_touten {
 | --- | --- |
 | `config/lalapadgen2.keymap` | キーマップ（レイヤーと、カスタムキーの定義） |
 | `config/*.conf`、`config/boards/shields/lalapadgen2/` | ファームウェアとトラックパッドの設定、シールドの定義 |
-| `kana/` | 自作モジュール（かな入力、記号キー、オートマウスレイヤー、カーソル低速、クリック・修飾キーの押しっぱなし、スクロールスナップの切り替え、Alt コード入力） |
+| `lalapad/` | 自作モジュール（かな入力、記号キー、オートマウスレイヤー、カーソル低速、クリック・修飾キーの押しっぱなし、スクロールスナップの切り替え、Alt コード入力） |
 | `docs/google-ime/` | Google 日本語入力のローマ字テーブルと、読み込みの手順 |
 | `docs/reference/` | キーコードや設定項目の資料 |
 | `AGENTS.md`、`CLAUDE.md` | AI エージェント（Claude Code・Codex）で編集するときの運用ルール |

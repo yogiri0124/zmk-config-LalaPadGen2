@@ -1,6 +1,5 @@
 build:
-  cmake: kana
-  kconfig: kana/Kconfig
+  cmake: lalapad
+  kconfig: lalapad/Kconfig
   settings:
-    board_root: .
-    dts_root: kana
+    dts_root: lalapad

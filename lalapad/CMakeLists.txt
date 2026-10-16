@@ -1,8 +1,7 @@
-# このリポジトリの自作モジュール（かな入力、マウスボタン・キーの押しっぱなし切り替え、カーソル低速、オートマウスレイヤー、Alt コード入力、スクロールスナップの切り替え）。
-# behavior は keymap を処理する側（central）でだけビルドする。
-if(CONFIG_ZMK_BEHAVIOR_KANA OR CONFIG_ZMK_CURSOR_SLOW)
-  target_include_directories(app PRIVATE include)
-endif()
+# このリポジトリの自作モジュール（かな入力・記号キー、マウスボタン・キーの押しっぱなし切り替え、カーソル低速、
+# オートマウスレイヤー、Alt コード入力、スクロールスナップの切り替え）。
+# behavior と入力処理は keymap を処理する側（central）でだけビルドする。
+target_include_directories(app PRIVATE include)
 
 if((NOT CONFIG_ZMK_SPLIT) OR CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
   if(CONFIG_ZMK_BEHAVIOR_KANA)
