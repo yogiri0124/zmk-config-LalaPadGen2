@@ -184,7 +184,7 @@
 | `zmk,behavior-key-lock` | `mod_lock_…` | 0 | `keycode`（必須） | キーの押しっぱなし切り替え（押しっぱなしかどうかは自分で覚える。ほかのキーで同じキーを押していても独立して切り替わる） |
 | `zmk,behavior-cursor-slow` | `cur_slow_hold` `_toggle` `_once` | 0 | `mode`（必須。`CURSOR_SLOW_HOLD` など） | カーソル低速のオン・オフ |
 | `zmk,behavior-scroll-snap-hold` | `scr_snap_hold` | 0 | — | 押している間だけスクロールを縦か横にそろえる |
-| `zmk,input-processor-auto-mouse-layer` | `zip_auto_mouse_layer`（dtsi） | 2（レイヤー番号、解除までの ms） | `require-prior-idle-ms`、`excluded-positions`、`touch-devices`、`touch-stale-ms` | トラックパッドの操作でマウスレイヤーを一時的に有効にする（マウスレイヤーで `&trans` の位置を押すと解除、`&none` の位置は何もしない） |
+| `zmk,input-processor-auto-mouse-layer` | `zip_auto_mouse_layer`（dtsi） | 2（レイヤー番号、解除までの ms） | `require-prior-idle-ms`、`excluded-positions`、`touch-devices`、`touch-stale-ms` | トラックパッドの操作でマウスレイヤーを一時的に有効にする（マウスレイヤーで `&trans` の位置を押すと解除。ただし `excluded-positions` の位置は `&trans` でも解除しない。`&none` の位置は何もしない） |
 | `zmk,input-processor-cursor-slow` | `zip_cursor_slow`（`behaviors/cursor_slow.dtsi`） | 2（倍率の分子、分母） | — | カーソル低速の間、カーソル移動を遅くする |
 | `zmk,input-processor-scroll-snap-gate` | `zip_scroll_snap_gate_R` `_L`（dtsi） | 0 | `processor`（必須） | `scr_snap_hold` を押している間だけ、スクロールスナップにイベントを渡す |
 
