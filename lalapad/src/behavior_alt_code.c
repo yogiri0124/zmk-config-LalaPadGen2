@@ -21,15 +21,20 @@
  *   （そのかわり、キューに残っている &kana_key やマクロの送信とは順序を保証しない）。
  * - 送信中に押された分は待ち行列に入れ、前の送信が終わってから順に送る。
  * - 送信中にほかから届いたキー入力（通常のキー、&kana_key やマクロの送信など）は、いったん預かり
- *   （ZMK のイベントを capture する）、送り終えてから届いた順に通す。Alt を押したままの間に通常の
- *   キーが PC に届くと Alt+キー（メニュー操作など）になってしまうため。
- *   - 送信を始める前から押していたキーの「離す」は預からずにそのまま通す（押しっぱなしにしないため）。
- *   - 預かった「押す」の「離す」は必ず預かる（順番を守るため、預かる数には「離す」の分の空きを残す）。
- *   - 預かったものを通している間に届いた入力も、預かったものの後ろに並べる（追い越さないように）。
- *     通している最中のものも、通し終えるまで待ち行列に残しておく（その「離す」が先に通らないように）。
+ *   （ZMK の zmk_keycode_state_changed を capture する）、送り終えてから届いた順のまま通す。
+ *   Alt を押したままの間に通常のキーが PC に届くと Alt+キー（メニュー操作など）になってしまうため。
+ *   - 「押す」も「離す」も、届いた順のまま預かって、そのまま通す（押した数を数える修飾キーも崩れない）。
+ *   - 例外として、送信を始める前から PC 側で押されているキーの「離す」は、預からずにそのまま通す
+ *     （押しっぱなしのまま Alt と重ならないように）。PC 側で押されているキーは、この listener を
+ *     通った入力から数えておく（held）。預かったものを通している最中のキーは、通し終えるまで
+ *     「押されていない」扱いなので、その「離す」は後ろに並ぶ（追い越さない）。
  *   - 預かりきれない「押す」は捨てる（通すと Alt+キーになるため）。捨てた「押す」は覚えておき、
- *     その「離す」も捨てる（修飾キーは押した数を数えているので、対応しない「離す」を通すと、
- *     送信中の Alt などが外れてしまう）。
+ *     同じキーの「離す」を同じ数だけ捨てる（対応しない「離す」で修飾キーの数が崩れないように）。
+ *     「離す」の分の空きは、預かった「押す」の数だけ残しておく。
+ *   - 制約: 送信中（数十〜数百 ms）に押したキーの behavior は、押した時点の PC 側の状態（押されている
+ *     修飾キーなど）を見る。預かった入力はまだ反映されていないので、mod-morph や &kt のように押した
+ *     時点の修飾キーの状態で動きを変える behavior は、送信中に押すと違う動きになることがある
+ *     （このキーマップでは使っていない。自作の key-lock は自分で状態を持つので影響を受けない）。
  * - 送信の途中で接続先（USB・BLE プロファイル）が変わったら、残りは送らずに中止する
  *   （別の PC に数字や Num Lock の復元を送らないため）。送信中に押されて待っていた分も、
  *   押したときと接続先が違えば送らない。
@@ -114,27 +119,33 @@ static const uint32_t keypad_digits[10] = {
 
 /* 預かれるイベントの数（送信中に、&kana_key の送信待ちがまとめて流れてくることもあるので多めに持つ） */
 #define MAX_CAPTURED 128
+/* PC 側で押されているキーとして数えておける種類の数 */
+#define MAX_HELD 32
+/* 捨てた「押す」として覚えておける種類の数 */
+#define MAX_DROPPED 32
 
+/* キー（usage page とキーコード）ごとの数 */
+struct key_count {
+    uint16_t usage_page;
+    uint32_t keycode;
+    uint8_t count;
+};
+
+/* 以下はすべて capture_lock で守る（キー入力はほかのスレッドから届くこともあるため） */
+static struct k_spinlock capture_lock;
+/* 預かる状態か（送信中と、預かったものを通し終えるまで） */
+static bool capturing;
 /* 預かったイベント（ZMK のイベントは送り手のスタックにあるので、中身を写して持つ）。
- * 先頭 captured_head から captured_count 個の輪状の待ち行列 */
+ * 先頭 captured_head から captured_count 個の輪状の待ち行列。先頭は、通し終えるまで取り除かない */
 static struct zmk_keycode_state_changed_event captured[MAX_CAPTURED];
 static size_t captured_head;
 static size_t captured_count;
-/* 待ち行列にある「押す」のうち、同じキーの「離す」がまだ並んでいないものの数（その分の空きを残しておく） */
+/* 預かった「押す」の数 − 預かった「離す」の数（その分の「離す」の空きを残しておく） */
 static size_t captured_open;
-/* 預かる状態か（送信中と、預かったものを通し終えるまで）。キー入力はほかのスレッドから届くこともあるので、
- * 待ち行列といっしょにロックで守る */
-static bool capturing;
-static struct k_spinlock capture_lock;
-
-/* 預かりきれずに捨てた「押す」（その「離す」も捨てるために覚えておく。預かる状態が終わっても残す） */
-#define MAX_DROPPED 32
-struct dropped_key {
-    uint16_t usage_page;
-    uint32_t keycode;
-};
-static struct dropped_key dropped[MAX_DROPPED];
-static size_t dropped_count;
+/* PC 側で押されているキーの数（この listener を通した入力と、預かって通し終えた入力から数える） */
+static struct key_count held[MAX_HELD];
+/* 捨てた「押す」の数（同じキーの「離す」をこの数だけ捨てる。預かる状態が終わった後も残す） */
+static struct key_count dropped[MAX_DROPPED];
 
 /* 自分が送っているキー入力か（送っているスレッドで、送っている間だけ true） */
 static bool raising_own;
@@ -185,6 +196,68 @@ static void raise_own(uint32_t keycode, bool pressed, int64_t timestamp) {
     raising_own = false;
 }
 
+/* key_count の表で、そのキーの欄を探す。なければ NULL */
+static struct key_count *find_key(struct key_count *table, size_t len,
+                                  const struct zmk_keycode_state_changed *ev) {
+    for (size_t i = 0; i < len; i++) {
+        if (table[i].count > 0 && table[i].usage_page == ev->usage_page &&
+            table[i].keycode == ev->keycode) {
+            return &table[i];
+        }
+    }
+    return NULL;
+}
+
+/* key_count の表で、そのキーの数を1増やす。表が満杯なら false */
+static bool add_key(struct key_count *table, size_t len, const struct zmk_keycode_state_changed *ev) {
+    struct key_count *k = find_key(table, len, ev);
+    if (k == NULL) {
+        for (size_t i = 0; i < len; i++) {
+            if (table[i].count == 0) {
+                k = &table[i];
+                k->usage_page = ev->usage_page;
+                k->keycode = ev->keycode;
+                break;
+            }
+        }
+    }
+    if (k == NULL || k->count == UINT8_MAX) {
+        return false;
+    }
+    k->count++;
+    return true;
+}
+
+/* key_count の表で、そのキーの数を1減らす。そのキーがなければ false */
+static bool remove_key(struct key_count *table, size_t len,
+                       const struct zmk_keycode_state_changed *ev) {
+    struct key_count *k = find_key(table, len, ev);
+    if (k == NULL) {
+        return false;
+    }
+    k->count--;
+    return true;
+}
+
+/* PC 側へ通した入力で、押されているキーの数を合わせる。ロックを取った状態で呼ぶ */
+static void track_held(const struct zmk_keycode_state_changed *ev) {
+    if (ev->state) {
+        if (!add_key(held, MAX_HELD, ev)) {
+            LOG_WRN("Too many held keys to track (0x%02X)", ev->keycode);
+        }
+    } else {
+        remove_key(held, MAX_HELD, ev);
+    }
+}
+
+/* 自分の送るキー入力。預からずに PC へ通すよう印を付けて送る（押して離すので held には数えない） */
+static void raise_own(uint32_t keycode, bool pressed, int64_t timestamp) {
+    raising_thread = k_current_get();
+    raising_own = true;
+    raise_zmk_keycode_state_changed_from_encoded(keycode, pressed, timestamp);
+    raising_own = false;
+}
+
 /* 送信を始める: ここからのほかのキー入力を預かる */
 static void start_capturing(void) {
     k_spinlock_key_t key = k_spin_lock(&capture_lock);
@@ -192,10 +265,9 @@ static void start_capturing(void) {
     k_spin_unlock(&capture_lock, key);
 }
 
-static void pop_captured(void);
-
-/* 送信が終わった: 預かったキー入力を、届いた順に PC へ通す。
- * 1つずつ取り出してロックの外で通し、その間に届いた入力は後ろに並べる。空になったら預かるのをやめる */
+/* 送信が終わった: 預かったキー入力を、届いた順のまま PC へ通す。
+ * 先頭を写してロックの外で通し、通し終えてから待ち行列から取り除いて held に数える。
+ * その間に届いた入力は後ろに並ぶ。空になったら預かるのをやめる */
 static void release_captured(void) {
     while (true) {
         struct zmk_keycode_state_changed_event ev;
@@ -207,8 +279,6 @@ static void release_captured(void) {
             k_spin_unlock(&capture_lock, key);
             return;
         }
-        // 先頭を写して通す。通し終えるまでは待ち行列に残す（通している間に届いた同じキーの「離す」が、
-        // 待ち行列にある「押す」を見つけて後ろに並ぶように）
         ev = captured[captured_head];
         k_spin_unlock(&capture_lock, key);
 
@@ -216,70 +286,11 @@ static void release_captured(void) {
         ZMK_EVENT_RELEASE(ev);
 
         key = k_spin_lock(&capture_lock);
-        pop_captured();
+        captured_head = (captured_head + 1) % MAX_CAPTURED;
+        captured_count--;
+        track_held(&ev.data);
         k_spin_unlock(&capture_lock, key);
     }
-}
-
-/* 待ち行列の後ろから i 番目（0 = いちばん新しい）。ロックを取った状態で呼ぶ */
-static const struct zmk_keycode_state_changed *captured_from_tail(size_t i) {
-    return &captured[(captured_head + captured_count - 1 - i) % MAX_CAPTURED].data;
-}
-
-/* 待ち行列にある「押す」で、まだ「離す」が並んでいないものがあるか。ロックを取った状態で呼ぶ */
-static bool has_open_captured_press(const struct zmk_keycode_state_changed *ev) {
-    for (size_t i = 0; i < captured_count; i++) {
-        const struct zmk_keycode_state_changed *c = captured_from_tail(i);
-        if (c->usage_page == ev->usage_page && c->keycode == ev->keycode) {
-            return c->state;
-        }
-    }
-    return false;
-}
-
-/* 待ち行列の後ろに並べる。ロックを取った状態で呼ぶ */
-static void push_captured(const struct zmk_keycode_state_changed *ev) {
-    if (ev->state) {
-        captured_open++;
-    } else if (has_open_captured_press(ev) && captured_open > 0) {
-        captured_open--;
-    }
-    captured[(captured_head + captured_count) % MAX_CAPTURED] =
-        copy_raised_zmk_keycode_state_changed(ev);
-    captured_count++;
-}
-
-/* 通し終えた先頭を待ち行列から取り除く。ロックを取った状態で呼ぶ */
-static void pop_captured(void) {
-    const struct zmk_keycode_state_changed_event ev = captured[captured_head];
-    captured_head = (captured_head + 1) % MAX_CAPTURED;
-    captured_count--;
-    // 取り出した「押す」の後ろに同じキーが並んでいなければ、その「離す」はもう預からない
-    // （そのまま通す）ので、残しておいた空きは要らない
-    if (ev.data.state && captured_open > 0) {
-        bool same_key_queued = false;
-        for (size_t i = 0; i < captured_count; i++) {
-            const struct zmk_keycode_state_changed *c = captured_from_tail(i);
-            if (c->usage_page == ev.data.usage_page && c->keycode == ev.data.keycode) {
-                same_key_queued = true;
-                break;
-            }
-        }
-        if (!same_key_queued) {
-            captured_open--;
-        }
-    }
-}
-
-/* 捨てた「押す」の記録を探して、あれば取り除く。ロックを取った状態で呼ぶ */
-static bool take_dropped(const struct zmk_keycode_state_changed *ev) {
-    for (size_t i = 0; i < dropped_count; i++) {
-        if (dropped[i].usage_page == ev->usage_page && dropped[i].keycode == ev->keycode) {
-            dropped[i] = dropped[--dropped_count];
-            return true;
-        }
-    }
-    return false;
 }
 
 static bool reported_num_lock(struct zmk_endpoint_instance endpoint) {
@@ -504,7 +515,7 @@ static int alt_code_endpoint_listener(const zmk_event_t *eh) {
 ZMK_LISTENER(behavior_alt_code, alt_code_endpoint_listener);
 ZMK_SUBSCRIPTION(behavior_alt_code, zmk_endpoint_changed);
 
-/* 送信中に届いたほかのキー入力を預かる。
+/* 送信中に届いたほかのキー入力を預かる。送信中でないときは、PC 側で押されているキーを数えるだけ。
  * この listener は ZMK 本体の HID への反映（hid_listener）より前に呼ばれる（このモジュールの
  * listener は ZMK 本体より先にリンクされるため）。 */
 static int alt_code_keycode_listener(const zmk_event_t *eh) {
@@ -519,32 +530,40 @@ static int alt_code_keycode_listener(const zmk_event_t *eh) {
     int ret = ZMK_EV_EVENT_BUBBLE;
     bool was_dropped = false;
     k_spinlock_key_t key = k_spin_lock(&capture_lock);
-    if (!ev->state && take_dropped(ev)) {
+    if (!ev->state && remove_key(dropped, MAX_DROPPED, ev)) {
         // 捨てた「押す」の「離す」: これも捨てる（預かる状態が終わった後に届いた場合も）
         ret = ZMK_EV_EVENT_HANDLED;
-    } else if (capturing) {
-        if (ev->state) {
-            // 「押す」: 自分と、並んでいる「押す」それぞれの「離す」の分の空きを残せるときだけ預かる。
-            // 空きがなければ捨てる（通すと、Alt を押している間なら Alt+キーになるため）
-            if (captured_count + captured_open + 2 <= MAX_CAPTURED) {
-                push_captured(ev);
-                ret = ZMK_EV_EVENT_CAPTURED;
-            } else {
-                // 待ち行列（128）と記録（32）が両方あふれるほどの入力は、1回の送信（数十 ms）の間には
-                // 現実には起きない。記録があふれた場合は、その「離す」はそのまま通る
-                if (dropped_count < MAX_DROPPED) {
-                    dropped[dropped_count++] =
-                        (struct dropped_key){.usage_page = ev->usage_page, .keycode = ev->keycode};
-                }
-                was_dropped = true;
-                ret = ZMK_EV_EVENT_HANDLED;
-            }
-        } else if (has_open_captured_press(ev)) {
-            // 並んでいる（または通している最中の）「押す」の「離す」: 空きは残してあるので必ず預かる
-            push_captured(ev);
+    } else if (!capturing) {
+        track_held(ev);
+    } else if (!ev->state && find_key(held, MAX_HELD, ev) != NULL) {
+        // 送信を始める前から（または、預かったものを通し終えて）PC 側で押されているキーの「離す」: そのまま通す
+        track_held(ev);
+    } else if (ev->state) {
+        // 「押す」: 自分と、預かっている「押す」それぞれの「離す」の分の空きを残せるときだけ預かる。
+        // 空きがなければ捨てる（通すと、Alt を押している間なら Alt+キーになるため）
+        if (captured_count + captured_open + 2 <= MAX_CAPTURED) {
+            captured[(captured_head + captured_count) % MAX_CAPTURED] =
+                copy_raised_zmk_keycode_state_changed(ev);
+            captured_count++;
+            captured_open++;
             ret = ZMK_EV_EVENT_CAPTURED;
+        } else {
+            // 待ち行列（128）と記録（32 種類）が両方あふれるほどの入力は、1回の送信の間には現実には
+            // 起きない。記録があふれた場合は、その「離す」はそのまま通る
+            add_key(dropped, MAX_DROPPED, ev);
+            was_dropped = true;
+            ret = ZMK_EV_EVENT_HANDLED;
         }
-        // それ以外の「離す」（送信の前から押していた、またはもう通し終えた「押す」のもの）は、そのまま通す
+    } else if (captured_count < MAX_CAPTURED) {
+        // 預かった（または通している最中の）「押す」の「離す」: 押す より先に通さないよう後ろに並べる。
+        // 空きは「押す」を預かるときに残してある
+        captured[(captured_head + captured_count) % MAX_CAPTURED] =
+            copy_raised_zmk_keycode_state_changed(ev);
+        captured_count++;
+        if (captured_open > 0) {
+            captured_open--;
+        }
+        ret = ZMK_EV_EVENT_CAPTURED;
     }
     k_spin_unlock(&capture_lock, key);
 

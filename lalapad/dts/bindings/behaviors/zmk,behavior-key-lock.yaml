@@ -1,5 +1,5 @@
 # キーの押しっぱなし切り替え behavior（引数なし）。keycode で対象のキーを指定する。
-# 押すたびに押しっぱなし／解除（ZMK 標準の &kt と同じ動き）。
+# 押すたびに押しっぱなし／解除。押しっぱなしかどうかはインスタンスごとに自分で覚える（PC 側の状態は見ない）。
 
 description: Key lock (toggle) behavior with a fixed keycode
 
