@@ -6,7 +6,8 @@
         // keymap 側で定義する
         // （Keymap Editor が keymap ファイル内の定義しか認識しないため）。
         // 例: kana_key: kana_key { compatible = "zmk,behavior-kana"; #binding-cells = <1>; };
-        //     kana_sw: kana_sw { compatible = "zmk,behavior-kana-mode"; #binding-cells = <1>; layer = <かな単打面の番号>; };
+        //     kana_sw: kana_sw { compatible = "zmk,behavior-kana-mode"; #binding-cells = <1>; layer = <かな単打面の番号>;
+        //                        sub-layers = <親指シフト面などの番号>; };
 
         // 内部用（keymap には書かない）: 送信キューの処理完了の合図。C から参照するので omit しない
         kana_sync: kana_sync {

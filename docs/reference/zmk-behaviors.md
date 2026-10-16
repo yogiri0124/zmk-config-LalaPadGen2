@@ -177,14 +177,14 @@
 | compatible | keymap での名前 | 引数 | 主なプロパティ | 働き |
 | --- | --- | --- | --- | --- |
 | `zmk,behavior-kana` | `kana_key` | 1（`KN_…` `KE_…`。`dt-bindings/kana/kana.h`） | `tap-ms` `wait-ms`（既定 5）、`ime-resync-ms`（既定 1000） | かな1文字のローマ字、Space・Enter・Backspace を送信キューで順に送る |
-| `zmk,behavior-kana-mode` | `kana_sw` | 1（`KANA_SW_ON` `KANA_SW_OFF`） | `layer`（必須。かな単打面の番号）、`tap-ms` `wait-ms` | かなモードのオン・オフ（IME とかなレイヤーの切り替え） |
+| `zmk,behavior-kana-mode` | `kana_sw` | 1（`KANA_SW_ON` `KANA_SW_OFF`） | `layer`（必須。かな単打面の番号）、`sub-layers`（抜けるときにいっしょに解除するレイヤー）、`tap-ms` `wait-ms` | かなモードのオン・オフ（IME とかなレイヤーの切り替え） |
 | `zmk,behavior-kana-seq` | `ks_…` `pair_…` `sym_…_ime` `sym_ellipsis` | 0 | `keys`（必須。キーコードの配列）、`ime-on`、`tap-ms` `wait-ms` `ime-resync-ms` | 決まった打鍵の列を、かなと同じ送信キューで送る |
-| `zmk,behavior-alt-code` | `sym_hbar` `sym_tilde` `pair_cquote` | 0 | `codes`（必須）、`cursor-left`、`commit-ime`、`tap-ms` `wait-ms` `ime-wait-ms` | Windows の Alt コードで文字を送る |
+| `zmk,behavior-alt-code` | `sym_hbar` `sym_tilde` `pair_cquote` | 0 | `codes`（必須）、`cursor-left`、`commit-ime`、`tap-ms` `wait-ms` `ime-wait-ms` | Windows の Alt コードで文字を送る（送信中のほかのキー入力は預かり、送り終えてから届いた順に通す） |
 | `zmk,behavior-mouse-button-toggle` | `clk_lock_l` `_m` `_r` | 0 | `button`（必須。`LCLK` など） | マウスボタンの押しっぱなし切り替え |
-| `zmk,behavior-key-lock` | `mod_lock_…` | 0 | `keycode`（必須） | キーの押しっぱなし切り替え |
+| `zmk,behavior-key-lock` | `mod_lock_…` | 0 | `keycode`（必須） | キーの押しっぱなし切り替え（押しっぱなしかどうかは自分で覚える。ほかのキーで同じキーを押していても独立して切り替わる） |
 | `zmk,behavior-cursor-slow` | `cur_slow_hold` `_toggle` `_once` | 0 | `mode`（必須。`CURSOR_SLOW_HOLD` など） | カーソル低速のオン・オフ |
 | `zmk,behavior-scroll-snap-hold` | `scr_snap_hold` | 0 | — | 押している間だけスクロールを縦か横にそろえる |
-| `zmk,input-processor-auto-mouse-layer` | `zip_auto_mouse_layer`（dtsi） | 2（レイヤー番号、解除までの ms） | `require-prior-idle-ms`、`excluded-positions`、`touch-devices`、`touch-stale-ms` | トラックパッドの操作でマウスレイヤーを一時的に有効にする |
+| `zmk,input-processor-auto-mouse-layer` | `zip_auto_mouse_layer`（dtsi） | 2（レイヤー番号、解除までの ms） | `require-prior-idle-ms`、`excluded-positions`、`touch-devices`、`touch-stale-ms` | トラックパッドの操作でマウスレイヤーを一時的に有効にする（マウスレイヤーで `&trans` の位置を押すと解除。ただし `excluded-positions` の位置は `&trans` でも解除しない。`&none` の位置は何もしない） |
 | `zmk,input-processor-cursor-slow` | `zip_cursor_slow`（`behaviors/cursor_slow.dtsi`） | 2（倍率の分子、分母） | — | カーソル低速の間、カーソル移動を遅くする |
 | `zmk,input-processor-scroll-snap-gate` | `zip_scroll_snap_gate_R` `_L`（dtsi） | 0 | `processor`（必須） | `scr_snap_hold` を押している間だけ、スクロールスナップにイベントを渡す |
 
