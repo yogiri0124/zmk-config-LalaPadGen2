@@ -24,10 +24,10 @@
  *   （ZMK の zmk_keycode_state_changed を capture する）、送り終えてから届いた順のまま通す。
  *   Alt を押したままの間に通常のキーが PC に届くと Alt+キー（メニュー操作など）になってしまうため。
  *   - 「押す」も「離す」も、届いた順のまま預かって、そのまま通す（押した数を数える修飾キーも崩れない）。
- *   - 例外として、送信を始める前から PC 側で押されているキーの「離す」は、預からずにそのまま通す
- *     （押しっぱなしのまま Alt と重ならないように）。PC 側で押されているキーは、この listener を
- *     通った入力から数えておく（held）。預かったものを通している最中のキーは、通し終えるまで
- *     「押されていない」扱いなので、その「離す」は後ろに並ぶ（追い越さない）。
+ *   - 例外として、PC 側ですでに押されているキーの「離す」で、同じキーのイベントが待ち行列に
+ *     （通している最中のものも含めて）ないものは、預からずにそのまま通す（送信を始める前から押して
+ *     いたキーが、押しっぱなしのまま Alt と重ならないように）。PC 側で押されているキーは、この
+ *     listener を通った入力と、預かって通し終えた入力から数えておく（held）。
  *   - 預かりきれない「押す」は捨てる（通すと Alt+キーになるため）。捨てた「押す」は覚えておき、
  *     同じキーの「離す」を同じ数だけ捨てる（対応しない「離す」で修飾キーの数が崩れないように）。
  *     「離す」の分の空きは、預かった「押す」の数だけ残しておく。
@@ -188,14 +188,6 @@ static size_t pending_count;
 static void alt_code_work_handler(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(alt_code_work, alt_code_work_handler);
 
-/* 自分の送るキー入力。預からずに PC へ通すよう印を付けて送る */
-static void raise_own(uint32_t keycode, bool pressed, int64_t timestamp) {
-    raising_thread = k_current_get();
-    raising_own = true;
-    raise_zmk_keycode_state_changed_from_encoded(keycode, pressed, timestamp);
-    raising_own = false;
-}
-
 /* key_count の表で、そのキーの欄を探す。なければ NULL */
 static struct key_count *find_key(struct key_count *table, size_t len,
                                   const struct zmk_keycode_state_changed *ev) {
@@ -237,6 +229,18 @@ static bool remove_key(struct key_count *table, size_t len,
     }
     k->count--;
     return true;
+}
+
+/* 待ち行列に（通している最中の先頭も含めて）同じキーのイベントがあるか。ロックを取った状態で呼ぶ */
+static bool same_key_queued(const struct zmk_keycode_state_changed *ev) {
+    for (size_t i = 0; i < captured_count; i++) {
+        const struct zmk_keycode_state_changed *c =
+            &captured[(captured_head + i) % MAX_CAPTURED].data;
+        if (c->usage_page == ev->usage_page && c->keycode == ev->keycode) {
+            return true;
+        }
+    }
+    return false;
 }
 
 /* PC 側へ通した入力で、押されているキーの数を合わせる。ロックを取った状態で呼ぶ */
@@ -535,8 +539,10 @@ static int alt_code_keycode_listener(const zmk_event_t *eh) {
         ret = ZMK_EV_EVENT_HANDLED;
     } else if (!capturing) {
         track_held(ev);
-    } else if (!ev->state && find_key(held, MAX_HELD, ev) != NULL) {
-        // 送信を始める前から（または、預かったものを通し終えて）PC 側で押されているキーの「離す」: そのまま通す
+    } else if (!ev->state && find_key(held, MAX_HELD, ev) != NULL && !same_key_queued(ev)) {
+        // PC 側で押されているキーの「離す」で、同じキーのイベントが待ち行列にないもの: そのまま通す
+        // （送信を始める前から押していたキーが、Alt と重なって押しっぱなしにならないように）。
+        // 同じキーのイベントが待っていれば、それを追い越さないよう後ろに並べる（下）
         track_held(ev);
     } else if (ev->state) {
         // 「押す」: 自分と、預かっている「押す」それぞれの「離す」の分の空きを残せるときだけ預かる。
