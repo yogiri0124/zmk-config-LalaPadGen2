@@ -251,6 +251,12 @@
    };
 };
 
+// NFC 用のピン（P0.09・P0.10）を普通の GPIO として使う（P0.10 は充電 LED の easy_charge_indicator で使う）。
+// Zephyr 3.5 で Kconfig の CONFIG_NFCT_PINS_AS_GPIOS から、この DT のプロパティに移った
+&uicr {
+    nfct-pins-as-gpios;
+};
+
 // TrackPad on I2C
 &xiao_i2c {
     status = "okay";

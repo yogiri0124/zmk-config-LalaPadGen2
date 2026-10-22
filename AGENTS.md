@@ -99,7 +99,7 @@ Claude Code（編集担当）と Codex（レビュー担当）の両者がこの
 - **combos**
   - `key-positions` が 0〜67 の範囲か。同じコンボ内での位置の重複、同じキー集合・同じ有効レイヤーでの競合がないか。
 - **.conf**
-  - 変更した Kconfig シンボルが採用中の ZMK・モジュールに存在するか。CI ログに Kconfig の警告が出ていないか。左右の `.conf` と共通 `.conf` の重複・上書きに注意する（左が central）。親機専用の設定（右＝子機では無効になり警告が出るもの）は `config/lalapadgen2_left.conf` に置く。
+  - 変更した Kconfig シンボルが採用中の ZMK・モジュールに存在するか。CI ログに Kconfig の警告が出ていないか。左右の `.conf` と共通 `.conf` の重複・上書きに注意する（左が central）。親機でしか使わない設定（右＝子機では無効になり警告が出るもの、keymap を処理する親機だけで使うもの。例: ZMK Studio、behavior queue の大きさ）は `config/lalapadgen2_left.conf` に置く。
 - **依頼との一致**
   - 依頼以外の変更（空白整形だけの大量差分を含む）が混ざっていないか。
   - 編集範囲外のファイルが変更されていないか。
