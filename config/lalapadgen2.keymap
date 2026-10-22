@@ -336,8 +336,8 @@
         CONTROL_LAYER {
             display-name = "Control";
             bindings = <
-            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
-            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
+            &kp F11  &kp NUMBER_6  &kp UP  &kp NUMBER_9  &kp PAGE_UP  &kp PAGE_UP  &kp NUMBER_9  &kp UP  &kp NUMBER_6  &kp F11
+            &trans  &kp LEFT  &kp DOWN  &kp RIGHT  &kp PAGE_DOWN  &kp PAGE_DOWN  &kp LEFT  &kp DOWN  &kp RIGHT  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &tog CONTROL_LAYER  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
