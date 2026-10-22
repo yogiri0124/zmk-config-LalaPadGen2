@@ -8,15 +8,22 @@
  * 押しっぱなしかどうかは、インスタンスごとに自分で覚える（ZMK 標準の &kt のように PC 側の状態は見ない）。
  * そのため、ほかのキーで同じ修飾キーを押していても、それとは別に押しっぱなし／解除が切り替わる。
  * また、Alt コードの送信中（behavior_alt_code.c がキー入力を預かっている間）に押しても、正しく切り替わる。
+ *
+ * 接続先（USB・BLE プロファイル）が変わったときは、押しっぱなしを解除する。ZMK は接続先が変わると
+ * PC へ送る状態を消すが、押した数（ZMK の修飾キーごとの数）は残るので、ここで「離す」を送って数を合わせる
+ * （そうしないと、次に押したときに解除になり、もう一度押すまで押しっぱなしにできない）。
  */
 
 #define DT_DRV_COMPAT zmk_behavior_key_lock
 
 #include <zephyr/device.h>
+#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <drivers/behavior.h>
 
 #include <zmk/behavior.h>
+#include <zmk/event_manager.h>
+#include <zmk/events/endpoint_changed.h>
 #include <zmk/events/keycode_state_changed.h>
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
@@ -26,9 +33,12 @@ struct behavior_key_lock_config {
 };
 
 struct behavior_key_lock_data {
-    /* 押しっぱなしにしているか（behavior のコールバックはシステムワークキューだけで動く） */
+    /* 押しっぱなしにしているか（behavior のコールバックと解除のワークは、どちらもシステムワークキューで動く） */
     bool locked;
 };
+
+static void unlock_all_work_handler(struct k_work *work);
+static K_WORK_DEFINE(unlock_all_work, unlock_all_work_handler);
 
 static int on_key_lock_binding_pressed(struct zmk_behavior_binding *binding,
                                        struct zmk_behavior_binding_event event) {
@@ -66,3 +76,28 @@ static const struct behavior_driver_api behavior_key_lock_driver_api = {
                             CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &behavior_key_lock_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(KEY_LOCK_INST)
+
+#define KEY_LOCK_DEV(n) DEVICE_DT_INST_GET(n),
+
+static const struct device *const key_lock_devs[] = {DT_INST_FOREACH_STATUS_OKAY(KEY_LOCK_DEV)};
+
+/* 接続先が変わった: 押しっぱなしにしているキーをすべて離す */
+static void unlock_all_work_handler(struct k_work *work) {
+    for (size_t i = 0; i < ARRAY_SIZE(key_lock_devs); i++) {
+        const struct behavior_key_lock_config *cfg = key_lock_devs[i]->config;
+        struct behavior_key_lock_data *data = key_lock_devs[i]->data;
+        if (data->locked) {
+            data->locked = false;
+            raise_zmk_keycode_state_changed_from_encoded(cfg->keycode, false, k_uptime_get());
+        }
+    }
+}
+
+/* 別のスレッドから呼ばれることがあるので、解除はワークに回す */
+static int key_lock_endpoint_listener(const zmk_event_t *eh) {
+    k_work_submit(&unlock_all_work);
+    return ZMK_EV_EVENT_BUBBLE;
+}
+
+ZMK_LISTENER(behavior_key_lock, key_lock_endpoint_listener);
+ZMK_SUBSCRIPTION(behavior_key_lock, zmk_endpoint_changed);

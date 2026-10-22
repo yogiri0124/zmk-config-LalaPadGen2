@@ -9,6 +9,10 @@
  * 押しっぱなしを解除する。ZMK v0.3.0 はマウスボタンの押下回数を数えているので、ここで解除しないと
  * クリックしてもボタンが押されたままになる。自分の押下は &mkp の入力としては現れないので、
  * &mkp の入力を監視すれば「ほかからのクリック」だけを確実に見分けられる。
+ *
+ * 接続先（USB・BLE プロファイル）が変わったときも、押しっぱなしを解除する。ZMK は接続先が変わると
+ * PC へ送る状態を消すが、押した数（ZMK のボタンごとの数）は残るので、ここで「離す」を送って数を合わせる
+ * （そうしないと、次に押したときに解除になり、もう一度押すまで押しっぱなしにできない）。
  */
 
 #include <zephyr/device.h>
@@ -19,6 +23,8 @@
 #include <drivers/behavior.h>
 
 #include <zmk/behavior.h>
+#include <zmk/event_manager.h>
+#include <zmk/events/endpoint_changed.h>
 #include <zmk/hid.h>
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
@@ -55,13 +61,23 @@ static void unlock_work_handler(struct k_work *work) {
     const atomic_val_t requests = atomic_clear(&unlock_requests);
     for (int i = 0; i < NUM_BUTTONS; i++) {
         if ((requests & BIT(i)) && atomic_test_and_clear_bit(&locked, i)) {
-            LOG_DBG("Mouse button %d unlocked by click", i);
+            LOG_DBG("Mouse button %d unlocked (click or endpoint change)", i);
             report_button(i, false);
         }
     }
 }
 
 static K_WORK_DEFINE(unlock_work, unlock_work_handler);
+
+/* 接続先が変わったら、押しっぱなしをすべて解除する（別のスレッドから呼ばれることがあるので、解除はワークに回す） */
+static int mbt_endpoint_listener(const zmk_event_t *eh) {
+    atomic_or(&unlock_requests, atomic_get(&locked));
+    k_work_submit(&unlock_work);
+    return ZMK_EV_EVENT_BUBBLE;
+}
+
+ZMK_LISTENER(behavior_mouse_button_toggle, mbt_endpoint_listener);
+ZMK_SUBSCRIPTION(behavior_mouse_button_toggle, zmk_endpoint_changed);
 
 /* &mkp が出す入力イベント（＝ほかからのクリック）を監視する。入力スレッドで呼ばれるので、解除はワークに回す */
 static void mkp_input_callback(struct input_event *evt) {

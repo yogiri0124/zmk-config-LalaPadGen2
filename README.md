@@ -203,6 +203,7 @@ Racket 配列は、親指に文字（R）を置く配列です。
 
 - 「左クリック固定」は、左クリックを押しっぱなしにします（ドラッグ用）。もう一度押すか、左クリックで解除します。
 - 34 は、押している間だけスクロールを縦か横のどちらかにそろえます。
+- 親指の段の 39〜41（IME オフ・IME オン・\）は「·」です。マウスレイヤーの間は押しても何も起きません。
 
 ### 5〜8：かな
 
@@ -336,14 +337,14 @@ Racket 配列は、親指に文字（R）を置く配列です。
 
 | 頭 | 名前 | 働き |
 | --- | --- | --- |
-| `clk_` | `clk_lock_l` `clk_lock_m` `clk_lock_r` | 左・中・右クリックを押しっぱなしにする（もう一度押すか、同じボタンのクリックで解除） |
+| `clk_` | `clk_lock_l` `clk_lock_m` `clk_lock_r` | 左・中・右クリックを押しっぱなしにする（もう一度押すか、同じボタンのクリック、接続先の切り替えで解除） |
 | `cur_` | `cur_slow_hold` `cur_slow_toggle` `cur_slow_once` | カーソルを 1/3 の速さにする（押している間／押すたびに切り替え／次のキーまで） |
-| `mod_` | `mod_lock_alt` `mod_lock_ctrl` `mod_lock_shift` `mod_lock_win` | 修飾キーを押しっぱなしにする（もう一度押すと解除） |
+| `mod_` | `mod_lock_alt` `mod_lock_ctrl` `mod_lock_shift` `mod_lock_win` | 修飾キーを押しっぱなしにする（もう一度押すか、接続先の切り替えで解除） |
 | `scr_` | `scr_snap_hold` | 押している間だけ、スクロールを縦か横にそろえる |
 | `ks_` | `ks_touten` `ks_kuten` `ks_chouon` `ks_excl` `ks_ques` | 、 。 ー ！ ？ を入力する |
 | `pair_` | `pair_kagi` `pair_nijukagi` `pair_paren` `pair_cquote_ime` | 「」 『』 () “” を入力して、カーソルを中に入れる |
 | `sym_` | `sym_ellipsis` `sym_hbar_ime` `sym_tilde_ime` | … ―― ～ を入力する（―― は 1 回押すと ― が 2 つ入る） |
-| | `sym_hbar` `sym_tilde` `pair_cquote` | ―― ～ “” を Windows の Alt コードで入力する予備（ローマ字テーブルを読み込んでいない PC 用。送っている間に押したキーは、送り終えてから入力されます） |
+| | `sym_hbar` `sym_tilde` `pair_cquote` | ―― ～ “” を Windows の Alt コードで入力する予備（ローマ字テーブルを読み込んでいない PC 用。先に打ったかなを送り終えてから送り、送っている間に押したキーは、送り終えてから入力されます） |
 | `kana_` | `kana_key` `kana_sw` | かなと Space・Enter・Backspace を送る／かなモードのオン・オフ |
 | | `mt2` | 押すとキー、長押し（350ms）で別のキー。`&mt2 長押しのキー 押したときのキー` |
 

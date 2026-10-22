@@ -17,13 +17,17 @@
  * 前後で Num Lock を押して一時的にオンにし、送り終わったら元に戻す。
  *
  * - 送る操作は開始時に一覧（steps）にまとめ、k_work で1つずつ順に送る。behavior queue を
- *   使わないので、キューが満杯で「離す」や Num Lock の復元が抜けることはない
- *   （そのかわり、キューに残っている &kana_key やマクロの送信とは順序を保証しない）。
+ *   使わないので、キューが満杯で「離す」や Num Lock の復元が抜けることはない。
+ * - 押したら、まず behavior queue の末尾に目印を並べ（kana_output_add_marker）、それより前に並んでいた
+ *   &kana_key・記号・マクロの送信がすべて終わってから送り始める（先に打ったかなを追い越さない）。
+ *   目印を並べられないとき（キューが満杯など）は、すぐに送り始める。
  * - 送信中に押された分は待ち行列に入れ、前の送信が終わってから順に送る。
  * - 送信中にほかから届いたキー入力（通常のキー、&kana_key やマクロの送信など）は、いったん預かり
  *   （ZMK の zmk_keycode_state_changed を capture する）、送り終えてから届いた順のまま通す。
  *   Alt を押したままの間に通常のキーが PC に届くと Alt+キー（メニュー操作など）になってしまうため。
  *   - 「押す」も「離す」も、届いた順のまま預かって、そのまま通す（押した数を数える修飾キーも崩れない）。
+ *   - 次の送信が待っているときは、その送信の目印より前に届いた分だけを先に通してから、次を送り始める
+ *     （預かった入力と、続けて押した Alt コードのキーの順番を守る）。
  *   - 例外として、PC 側ですでに押されているキーの「離す」で、同じキーのイベントが待ち行列に
  *     （通している最中のものも含めて）ないものは、預からずにそのまま通す（送信を始める前から押して
  *     いたキーが、押しっぱなしのまま Alt と重ならないように）。PC 側で押されているキーは、この
@@ -78,6 +82,10 @@
 
 #if IS_ENABLED(CONFIG_ZMK_HID_INDICATORS)
 #include <zmk/hid_indicators.h>
+#endif
+
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_KANA)
+#include "kana_output.h"
 #endif
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
@@ -140,6 +148,8 @@ static bool capturing;
 static struct zmk_keycode_state_changed_event captured[MAX_CAPTURED];
 static size_t captured_head;
 static size_t captured_count;
+/* これまでに預かった入力の通し番号（次に預かる入力の番号）。先頭の番号は captured_pushed - captured_count */
+static uint32_t captured_pushed;
 /* 預かった「押す」のうち、まだ「離す」を預かっていないものの数（その分の「離す」の空きを残しておく） */
 static size_t captured_open;
 /* PC 側で押されているキーの数（この listener を通した入力と、預かって通し終えた入力から数える） */
@@ -180,10 +190,14 @@ static atomic_val_t assumed_generation[ZMK_ENDPOINT_COUNT];
 struct pending_press {
     const struct behavior_alt_code_config *cfg;
     atomic_val_t generation; /* 押したときの接続先の世代番号 */
+    uint32_t id;             /* 目印の番号 */
+    bool ready;              /* 目印が処理された（それより前の送信が終わった） */
+    uint32_t mark;           /* 目印が処理されたときまでに預かった入力の数（これより前の分を先に通す） */
 };
 
 static struct pending_press pending[MAX_PENDING];
 static size_t pending_count;
+static uint32_t next_pending_id;
 
 static void alt_code_work_handler(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(alt_code_work, alt_code_work_handler);
@@ -278,17 +292,22 @@ static void start_capturing(void) {
     k_spin_unlock(&capture_lock, key);
 }
 
-/* 送信が終わった: 預かったキー入力を、届いた順のまま PC へ通す。
+/* 預かったキー入力を、届いた順のまま PC へ通す。
+ * all = true: 全部通して、預かるのをやめる（送信がすべて終わったとき）。
+ * all = false: 通し番号が mark より前の分だけ通す（次の送信の目印より前に届いた分）。預かるのは続ける。
  * 先頭を写してロックの外で通し、通し終えてから待ち行列から取り除いて held に数える。
- * その間に届いた入力は後ろに並ぶ。空になったら預かるのをやめる */
-static void release_captured(void) {
+ * その間に届いた入力は後ろに並ぶ */
+static void release_captured(bool all, uint32_t mark) {
     while (true) {
         struct zmk_keycode_state_changed_event ev;
         k_spinlock_key_t key = k_spin_lock(&capture_lock);
-        if (captured_count == 0) {
-            capturing = false;
-            captured_head = 0;
-            captured_open = 0;
+        const uint32_t head_seq = captured_pushed - captured_count;
+        if (captured_count == 0 || (!all && (int32_t)(head_seq - mark) >= 0)) {
+            if (all) {
+                capturing = false;
+                captured_head = 0;
+                captured_open = 0;
+            }
             k_spin_unlock(&capture_lock, key);
             return;
         }
@@ -435,9 +454,19 @@ static bool build_steps(const struct behavior_alt_code_config *cfg) {
     return true;
 }
 
-/* 待ち行列の先頭から次の送信を始める。なければ待機状態に戻る */
+/* 待ち行列の先頭から次の送信を始める。先頭の目印がまだ処理されていなければ、処理されるまで待つ。
+ * 待ち行列が空なら、預かった入力をすべて通して待機状態に戻る */
 static void start_next(void) {
     while (pending_count > 0) {
+        if (!pending[0].ready) {
+            // 先頭の目印がまだ（それより前に並んだかななどの送信が終わっていない）: 目印の処理で呼び直される
+            busy = false;
+            active_cfg = NULL;
+            return;
+        }
+        // この送信の目印より前に届いて預かっていた入力を、先に通す
+        release_captured(false, pending[0].mark);
+
         const struct behavior_alt_code_config *cfg = pending[0].cfg;
         const atomic_val_t pressed_generation = pending[0].generation;
         pending_count--;
@@ -455,9 +484,7 @@ static void start_next(void) {
         if (!build_steps(cfg)) {
             continue;
         }
-        if (!busy) {
-            start_capturing();
-        }
+        start_capturing();
         busy = true;
         active_cfg = cfg;
         step_index = 0;
@@ -469,7 +496,23 @@ static void start_next(void) {
     }
     busy = false;
     active_cfg = NULL;
-    release_captured();
+    release_captured(true, 0);
+}
+
+/* 目印が処理された（それより前に並んだ送信がすべて終わった）: その分の送信を始められる */
+static void alt_code_on_marker(uint32_t id) {
+    for (size_t i = 0; i < pending_count; i++) {
+        if (pending[i].id == id && !pending[i].ready) {
+            k_spinlock_key_t key = k_spin_lock(&capture_lock);
+            pending[i].mark = captured_pushed;
+            k_spin_unlock(&capture_lock, key);
+            pending[i].ready = true;
+            break;
+        }
+    }
+    if (!busy) {
+        start_next();
+    }
 }
 
 /* この送信を始めてから接続先が切り替わったか（元の接続先に戻った場合も含む） */
@@ -562,6 +605,7 @@ static int alt_code_keycode_listener(const zmk_event_t *eh) {
             captured[(captured_head + captured_count) % MAX_CAPTURED] =
                 copy_raised_zmk_keycode_state_changed(ev);
             captured_count++;
+            captured_pushed++;
             captured_open++;
             ret = ZMK_EV_EVENT_CAPTURED;
         } else {
@@ -581,6 +625,7 @@ static int alt_code_keycode_listener(const zmk_event_t *eh) {
         captured[(captured_head + captured_count) % MAX_CAPTURED] =
             copy_raised_zmk_keycode_state_changed(ev);
         captured_count++;
+        captured_pushed++;
         ret = ZMK_EV_EVENT_CAPTURED;
     } else {
         // 空きの見積もりにより、ここには来ない（来た場合は、押す より先に通る可能性がある）
@@ -606,14 +651,25 @@ static int on_alt_code_binding_pressed(struct zmk_behavior_binding *binding,
         LOG_WRN("Too many pending alt code presses, ignoring");
         return ZMK_BEHAVIOR_OPAQUE;
     }
-    pending[pending_count++] = (struct pending_press){
+    const uint32_t id = next_pending_id++ & 0x7FFFFFFF;
+    struct pending_press *p = &pending[pending_count++];
+    *p = (struct pending_press){
         .cfg = cfg,
         .generation = atomic_get(&endpoint_generation),
+        .id = id,
     };
 
-    if (!busy) {
-        start_next();
+    // behavior queue の末尾に目印を並べ、それより前の送信（かななど）が終わってから送る。
+    // キューが空なら、この中で alt_code_on_marker が呼ばれて送り始める
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_KANA)
+    kana_output_set_marker_handler(alt_code_on_marker);
+    if (kana_output_add_marker(&event, id) == 0) {
+        return ZMK_BEHAVIOR_OPAQUE;
     }
+    LOG_WRN("Could not queue alt code marker, starting without waiting");
+#endif
+    // 目印を並べられない: すぐに送り始めてよいものとする
+    alt_code_on_marker(id);
     return ZMK_BEHAVIOR_OPAQUE;
 }
 
