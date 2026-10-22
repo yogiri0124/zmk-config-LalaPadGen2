@@ -6,6 +6,8 @@
  * - かな配列モードのオフは「受付停止 → IME オフを並べる → 完了の合図 (&kana_sync) を並べる →
  *   合図がキューで実際に処理されたらレイヤー解除」の順で行う。時間の見積もりには頼らないので、
  *   処理が遅れても、解除前後の入力がローマ字のまま送られたり、残りのかなを追い越したりしない。
+ * - 同じ合図の仕組みを、ほかのモジュール（Alt コード）にも「それより前に並べた送信がすべて終わったら
+ *   知らせる」目印として貸す（kana_output_add_marker）。合図の番号の最上位ビットで、どちらの合図かを区別する。
  *
  * behavior のコールバックと k_work はどちらもシステムワークキューで動くので、状態の排他は不要。
  */
@@ -30,6 +32,8 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define KP_BEHAVIOR_NAME DEVICE_DT_NAME(DT_NODELABEL(kp))
 #define SYNC_BEHAVIOR_NAME DEVICE_DT_NAME(DT_NODELABEL(kana_sync))
 #define RETRY_INTERVAL_MS 10
+/* 合図の番号のうち、目印（kana_output_add_marker）に使うもの。それ以外はかなモードの解除に使う */
+#define SYNC_MARKER_BIT BIT(31)
 
 /* ---- 送信キュー ---- */
 
@@ -193,7 +197,8 @@ static void kana_off_work_handler(struct k_work *work) {
             k_work_schedule(&kana_off_work, K_MSEC(RETRY_INTERVAL_MS));
             return;
         }
-        sync_token++;
+        // かなモードの解除の合図は、最上位ビットを使わない番号にする（目印と区別するため）
+        sync_token = (sync_token + 1) & ~SYNC_MARKER_BIT;
         struct zmk_behavior_binding sync = {
             .behavior_dev = SYNC_BEHAVIOR_NAME,
             .param1 = sync_token,
@@ -208,7 +213,35 @@ static void kana_off_work_handler(struct k_work *work) {
     }
 }
 
+/* ---- 目印（それより前に並べた送信がすべて終わったら知らせる） ---- */
+
+static kana_output_marker_cb_t marker_cb;
+
+void kana_output_set_marker_handler(kana_output_marker_cb_t cb) { marker_cb = cb; }
+
+int kana_output_add_marker(const struct zmk_behavior_binding_event *event, uint32_t id) {
+    // 「離す」の再試行を待っている送信があれば、それより先に目印が処理されないよう登録しない
+    if (release_pending()) {
+        return -EBUSY;
+    }
+    struct zmk_behavior_binding sync = {
+        .behavior_dev = SYNC_BEHAVIOR_NAME,
+        .param1 = SYNC_MARKER_BIT | (id & ~SYNC_MARKER_BIT),
+    };
+    // キューが空なら、この中で目印がすぐ処理されて marker_cb が呼ばれる
+    if (zmk_behavior_queue_add(event, sync, true, 0) < 0) {
+        return -ENOSPC;
+    }
+    return 0;
+}
+
 void kana_output_on_sync(uint32_t token) {
+    if (token & SYNC_MARKER_BIT) {
+        if (marker_cb != NULL) {
+            marker_cb(token & ~SYNC_MARKER_BIT);
+        }
+        return;
+    }
     if (off_stage != KANA_OFF_WAIT_SYNC || token != sync_token) {
         return;
     }

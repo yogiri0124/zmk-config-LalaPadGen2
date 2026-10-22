@@ -302,7 +302,7 @@
     combos {
         compatible = "zmk,combos";
 
-        CONBO_ESC {
+        COMBO_ESC {
             bindings = <&kp ESCAPE>;
             key-positions = <0 1>;
             layers = <DEFAULT_LAYER SECONDARY_LAYER TERTIARY_LAYER SYSTEM_LAYER MOUSE_LAYER>;

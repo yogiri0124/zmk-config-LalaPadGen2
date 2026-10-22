@@ -12,7 +12,7 @@
 
 - 1つのキー位置 = `&behavior` 1個 + その引数。引数の数（binding-cells）は behavior ごとに決まっている。
 - 下の表の「引数」は**キーマップに書く値の数**。`BT_NXT` や `BL_ON` などの定数は中身が「コマンド 0」の2値に展開されるマクロなので、1つ書くだけで2セル分になる（`&bt` と `&bl` は2セル）。
-- レイヤー番号は `keymap` ノード内の**定義順**で 0 から数える。このリポジトリでは `DEFAULT_LAYER`=0、`SECONDARY_LAYER`=1、`TERTIARY_LAYER`=2、`SYSTEM_LAYER`=3 を `#define` している。
+- レイヤー番号は `keymap` ノード内の**定義順**で 0 から数える。このリポジトリでは `DEFAULT_LAYER`=0、`SECONDARY_LAYER`=1、`TERTIARY_LAYER`=2、`SYSTEM_LAYER`=3、`MOUSE_LAYER`=4、`KANA_LAYER`=5、`KANA_L_LAYER`=6、`KANA_R_LAYER`=7、`KANA_SYM_LAYER`=8 を `#define` している。
 - 引数に使う定数は include が必要：`bt.h`（`BT_*`）、`outputs.h`（`OUT_*`）、`pointing.h`（`LCLK`・`MOVE_*`・`SCRL_*`）、`keys.h`（キーコード）。このリポジトリの keymap は全部 include 済み。
 
 ## 組み込み behavior
@@ -179,9 +179,9 @@
 | `zmk,behavior-kana` | `kana_key` | 1（`KN_…` `KE_…`。`dt-bindings/kana/kana.h`） | `tap-ms` `wait-ms`（既定 5）、`ime-resync-ms`（既定 1000） | かな1文字のローマ字、Space・Enter・Backspace を送信キューで順に送る |
 | `zmk,behavior-kana-mode` | `kana_sw` | 1（`KANA_SW_ON` `KANA_SW_OFF`） | `layer`（必須。かな単打面の番号）、`sub-layers`（抜けるときにいっしょに解除するレイヤー）、`tap-ms` `wait-ms` | かなモードのオン・オフ（IME とかなレイヤーの切り替え） |
 | `zmk,behavior-kana-seq` | `ks_…` `pair_…` `sym_…_ime` `sym_ellipsis` | 0 | `keys`（必須。キーコードの配列）、`ime-on`、`tap-ms` `wait-ms` `ime-resync-ms` | 決まった打鍵の列を、かなと同じ送信キューで送る |
-| `zmk,behavior-alt-code` | `sym_hbar` `sym_tilde` `pair_cquote` | 0 | `codes`（必須）、`cursor-left`、`commit-ime`、`tap-ms` `wait-ms` `ime-wait-ms` | Windows の Alt コードで文字を送る（送信中のほかのキー入力は預かり、送り終えてから届いた順に通す） |
-| `zmk,behavior-mouse-button-toggle` | `clk_lock_l` `_m` `_r` | 0 | `button`（必須。`LCLK` など） | マウスボタンの押しっぱなし切り替え |
-| `zmk,behavior-key-lock` | `mod_lock_…` | 0 | `keycode`（必須） | キーの押しっぱなし切り替え（押しっぱなしかどうかは自分で覚える。ほかのキーで同じキーを押していても独立して切り替わる） |
+| `zmk,behavior-alt-code` | `sym_hbar` `sym_tilde` `pair_cquote` | 0 | `codes`（必須）、`cursor-left`、`commit-ime`、`tap-ms` `wait-ms` `ime-wait-ms` | Windows の Alt コードで文字を送る（先に並んでいるかななどの送信を待ってから送る。送信中のほかのキー入力は預かり、送り終えてから届いた順に通す） |
+| `zmk,behavior-mouse-button-toggle` | `clk_lock_l` `_m` `_r` | 0 | `button`（必須。`LCLK` など） | マウスボタンの押しっぱなし切り替え（同じボタンのクリックや、接続先の切り替えでも解除） |
+| `zmk,behavior-key-lock` | `mod_lock_…` | 0 | `keycode`（必須） | キーの押しっぱなし切り替え（押しっぱなしかどうかは自分で覚える。ほかのキーで同じキーを押していても独立して切り替わる。接続先の切り替えで解除） |
 | `zmk,behavior-cursor-slow` | `cur_slow_hold` `_toggle` `_once` | 0 | `mode`（必須。`CURSOR_SLOW_HOLD` など） | カーソル低速のオン・オフ |
 | `zmk,behavior-scroll-snap-hold` | `scr_snap_hold` | 0 | — | 押している間だけスクロールを縦か横にそろえる |
 | `zmk,input-processor-auto-mouse-layer` | `zip_auto_mouse_layer`（dtsi） | 2（レイヤー番号、解除までの ms） | `require-prior-idle-ms`、`excluded-positions`、`touch-devices`、`touch-stale-ms` | トラックパッドの操作でマウスレイヤーを一時的に有効にする（マウスレイヤーで `&trans` の位置を押すと解除。ただし `excluded-positions` の位置は `&trans` でも解除しない。`&none` の位置は何もしない） |
