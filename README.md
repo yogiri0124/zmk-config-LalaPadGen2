@@ -117,7 +117,7 @@ GitHub に push すると、GitHub Actions が次の 3 つを作ります。Acti
 | 番号 | 名前 | 入り方 | 内容 |
 | --- | --- | --- | --- |
 | 0 | Default | — | Racket 配列 |
-| 1 | Control | 42 を押す（もう一度押すと戻る） | 空き（これから割り当てる用） |
+| 1 | Control | 42 を押す（もう一度押すと戻る） | 矢印、Page Up／Down、数字（6・9）、F11 |
 | 2 | secondary_layer（数字） | 33 を押している間 | 数字と記号 |
 | 3 | tertiary_layer（記号） | 38 を押している間 | 記号と、矢印などの移動キー |
 | 4 | system_layer | 33 と 38 を両方押している間 | F キー、Bluetooth、速度の調整、リセット |
