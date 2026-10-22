@@ -26,6 +26,7 @@ manifest:
       revision: v0.3
     - name: zmk-scroll-snap
       remote: kot149
-      revision: v1
+      # v1 はタグではなく更新され続けるブランチなので、ビルドが変わらないようコミットで固定する（2026-10-22 時点の v1）
+      revision: 2feeb988f5b5a3c2b5e09ba6472e86e6902463a2
   self:
     path: config
