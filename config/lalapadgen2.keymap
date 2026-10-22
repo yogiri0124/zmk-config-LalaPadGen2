@@ -331,7 +331,7 @@
             >;
         };
 
-        // Control レイヤー（Default の 42 を押すたびに入る／戻る）。キーは、これから割り当てる。
+        // Control レイヤー（Default の 42 を押すたびに入る／戻る）。左右とも同じ並びで、矢印・Page Up／Down・数字・F11 を置く。
         // Default のすぐ上に置くので、数字・記号・マウス・かなのレイヤーは、この上に重なって今までどおり使える。
         CONTROL_LAYER {
             display-name = "Control";
