@@ -12,7 +12,7 @@
 
 - 1つのキー位置 = `&behavior` 1個 + その引数。引数の数（binding-cells）は behavior ごとに決まっている。
 - 下の表の「引数」は**キーマップに書く値の数**。`BT_NXT` や `BL_ON` などの定数は中身が「コマンド 0」の2値に展開されるマクロなので、1つ書くだけで2セル分になる（`&bt` と `&bl` は2セル）。
-- レイヤー番号は `keymap` ノード内の**定義順**で 0 から数える。このリポジトリでは `DEFAULT_LAYER`=0、`SECONDARY_LAYER`=1、`TERTIARY_LAYER`=2、`SYSTEM_LAYER`=3、`MOUSE_LAYER`=4、`KANA_LAYER`=5、`KANA_L_LAYER`=6、`KANA_R_LAYER`=7、`KANA_SYM_LAYER`=8 を `#define` している。
+- レイヤー番号は `keymap` ノード内の**定義順**で 0 から数える。このリポジトリでは `DEFAULT_LAYER`=0、`CONTROL_LAYER`=1、`SECONDARY_LAYER`=2、`TERTIARY_LAYER`=3、`SYSTEM_LAYER`=4、`MOUSE_LAYER`=5、`KANA_LAYER`=6、`KANA_L_LAYER`=7、`KANA_R_LAYER`=8、`KANA_SYM_LAYER`=9 を `#define` している。
 - 引数に使う定数は include が必要：`bt.h`（`BT_*`）、`outputs.h`（`OUT_*`）、`pointing.h`（`LCLK`・`MOVE_*`・`SCRL_*`）、`keys.h`（キーコード）。このリポジトリの keymap は全部 include 済み。
 
 ## 組み込み behavior
@@ -155,7 +155,7 @@
 
 ## Conditional Layers（`compatible = "zmk,conditional-layers"`）
 
-- `if-layers = <1 2>; then-layer = <3>;` 1 と 2 が両方有効なとき 3 を有効にする（このリポジトリの現状の設定）。
+- `if-layers = <2 3>; then-layer = <4>;` 2 と 3 が両方有効なとき 4 を有効にする（このリポジトリの現状の設定。keymap では名前で書いている）。
 
 ## このリポジトリ独自の behavior（消さない・依頼なく変えない）
 
