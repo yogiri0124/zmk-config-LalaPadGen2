@@ -20,7 +20,8 @@
  *   使わないので、キューが満杯で「離す」や Num Lock の復元が抜けることはない。
  * - 押したら、まず behavior queue の末尾に目印を並べ（kana_output_add_marker）、それより前に並んでいた
  *   &kana_key・記号・マクロの送信がすべて終わってから送り始める（先に打ったかなを追い越さない）。
- *   目印を並べられないとき（キューが満杯など）は、すぐに送り始める。
+ *   目印を並べられないとき（キューが満杯、または「離す」の再試行中）は、少し待って並べ直す
+ *   （先に並んでいる送信を追い越さないように）。かな入力のモジュールがないビルドでは、すぐに送り始める。
  * - 送信中に押された分は待ち行列に入れ、前の送信が終わってから順に送る。
  * - 送信中にほかから届いたキー入力（通常のキー、&kana_key やマクロの送信など）は、いったん預かり
  *   （ZMK の zmk_keycode_state_changed を capture する）、送り終えてから届いた順のまま通す。
@@ -191,6 +192,8 @@ struct pending_press {
     const struct behavior_alt_code_config *cfg;
     atomic_val_t generation; /* 押したときの接続先の世代番号 */
     uint32_t id;             /* 目印の番号 */
+    struct zmk_behavior_binding_event event; /* 押したときのイベント（目印を並べ直すときに使う） */
+    bool marker_queued;      /* 目印を behavior queue に並べた */
     bool ready;              /* 目印が処理された（それより前の送信が終わった） */
     uint32_t mark;           /* 目印が処理されたときまでに預かった入力の数（これより前の分を先に通す） */
 };
@@ -201,6 +204,11 @@ static uint32_t next_pending_id;
 
 static void alt_code_work_handler(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(alt_code_work, alt_code_work_handler);
+
+/* 目印を並べられなかったときに、並べ直すまでの間隔 */
+#define MARKER_RETRY_MS 10
+static void marker_retry_work_handler(struct k_work *work);
+static K_WORK_DELAYABLE_DEFINE(marker_retry_work, marker_retry_work_handler);
 
 /* key_count の表で、そのキーの欄を探す。なければ NULL */
 static struct key_count *find_key(struct key_count *table, size_t len,
@@ -499,6 +507,37 @@ static void start_next(void) {
     release_captured(true, 0);
 }
 
+static void alt_code_on_marker(uint32_t id);
+
+/* まだ目印を並べていない待ちの分について、behavior queue の末尾に目印を並べる。
+ * それより前の送信（かななど）が終わったら alt_code_on_marker が呼ばれる（キューが空なら、この中ですぐ呼ばれる）。
+ * 並べられなければ、少し待って並べ直す（押した順に並べるため、並べられなかった分より後ろは待たせる） */
+static void queue_markers(void) {
+    for (size_t i = 0; i < pending_count; i++) {
+        struct pending_press *p = &pending[i];
+        if (p->marker_queued || p->ready) {
+            continue;
+        }
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_KANA)
+        kana_output_set_marker_handler(alt_code_on_marker);
+        p->marker_queued = true;
+        if (kana_output_add_marker(&p->event, p->id) < 0) {
+            p->marker_queued = false;
+            k_work_reschedule(&marker_retry_work, K_MSEC(MARKER_RETRY_MS));
+            return;
+        }
+        // 目印がこの中ですぐ処理された場合、待ち行列が進んで並びが変わっていることがあるので、最初から見直す
+        i = (size_t)-1;
+#else
+        // かな入力のモジュールがない: 待つ送信もないので、すぐに送り始めてよい
+        alt_code_on_marker(p->id);
+        i = (size_t)-1;
+#endif
+    }
+}
+
+static void marker_retry_work_handler(struct k_work *work) { queue_markers(); }
+
 /* 目印が処理された（それより前に並んだ送信がすべて終わった）: その分の送信を始められる */
 static void alt_code_on_marker(uint32_t id) {
     for (size_t i = 0; i < pending_count; i++) {
@@ -657,19 +696,9 @@ static int on_alt_code_binding_pressed(struct zmk_behavior_binding *binding,
         .cfg = cfg,
         .generation = atomic_get(&endpoint_generation),
         .id = id,
+        .event = event,
     };
-
-    // behavior queue の末尾に目印を並べ、それより前の送信（かななど）が終わってから送る。
-    // キューが空なら、この中で alt_code_on_marker が呼ばれて送り始める
-#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_KANA)
-    kana_output_set_marker_handler(alt_code_on_marker);
-    if (kana_output_add_marker(&event, id) == 0) {
-        return ZMK_BEHAVIOR_OPAQUE;
-    }
-    LOG_WRN("Could not queue alt code marker, starting without waiting");
-#endif
-    // 目印を並べられない: すぐに送り始めてよいものとする
-    alt_code_on_marker(id);
+    queue_markers();
     return ZMK_BEHAVIOR_OPAQUE;
 }
 
