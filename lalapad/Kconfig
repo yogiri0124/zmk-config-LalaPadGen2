@@ -11,7 +11,7 @@ config ZMK_BEHAVIOR_MOUSE_BUTTON_TOGGLE
 config ZMK_CURSOR_SLOW
     bool "Cursor slow mode (zmk,behavior-cursor-slow, zmk,input-processor-cursor-slow)"
     default y
-    depends on DT_HAS_ZMK_BEHAVIOR_CURSOR_SLOW_ENABLED || DT_HAS_ZMK_INPUT_PROCESSOR_CURSOR_SLOW_ENABLED
+    depends on (DT_HAS_ZMK_BEHAVIOR_CURSOR_SLOW_ENABLED || DT_HAS_ZMK_INPUT_PROCESSOR_CURSOR_SLOW_ENABLED) && ZMK_POINTING
 
 config ZMK_BEHAVIOR_KEY_LOCK
     bool "Key lock behavior (zmk,behavior-key-lock)"
