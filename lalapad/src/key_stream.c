@@ -81,9 +81,6 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define EVENT_QUEUE_SIZE 64
 /* 送り道が「今は送れない」と言ったときに、もう一度試すまでの時間 */
 #define RETRY_MS 5
-/* USB で「送り終わった」がこの時間届かなければ、待つのをやめる（USB がリセットされて転送が取り消されたのに、
- * ZMK の状態の知らせがまとめられて「切れた」が届かなかったときなどに、送るのが止まり続けないように） */
-#define USB_SENT_TIMEOUT_MS 500
 
 /* ---- レポートの記述（ベンダー定義。入力・出力とも 32 バイト、レポート ID なし） ---- */
 
@@ -177,9 +174,7 @@ static struct k_work_q key_stream_q;
 static void send_work_handler(struct k_work *work);
 static void command_work_handler(struct k_work *work);
 static void timeout_work_handler(struct k_work *work);
-static void usb_sent_timeout_work_handler(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(send_work, send_work_handler);
-static K_WORK_DELAYABLE_DEFINE(usb_sent_timeout_work, usb_sent_timeout_work_handler);
 static K_WORK_DEFINE(command_work, command_work_handler);
 static K_WORK_DELAYABLE_DEFINE(timeout_work, timeout_work_handler);
 
@@ -375,12 +370,6 @@ static void send_work_handler(struct k_work *work) {
         }
         k_spin_unlock(&lock, key);
         release_conn(conn);
-#if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_USB)
-        if (transport == KEY_STREAM_TRANSPORT_USB) {
-            k_work_reschedule_for_queue(&key_stream_q, &usb_sent_timeout_work,
-                                        K_MSEC(USB_SENT_TIMEOUT_MS));
-        }
-#endif
         return;
     }
     // 送れなかった: 送っている最中の印を外す（送っている間に送り道が切れて、もう外れていることもある）
@@ -411,22 +400,6 @@ void key_stream_sent(uint32_t id) {
     }
 }
 
-/* USB で「送り終わった」が届かないまま時間がたった: 待つのをやめて、次を送れるようにする */
-static void usb_sent_timeout_work_handler(struct k_work *work) {
-    k_spinlock_key_t key = k_spin_lock(&lock);
-    const bool stuck = in_flight_on_locked(KEY_STREAM_TRANSPORT_USB, NULL);
-    struct bt_conn *done = stuck ? finish_in_flight_locked() : NULL;
-    k_spin_unlock(&lock, key);
-    release_conn(done);
-    if (stuck) {
-        LOG_WRN("Key stream: USB report not acknowledged, giving up waiting");
-#if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_USB)
-        key_stream_usb_abort();
-#endif
-        kick_send(K_NO_WAIT);
-    }
-}
-
 /* ---- 命令（専用のワークキュー） ---- */
 
 static void start(enum key_stream_transport transport, struct bt_conn *conn, uint8_t mask) {
@@ -437,14 +410,20 @@ static void start(enum key_stream_transport transport, struct bt_conn *conn, uin
     const bool fresh = !streaming || stream_transport != transport || stream_conn != conn ||
                        stream_mask != mask;
     struct bt_conn *abandoned = NULL;
+    bool reset_usb = false;
     if (fresh) {
+        const bool was_streaming = streaming;
         old_conn = stop_locked();
-        // 前の送り道で送っている最中なら、その「送り終わった」は待たない（USB がサスペンドしたままなどで、
-        // 届かないことがあるため）。後から届いても、番号が違うので無視される。
-        // 前の送り道がまだ送っている間は、その送り道は次を受け付けない（-EAGAIN）ので、戻ってきても重ならない
-        if (in_flight && !in_flight_on_locked(transport, conn)) {
+        // 送るのをやめていた後（生存確認が途切れた、終了を受けた）や、送り道が変わったときは、送っている最中の
+        // ものの「送り終わった」を待たない（USB がサスペンドしたまま、USB のリセットで転送が取り消された、などで
+        // 届かないことがあるため。後から届いても、番号が違うので無視される）。
+        // 送っている間に種類だけ変わったときは、送り終わるのを待つ（送っている最中の USB のバッファを書き換えないように）
+        if (in_flight && (!was_streaming || !in_flight_on_locked(transport, conn))) {
             abandoned = finish_in_flight_locked();
         }
+        // USB で始めるときに、待っている転送がなければ、USB 側に残った「送っている最中」も外す
+        // （前に待つのをやめた転送が、終わらないまま残っていても、送れるようにする）
+        reset_usb = transport == KEY_STREAM_TRANSPORT_USB && !in_flight;
         streaming = true;
         stream_transport = transport;
         stream_conn = conn; // 参照は命令から引き継ぐ
@@ -466,6 +445,11 @@ static void start(enum key_stream_transport transport, struct bt_conn *conn, uin
 
     release_conn(old_conn);
     release_conn(abandoned);
+#if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_USB)
+    if (reset_usb) {
+        key_stream_usb_abort();
+    }
+#endif
     release_conn(conn); // 生存確認だけのとき: 命令の参照は要らない
     k_work_reschedule_for_queue(&key_stream_q, &timeout_work,
                                 K_MSEC(CONFIG_ZMK_KEY_STREAM_KEEPALIVE_TIMEOUT_MS));

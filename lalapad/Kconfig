@@ -49,15 +49,6 @@ config ZMK_POSITION_RELAY
       トラックパッドのタップ・ジェスチャーなど、入力スレッドから出たキー位置の出来事を預かり、キーマップと
       behavior の処理をシステムワークキューで行う（lalapad/src/position_relay.c）。
 
-config ZMK_SPLIT_TRACKPAD_RELEASE
-    bool "Release right trackpad positions when the peripheral disconnects"
-    default y
-    depends on ZMK_SPLIT && ZMK_SPLIT_ROLE_CENTRAL && ZMK_SPLIT_BLE
-    depends on $(dt_nodelabel_enabled,trackpad_key_behaviors_R)
-    help
-      右（子機）が切れたときに、右のトラックパッドのタップ・ジェスチャーで押されたままの位置を離す
-      （lalapad/src/split_trackpad_release.c）。
-
 config ZMK_KEY_STREAM
     bool "Send key position events to the host over a vendor raw HID (USB and BLE)"
     depends on !ZMK_SPLIT || ZMK_SPLIT_ROLE_CENTRAL
