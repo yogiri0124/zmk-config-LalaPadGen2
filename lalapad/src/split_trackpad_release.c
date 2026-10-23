@@ -10,6 +10,9 @@
  *
  * 対象の位置は、右のトラックパッドの入力処理（lalapadgen2.dtsi の trackpad_key_behaviors_R）の
  * bindings の引数（&tp_to_pos の位置番号）から、ビルド時に取り出す。
+ *
+ * 離すのは、切れる前に押されていた位置だけ。押したときに「それまでに切れた回数」を覚えておき、切れたという
+ * 出来事の回数より小さいものだけを離す（出来事が届く前につなぎ直して押した位置は、離さない）。
  */
 
 #include <zephyr/kernel.h>
@@ -32,48 +35,51 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 static const uint32_t right_trackpad_positions[] = {
     DT_FOREACH_PROP_ELEM(RIGHT_TRACKPAD_NODE, bindings, RIGHT_TRACKPAD_POSITION)};
 
-/* 押されている位置（入力スレッドとシステムワークキューの両方から触るので atomic） */
-static ATOMIC_DEFINE(pressed, ZMK_KEYMAP_LEN);
+/* 位置ごとの状態（right_trackpad_positions と同じ順番。入力スレッドとシステムワークキューの両方から触るので atomic）。
+ * 押されていれば「押したときまでに切れた回数 + 1」、押されていなければ 0 */
+static atomic_t pressed_at[ARRAY_SIZE(right_trackpad_positions)];
 
-static bool is_right_trackpad_position(uint32_t position) {
+/* 右のトラックパッドの位置なら、その順番。違えば -1 */
+static int right_trackpad_index(uint32_t position) {
     for (size_t i = 0; i < ARRAY_SIZE(right_trackpad_positions); i++) {
         if (right_trackpad_positions[i] == position) {
-            return true;
+            return (int)i;
         }
     }
-    return false;
+    return -1;
 }
 
-static void release_work_handler(struct k_work *work) {
+/* 切れた: その時点（disconnects 回目）より前に押されていた位置を離す（システムワークキュー） */
+static void release_pressed_before(uint32_t disconnects) {
     for (size_t i = 0; i < ARRAY_SIZE(right_trackpad_positions); i++) {
-        const uint32_t position = right_trackpad_positions[i];
-        if (position < ZMK_KEYMAP_LEN && atomic_test_and_clear_bit(pressed, position)) {
-            LOG_DBG("Right half disconnected, releasing trackpad position %d", position);
-            raise_zmk_position_state_changed((struct zmk_position_state_changed){
-                .source = ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL,
-                .state = false,
-                .position = position,
-                .timestamp = k_uptime_get(),
-            });
+        const atomic_val_t at = atomic_get(&pressed_at[i]);
+        // 押したときまでに切れた回数（at - 1）が、今回の切れた回数より小さい = 切れる前に押した
+        if (at == 0 || (uint32_t)(at - 1) >= disconnects || !atomic_cas(&pressed_at[i], at, 0)) {
+            continue;
         }
+        LOG_DBG("Right half disconnected, releasing trackpad position %d", right_trackpad_positions[i]);
+        raise_zmk_position_state_changed((struct zmk_position_state_changed){
+            .source = ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL,
+            .state = false,
+            .position = right_trackpad_positions[i],
+            .timestamp = k_uptime_get(),
+        });
     }
 }
-
-static K_WORK_DEFINE(release_work, release_work_handler);
 
 static int split_trackpad_release_listener(const zmk_event_t *eh) {
     const struct zmk_position_state_changed *pos = as_zmk_position_state_changed(eh);
     if (pos != NULL) {
-        if (pos->position < ZMK_KEYMAP_LEN && is_right_trackpad_position(pos->position)) {
-            atomic_set_bit_to(pressed, pos->position, pos->state);
+        const int idx = right_trackpad_index(pos->position);
+        if (idx >= 0) {
+            atomic_set(&pressed_at[idx], pos->state ? (atomic_val_t)lalapad_split_link_disconnects() + 1 : 0);
         }
         return ZMK_EV_EVENT_BUBBLE;
     }
 
     const struct zmk_lalapad_split_link_changed *split = as_zmk_lalapad_split_link_changed(eh);
     if (split != NULL && !split->connected) {
-        // 「離した」はワークで出す（切れたことの通知の処理の中から、さらに出来事を出さないように）
-        k_work_submit(&release_work);
+        release_pressed_before(split->disconnects);
     }
     return ZMK_EV_EVENT_BUBBLE;
 }

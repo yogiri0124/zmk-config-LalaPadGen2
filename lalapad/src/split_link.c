@@ -26,11 +26,15 @@ static atomic_val_t reported_disconnects;
 
 bool lalapad_split_link_connected(void) { return atomic_get(&link_count) > 0; }
 
-static void report(bool connected) {
+uint32_t lalapad_split_link_disconnects(void) { return (uint32_t)atomic_get(&disconnect_count); }
+
+static void report(bool connected, atomic_val_t disconnects) {
     reported = connected;
     LOG_DBG("Split link %s", connected ? "connected" : "disconnected");
-    raise_zmk_lalapad_split_link_changed(
-        (struct zmk_lalapad_split_link_changed){.connected = connected});
+    raise_zmk_lalapad_split_link_changed((struct zmk_lalapad_split_link_changed){
+        .connected = connected,
+        .disconnects = (uint32_t)disconnects,
+    });
 }
 
 static void notify_work_handler(struct k_work *work) {
@@ -39,11 +43,11 @@ static void notify_work_handler(struct k_work *work) {
     const atomic_val_t disconnects = atomic_get(&disconnect_count);
     if (disconnects != reported_disconnects) {
         reported_disconnects = disconnects;
-        report(false); // 知らせていた状態が「切れている」でも、もう一度知らせる（受け取る側は重なっても困らない）
+        report(false, disconnects); // 知らせていた状態が「切れている」でも、もう一度知らせる（受け取る側は重なっても困らない）
     }
     const bool connected = lalapad_split_link_connected();
     if (connected != reported) {
-        report(connected);
+        report(connected, disconnects);
     }
 }
 

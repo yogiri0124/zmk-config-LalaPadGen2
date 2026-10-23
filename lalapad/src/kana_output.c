@@ -22,7 +22,9 @@
 #include <zmk/behavior_queue.h>
 #include <zmk/keymap.h>
 #include <zmk/matrix.h>
+#include <zmk/event_manager.h>
 #include <zmk/events/keycode_state_changed.h>
+#include <zmk/events/layer_state_changed.h>
 
 #include <dt-bindings/zmk/keys.h>
 
@@ -267,6 +269,20 @@ void kana_output_on_sync(uint32_t token) {
 bool kana_input_enabled(void) { return kana_active && off_stage == KANA_OFF_NONE; }
 
 bool kana_mode_exiting(void) { return off_stage != KANA_OFF_NONE; }
+
+/* かなのレイヤーがほかの操作（Studio で割り当てた &to や &tog など）で解除されたら、かな配列モードも抜けたことにする。
+ * そうしないと「かな配列モード中」のまま残り、次の KANA_SW_ON で入り直せなくなる。
+ * IME はオンのまま残る（かな配列モードの解除の手順を通らないため）。解除処理中は、合図の処理に任せる */
+static int kana_layer_listener(const zmk_event_t *eh) {
+    if (kana_active && off_stage == KANA_OFF_NONE && !zmk_keymap_layer_active(kana_layer)) {
+        kana_active = false;
+        LOG_DBG("Kana layer deactivated elsewhere, kana mode off");
+    }
+    return ZMK_EV_EVENT_BUBBLE;
+}
+
+ZMK_LISTENER(kana_output, kana_layer_listener);
+ZMK_SUBSCRIPTION(kana_output, zmk_layer_state_changed);
 
 void kana_mode_on(const struct zmk_behavior_binding_event *event, zmk_keymap_layer_id_t layer,
                   uint32_t tap_ms, uint32_t wait_ms) {

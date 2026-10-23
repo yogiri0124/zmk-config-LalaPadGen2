@@ -15,9 +15,15 @@
 struct zmk_lalapad_split_link_changed {
     /* 右とつながっている（1台以上） */
     bool connected;
+    /* この出来事を出した時点までに、右との接続が切れた回数 */
+    uint32_t disconnects;
 };
 
 ZMK_EVENT_DECLARE(zmk_lalapad_split_link_changed);
 
 /* 今、右とつながっているか */
 bool lalapad_split_link_connected(void);
+
+/* 右との接続が切れた回数（切れた瞬間に増える。どのスレッドから呼んでもよい）。
+ * 押したときにこの値を覚えておけば、出来事の disconnects より小さいものが「切れる前に押したもの」と分かる */
+uint32_t lalapad_split_link_disconnects(void);

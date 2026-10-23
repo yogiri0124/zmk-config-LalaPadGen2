@@ -43,38 +43,97 @@ struct kana_entry {
 #define K2(a, b) {.len = 2, .keys = {a, b}}
 #define K3(a, b, c) {.len = 3, .keys = {a, b, c}}
 
-/* 文字 ID → 送るキー列（英語配列・ローマ字入力） */
-static const struct kana_entry kana_table[KN_MAX_ID + 1] = {
-    [KN_A] = K1(A),        [KN_I] = K1(I),        [KN_U] = K1(U),        [KN_E] = K1(E),
-    [KN_O] = K1(O),        [KN_KA] = K2(K, A),    [KN_KI] = K2(K, I),    [KN_KU] = K2(K, U),
-    [KN_KE] = K2(K, E),    [KN_KO] = K2(K, O),    [KN_SA] = K2(S, A),    [KN_SI] = K2(S, I),
-    [KN_SU] = K2(S, U),    [KN_SE] = K2(S, E),    [KN_SO] = K2(S, O),    [KN_TA] = K2(T, A),
-    [KN_TI] = K2(T, I),    [KN_TU] = K2(T, U),    [KN_TE] = K2(T, E),    [KN_TO] = K2(T, O),
-    [KN_NA] = K2(N, A),    [KN_NI] = K2(N, I),    [KN_NU] = K2(N, U),    [KN_NE] = K2(N, E),
-    [KN_NO] = K2(N, O),    [KN_HA] = K2(H, A),    [KN_HI] = K2(H, I),    [KN_HU] = K2(H, U),
-    [KN_HE] = K2(H, E),    [KN_HO] = K2(H, O),    [KN_MA] = K2(M, A),    [KN_MI] = K2(M, I),
-    [KN_MU] = K2(M, U),    [KN_ME] = K2(M, E),    [KN_MO] = K2(M, O),    [KN_YA] = K2(Y, A),
-    [KN_YU] = K2(Y, U),    [KN_YO] = K2(Y, O),    [KN_RA] = K2(R, A),    [KN_RI] = K2(R, I),
-    [KN_RU] = K2(R, U),    [KN_RE] = K2(R, E),    [KN_RO] = K2(R, O),    [KN_WA] = K2(W, A),
-    [KN_WO] = K2(W, O),    [KN_NN] = K2(N, N),
+/* 文字 ID・表示名（ZMK Studio の一覧に出る名前）・送るキー列（英語配列・ローマ字入力）。
+ * 送るキー列の表と ZMK Studio の一覧は、どちらもこの1つの一覧から作る（取り違えや書き漏れが起きないように） */
+#define KANA_LIST(X)                                                                               \
+    X(KN_A, "あ", K1(A)) \
+    X(KN_I, "い", K1(I)) \
+    X(KN_U, "う", K1(U)) \
+    X(KN_E, "え", K1(E)) \
+    X(KN_O, "お", K1(O)) \
+    X(KN_KA, "か", K2(K, A)) \
+    X(KN_KI, "き", K2(K, I)) \
+    X(KN_KU, "く", K2(K, U)) \
+    X(KN_KE, "け", K2(K, E)) \
+    X(KN_KO, "こ", K2(K, O)) \
+    X(KN_SA, "さ", K2(S, A)) \
+    X(KN_SI, "し", K2(S, I)) \
+    X(KN_SU, "す", K2(S, U)) \
+    X(KN_SE, "せ", K2(S, E)) \
+    X(KN_SO, "そ", K2(S, O)) \
+    X(KN_TA, "た", K2(T, A)) \
+    X(KN_TI, "ち", K2(T, I)) \
+    X(KN_TU, "つ", K2(T, U)) \
+    X(KN_TE, "て", K2(T, E)) \
+    X(KN_TO, "と", K2(T, O)) \
+    X(KN_NA, "な", K2(N, A)) \
+    X(KN_NI, "に", K2(N, I)) \
+    X(KN_NU, "ぬ", K2(N, U)) \
+    X(KN_NE, "ね", K2(N, E)) \
+    X(KN_NO, "の", K2(N, O)) \
+    X(KN_HA, "は", K2(H, A)) \
+    X(KN_HI, "ひ", K2(H, I)) \
+    X(KN_HU, "ふ", K2(H, U)) \
+    X(KN_HE, "へ", K2(H, E)) \
+    X(KN_HO, "ほ", K2(H, O)) \
+    X(KN_MA, "ま", K2(M, A)) \
+    X(KN_MI, "み", K2(M, I)) \
+    X(KN_MU, "む", K2(M, U)) \
+    X(KN_ME, "め", K2(M, E)) \
+    X(KN_MO, "も", K2(M, O)) \
+    X(KN_YA, "や", K2(Y, A)) \
+    X(KN_YU, "ゆ", K2(Y, U)) \
+    X(KN_YO, "よ", K2(Y, O)) \
+    X(KN_RA, "ら", K2(R, A)) \
+    X(KN_RI, "り", K2(R, I)) \
+    X(KN_RU, "る", K2(R, U)) \
+    X(KN_RE, "れ", K2(R, E)) \
+    X(KN_RO, "ろ", K2(R, O)) \
+    X(KN_WA, "わ", K2(W, A)) \
+    X(KN_WO, "を", K2(W, O)) \
+    X(KN_NN, "ん", K2(N, N)) \
+    X(KN_GA, "が", K2(G, A)) \
+    X(KN_GI, "ぎ", K2(G, I)) \
+    X(KN_GU, "ぐ", K2(G, U)) \
+    X(KN_GE, "げ", K2(G, E)) \
+    X(KN_GO, "ご", K2(G, O)) \
+    X(KN_ZA, "ざ", K2(Z, A)) \
+    X(KN_ZI, "じ", K2(Z, I)) \
+    X(KN_ZU, "ず", K2(Z, U)) \
+    X(KN_ZE, "ぜ", K2(Z, E)) \
+    X(KN_ZO, "ぞ", K2(Z, O)) \
+    X(KN_DA, "だ", K2(D, A)) \
+    X(KN_DI, "ぢ", K2(D, I)) \
+    X(KN_DU, "づ", K2(D, U)) \
+    X(KN_DE, "で", K2(D, E)) \
+    X(KN_DO, "ど", K2(D, O)) \
+    X(KN_BA, "ば", K2(B, A)) \
+    X(KN_BI, "び", K2(B, I)) \
+    X(KN_BU, "ぶ", K2(B, U)) \
+    X(KN_BE, "べ", K2(B, E)) \
+    X(KN_BO, "ぼ", K2(B, O)) \
+    X(KN_PA, "ぱ", K2(P, A)) \
+    X(KN_PI, "ぴ", K2(P, I)) \
+    X(KN_PU, "ぷ", K2(P, U)) \
+    X(KN_PE, "ぺ", K2(P, E)) \
+    X(KN_PO, "ぽ", K2(P, O)) \
+    X(KN_XYA, "ゃ", K3(X, Y, A)) \
+    X(KN_XYU, "ゅ", K3(X, Y, U)) \
+    X(KN_XYO, "ょ", K3(X, Y, O)) \
+    X(KN_XA, "ぁ", K2(X, A)) \
+    X(KN_XI, "ぃ", K2(X, I)) \
+    X(KN_XU, "ぅ", K2(X, U)) \
+    X(KN_XE, "ぇ", K2(X, E)) \
+    X(KN_XO, "ぉ", K2(X, O)) \
+    X(KN_XTU, "っ", K3(X, T, U)) \
+    X(KN_VU, "ゔ", K2(V, U)) \
+    X(KE_SPACE, "スペース", K1(SPACE)) \
+    X(KE_ENTER, "エンター", K1(ENTER)) \
+    X(KE_BSPC, "バックスペース", K1(BACKSPACE))
 
-    [KN_GA] = K2(G, A),    [KN_GI] = K2(G, I),    [KN_GU] = K2(G, U),    [KN_GE] = K2(G, E),
-    [KN_GO] = K2(G, O),    [KN_ZA] = K2(Z, A),    [KN_ZI] = K2(Z, I),    [KN_ZU] = K2(Z, U),
-    [KN_ZE] = K2(Z, E),    [KN_ZO] = K2(Z, O),    [KN_DA] = K2(D, A),    [KN_DI] = K2(D, I),
-    [KN_DU] = K2(D, U),    [KN_DE] = K2(D, E),    [KN_DO] = K2(D, O),    [KN_BA] = K2(B, A),
-    [KN_BI] = K2(B, I),    [KN_BU] = K2(B, U),    [KN_BE] = K2(B, E),    [KN_BO] = K2(B, O),
+#define KANA_TABLE_ENTRY(id, name, keys) [id] = keys,
 
-    [KN_PA] = K2(P, A),    [KN_PI] = K2(P, I),    [KN_PU] = K2(P, U),    [KN_PE] = K2(P, E),
-    [KN_PO] = K2(P, O),
-
-    [KN_XYA] = K3(X, Y, A), [KN_XYU] = K3(X, Y, U), [KN_XYO] = K3(X, Y, O), [KN_XA] = K2(X, A),
-    [KN_XI] = K2(X, I),     [KN_XU] = K2(X, U),     [KN_XE] = K2(X, E),     [KN_XO] = K2(X, O),
-    [KN_XTU] = K3(X, T, U), [KN_VU] = K2(V, U),
-
-    [KE_SPACE] = K1(SPACE),
-    [KE_ENTER] = K1(ENTER),
-    [KE_BSPC] = K1(BACKSPACE),
-};
+static const struct kana_entry kana_table[KN_MAX_ID + 1] = {KANA_LIST(KANA_TABLE_ENTRY)};
 
 struct behavior_kana_config {
     uint32_t tap_ms;
@@ -90,32 +149,14 @@ static bool is_hold_key(uint32_t id) { return id == KE_SPACE || id == KE_ENTER |
 
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 
-#define KV(id, name)                                                                               \
-    {.display_name = name, .value = id, .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE}
+#define KANA_METADATA_ENTRY(id, name, keys)                                                        \
+    {.display_name = name, .value = id, .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE},
 
 static const struct behavior_parameter_value_metadata param_values[] = {
-    KV(KN_A, "あ"),   KV(KN_I, "い"),   KV(KN_U, "う"),   KV(KN_E, "え"),   KV(KN_O, "お"),
-    KV(KN_KA, "か"),  KV(KN_KI, "き"),  KV(KN_KU, "く"),  KV(KN_KE, "け"),  KV(KN_KO, "こ"),
-    KV(KN_SA, "さ"),  KV(KN_SI, "し"),  KV(KN_SU, "す"),  KV(KN_SE, "せ"),  KV(KN_SO, "そ"),
-    KV(KN_TA, "た"),  KV(KN_TI, "ち"),  KV(KN_TU, "つ"),  KV(KN_TE, "て"),  KV(KN_TO, "と"),
-    KV(KN_NA, "な"),  KV(KN_NI, "に"),  KV(KN_NU, "ぬ"),  KV(KN_NE, "ね"),  KV(KN_NO, "の"),
-    KV(KN_HA, "は"),  KV(KN_HI, "ひ"),  KV(KN_HU, "ふ"),  KV(KN_HE, "へ"),  KV(KN_HO, "ほ"),
-    KV(KN_MA, "ま"),  KV(KN_MI, "み"),  KV(KN_MU, "む"),  KV(KN_ME, "め"),  KV(KN_MO, "も"),
-    KV(KN_YA, "や"),  KV(KN_YU, "ゆ"),  KV(KN_YO, "よ"),  KV(KN_RA, "ら"),  KV(KN_RI, "り"),
-    KV(KN_RU, "る"),  KV(KN_RE, "れ"),  KV(KN_RO, "ろ"),  KV(KN_WA, "わ"),  KV(KN_WO, "を"),
-    KV(KN_NN, "ん"),  KV(KN_GA, "が"),  KV(KN_GI, "ぎ"),  KV(KN_GU, "ぐ"),  KV(KN_GE, "げ"),
-    KV(KN_GO, "ご"),  KV(KN_ZA, "ざ"),  KV(KN_ZI, "じ"),  KV(KN_ZU, "ず"),  KV(KN_ZE, "ぜ"),
-    KV(KN_ZO, "ぞ"),  KV(KN_DA, "だ"),  KV(KN_DI, "ぢ"),  KV(KN_DU, "づ"),  KV(KN_DE, "で"),
-    KV(KN_DO, "ど"),  KV(KN_BA, "ば"),  KV(KN_BI, "び"),  KV(KN_BU, "ぶ"),  KV(KN_BE, "べ"),
-    KV(KN_BO, "ぼ"),  KV(KN_PA, "ぱ"),  KV(KN_PI, "ぴ"),  KV(KN_PU, "ぷ"),  KV(KN_PE, "ぺ"),
-    KV(KN_PO, "ぽ"),  KV(KN_XYA, "ゃ"), KV(KN_XYU, "ゅ"), KV(KN_XYO, "ょ"), KV(KN_XA, "ぁ"),
-    KV(KN_XI, "ぃ"),  KV(KN_XU, "ぅ"),  KV(KN_XE, "ぇ"),  KV(KN_XO, "ぉ"),  KV(KN_XTU, "っ"),
-    KV(KN_VU, "ゔ"),
-    KV(KE_SPACE, "スペース"), KV(KE_ENTER, "エンター"), KV(KE_BSPC, "バックスペース"),
-};
+    KANA_LIST(KANA_METADATA_ENTRY)};
 
-/* かな（1〜KN_VU）と、編集用のキー3つ。その間の番号は欠番 */
-BUILD_ASSERT(ARRAY_SIZE(param_values) == KN_VU + 3, "kana metadata must cover every kana ID");
+/* かな（1〜KN_VU）と、編集用のキー3つ。その間の番号は欠番（kana.h に ID を足したら KANA_LIST にも足す） */
+BUILD_ASSERT(ARRAY_SIZE(param_values) == KN_VU + 3, "KANA_LIST must cover every kana ID");
 
 static const struct behavior_parameter_metadata_set param_metadata_set[] = {{
     .param1_values = param_values,
