@@ -15,8 +15,6 @@
 struct zmk_lalapad_split_link_changed {
     /* 右とつながっている（1台以上） */
     bool connected;
-    /* 最後に切れたとき、それまでに右とつながった回数（その回までの接続は、もう切れている） */
-    uint32_t ended_connections;
 };
 
 ZMK_EVENT_DECLARE(zmk_lalapad_split_link_changed);
@@ -25,6 +23,5 @@ ZMK_EVENT_DECLARE(zmk_lalapad_split_link_changed);
 bool lalapad_split_link_connected(void);
 
 /* これまでに右とつながった回数（つながった瞬間に増える。どのスレッドから呼んでもよい）。
- * 押したときにこの値を覚えておけば、出来事の ended_connections 以下のものが「もう切れた接続の間に押したもの」と分かる
- * （切れる前に右から届き、切れた後に処理された押下も、まだつなぎ直していなければ、切れた接続のものとして数えられる） */
+ * 押したときにこの値を覚えておけば、どの接続の間に押したものかが分かる（split_trackpad_release.c） */
 uint32_t lalapad_split_link_connections(void);

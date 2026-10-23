@@ -11,15 +11,21 @@
  * 対象の位置は、右のトラックパッドの入力処理（lalapadgen2.dtsi の trackpad_key_behaviors_R）の
  * bindings の引数（&tp_to_pos の位置番号）から、ビルド時に取り出す。
  *
- * 離すのは、切れた接続の間に押された位置だけ。押したときに「それまでに右とつながった回数」を覚えておき、
- * 切れたという出来事の ended_connections 以下のものを離す（出来事が届く前につなぎ直して押した位置は、離さない）。
- * 切れる前に右から届いていて、切れた後に処理された押下も、つなぎ直す前ならこれで離せる。
- * 右とつながっていないときに処理された押下（切れたという出来事より後に処理された、古い接続の押下）は、
- * 捨てる（ほかに伝えない）。後から離すと、その間につなぎ直して押した新しい押下まで離してしまうため。
- * 捨てた押下をほかのモジュールの listener が数えないよう、この listener は自作モジュールの中で最初に呼ばれる
+ * 順番を崩さないため、すべて入力スレッドの1つの列で処理する:
+ * - 中継された右の入力は、入力イベントの列に並び、入力スレッドでキー位置の「押した／離した」になる。
+ * - 右との接続が切れたら、その場で（Bluetooth のスレッドから）同じ列の末尾に「切れた」の合図を並べる。
+ *   切れる前に届いた右の入力は、すべてこの合図より前に処理される。
+ * - 合図を受け取ったら、押されている右のトラックパッドの位置を離す。それより後に処理される、その接続の押下は
+ *   捨てる（ほかに伝えない）。押していない位置の「離した」も捨てる（ZMK が数える押した数が合わなくならないように）。
+ * 押したときに「それまでに右とつながった回数」を覚えておき、合図の回数以下のものを、切れた接続の押下とみなす
+ * （合図より後につなぎ直して押した位置は、離さない）。
+ * 捨てた入力をほかのモジュールの listener が数えないよう、この listener は自作モジュールの中で最初に呼ばれる
  * ようにしている（CMakeLists.txt でこのファイルを最初に足す。listener はリンクの順に呼ばれる）。
  */
 
+#include <zephyr/bluetooth/conn.h>
+#include <zephyr/device.h>
+#include <zephyr/input/input.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
@@ -40,11 +46,13 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 static const uint32_t right_trackpad_positions[] = {
     DT_FOREACH_PROP_ELEM(RIGHT_TRACKPAD_NODE, bindings, RIGHT_TRACKPAD_POSITION)};
 
-/* 位置ごとの状態（right_trackpad_positions と同じ順番。入力スレッドとシステムワークキューの両方から触るので atomic）。
- * 押されていれば「押したときまでに右とつながった回数」（1 以上）、押されていなければ 0 */
-static atomic_t pressed_at[ARRAY_SIZE(right_trackpad_positions)];
+/* ---- 入力スレッドでだけ触る状態 ---- */
 
-BUILD_ASSERT(ARRAY_SIZE(right_trackpad_positions) <= 32, "too many right trackpad positions");
+/* 位置ごとに、押されていれば「押したときまでに右とつながった回数」（1 以上）、押されていなければ 0
+ * （right_trackpad_positions と同じ順番） */
+static uint32_t pressed_at[ARRAY_SIZE(right_trackpad_positions)];
+/* 「切れた」の合図を受け取った接続の回数（この回数までの接続の押下は、もう受け付けない） */
+static uint32_t ended_connections;
 
 /* 右のトラックパッドの位置なら、その順番。違えば -1 */
 static int right_trackpad_index(uint32_t position) {
@@ -56,51 +64,95 @@ static int right_trackpad_index(uint32_t position) {
     return -1;
 }
 
-static void release(size_t i) {
-    LOG_DBG("Right half disconnected, releasing trackpad position %d", right_trackpad_positions[i]);
-    raise_zmk_position_state_changed((struct zmk_position_state_changed){
-        .source = ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL,
-        .state = false,
-        .position = right_trackpad_positions[i],
-        .timestamp = k_uptime_get(),
-    });
-}
-
-/* 切れた: もう切れた接続（ended_connections 回目まで）の間に押されていた位置を離す（システムワークキュー） */
-static void release_pressed_until(uint32_t ended_connections) {
-    for (size_t i = 0; i < ARRAY_SIZE(right_trackpad_positions); i++) {
-        const atomic_val_t at = atomic_get(&pressed_at[i]);
-        if (at != 0 && (uint32_t)at <= ended_connections && atomic_cas(&pressed_at[i], at, 0)) {
-            release(i);
-        }
-    }
-}
-
-
-
 static int split_trackpad_release_listener(const zmk_event_t *eh) {
     const struct zmk_position_state_changed *pos = as_zmk_position_state_changed(eh);
-    if (pos != NULL) {
-        const int idx = right_trackpad_index(pos->position);
-        if (idx >= 0) {
-            if (pos->state && !lalapad_split_link_connected()) {
-                // 右とつながっていないのに届いた押下（古い接続のもの）: 捨てる
-                LOG_DBG("Dropped trackpad position %d pressed after the right half disconnected",
-                        pos->position);
-                return ZMK_EV_EVENT_HANDLED;
-            }
-            atomic_set(&pressed_at[idx], pos->state ? (atomic_val_t)lalapad_split_link_connections() : 0);
-        }
+    if (pos == NULL) {
         return ZMK_EV_EVENT_BUBBLE;
     }
-
-    const struct zmk_lalapad_split_link_changed *split = as_zmk_lalapad_split_link_changed(eh);
-    if (split != NULL && !split->connected) {
-        release_pressed_until(split->ended_connections);
+    const int idx = right_trackpad_index(pos->position);
+    if (idx < 0) {
+        return ZMK_EV_EVENT_BUBBLE;
     }
+    if (pos->state) {
+        const uint32_t connections = lalapad_split_link_connections();
+        if (connections <= ended_connections) {
+            // 切れた接続の押下（「切れた」の合図より後に処理された）: 捨てる
+            LOG_DBG("Dropped trackpad position %d pressed on a disconnected link", pos->position);
+            return ZMK_EV_EVENT_HANDLED;
+        }
+        pressed_at[idx] = connections;
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+    if (pressed_at[idx] == 0) {
+        // 押していない（離し済み・捨てた押下の）「離した」: 捨てる
+        return ZMK_EV_EVENT_HANDLED;
+    }
+    pressed_at[idx] = 0;
     return ZMK_EV_EVENT_BUBBLE;
 }
 
 ZMK_LISTENER(split_trackpad_release, split_trackpad_release_listener);
 ZMK_SUBSCRIPTION(split_trackpad_release, zmk_position_state_changed);
-ZMK_SUBSCRIPTION(split_trackpad_release, zmk_lalapad_split_link_changed);
+
+/* ---- 「切れた」の合図（入力イベントの列に並べて、入力スレッドで受け取る） ---- */
+
+/* 合図を並べるためだけの入力デバイス（DT を使わない） */
+DEVICE_DEFINE(lalapad_split_release_input, "lalapad_split_release", NULL, NULL, NULL, NULL,
+              POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, NULL);
+
+#define SPLIT_RELEASE_INPUT_DEV DEVICE_GET(lalapad_split_release_input)
+
+/* 合図を受け取った: value 回目までの接続の間に押されていた位置を離す（入力スレッド） */
+static void split_release_callback(struct input_event *evt) {
+    if (evt->type != INPUT_EV_MSC) {
+        return;
+    }
+    const uint32_t ended = (uint32_t)evt->value;
+    if (ended > ended_connections) {
+        ended_connections = ended;
+    }
+    for (size_t i = 0; i < ARRAY_SIZE(right_trackpad_positions); i++) {
+        if (pressed_at[i] == 0 || pressed_at[i] > ended) {
+            continue;
+        }
+        // 出した「離した」は、上の listener で押されている扱いの位置なので通り、pressed_at も 0 に戻る
+        LOG_DBG("Right half disconnected, releasing trackpad position %d", right_trackpad_positions[i]);
+        raise_zmk_position_state_changed((struct zmk_position_state_changed){
+            .source = ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL,
+            .state = false,
+            .position = right_trackpad_positions[i],
+            .timestamp = k_uptime_get(),
+        });
+    }
+}
+
+INPUT_CALLBACK_DEFINE(SPLIT_RELEASE_INPUT_DEV, split_release_callback);
+
+/* 合図を列に並べられなかった（列が満杯）ときに、ワークで並べ直す */
+static atomic_t pending_ended;
+
+static void report_ended_work_handler(struct k_work *work) {
+    input_report(SPLIT_RELEASE_INPUT_DEV, INPUT_EV_MSC, 0, atomic_get(&pending_ended), true,
+                 K_FOREVER);
+}
+
+static K_WORK_DEFINE(report_ended_work, report_ended_work_handler);
+
+/* 右との接続が切れた（Bluetooth のスレッド）: その場で列の末尾に合図を並べる */
+static void disconnected(struct bt_conn *conn, uint8_t reason) {
+    ARG_UNUSED(reason);
+    struct bt_conn_info info;
+    if (bt_conn_get_info(conn, &info) != 0 || info.role != BT_CONN_ROLE_CENTRAL) {
+        return;
+    }
+    // ここまでにつながった接続は、すべて切れている
+    const uint32_t ended = lalapad_split_link_connections();
+    atomic_set(&pending_ended, ended);
+    if (input_report(SPLIT_RELEASE_INPUT_DEV, INPUT_EV_MSC, 0, ended, true, K_NO_WAIT) != 0) {
+        k_work_submit(&report_ended_work);
+    }
+}
+
+BT_CONN_CB_DEFINE(split_trackpad_release_conn_callbacks) = {
+    .disconnected = disconnected,
+};
