@@ -111,11 +111,12 @@ function mask() {
   return STREAM_KEYS | ($('trackpad').checked ? STREAM_TRACKPAD : 0);
 }
 
-async function send(type, arg = 0) {
-  if (!device) return;
+// dev: 送る機器（省略すると今つないでいる機器）
+async function send(type, arg = 0, dev = device) {
+  if (!dev) return;
   const data = new Uint8Array(REPORT_SIZE);
   data[0] = VERSION; data[1] = type; data[2] = arg;
-  try { await device.sendReport(0, data); }
+  try { await dev.sendReport(0, data); }
   catch (e) { log(`送れませんでした: ${e.message}`); }
 }
 
@@ -198,17 +199,19 @@ async function open(dev) {
 
 // unplugged: 機器が外れたとき（終了を送れないので送らない）
 async function close(unplugged = false) {
-  clearInterval(timer); timer = null;
-  if (device) {
-    if (!unplugged) await send(CMD_STOP);
-    device.removeEventListener('inputreport', onReport);
-    try { await device.close(); } catch (e) { /* 切れていてもよい */ }
-  }
+  // 切る機器をここで取り出し、つないでいる状態はすぐに空にする（終了を送っている間に、もう一度切る処理が
+  // 走ったり、新しくつないだりしても、この処理はこの機器だけを扱う）
+  const dev = device;
+  if (!dev) return;
   device = null;
+  clearInterval(timer); timer = null;
+  dev.removeEventListener('inputreport', onReport);
   Object.values(keyEls).forEach((el) => el.classList.remove('on'));
   $('device').textContent = '—'; $('right').textContent = '—'; $('right').className = '';
   $('connect').disabled = false; $('disconnect').disabled = true; $('query').disabled = true;
   log('切りました');
+  if (!unplugged) await send(CMD_STOP, 0, dev);
+  try { await dev.close(); } catch (e) { /* 切れていてもよい */ }
 }
 
 // つないでいる途中に、もう一度「つなぐ」を押しても受け付けない（2つの機器の処理が重ならないように）
