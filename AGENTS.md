@@ -30,7 +30,7 @@ Claude Code（編集担当）と Codex（レビュー担当）の両者がこの
   - `config/boards/shields/lalapadgen2/*.conf`
 - 依頼があるときに編集するファイル：
   - `lalapad/`（自作の ZMK モジュール。かな入力・記号キー・オートマウスレイヤーなどの C ソース、DT バインディング）
-  - `README.md`、`docs/google-ime/`
+  - `README.md`、`docs/google-ime/`、`docs/key-stream.md`、`docs/tools/`
 - 生成物として書き込んでよい場所（ソースではない。git 管理外）：`.review/`（レビュー結果）、`firmware/`（ビルド成果物）
 - 頼まれない限り変更しない：
   - `*.dtsi`、`*.overlay`、`config/west.yml`、`build.yaml`、`.github/workflows/`、`zephyr/module.yml`

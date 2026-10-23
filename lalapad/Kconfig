@@ -32,3 +32,58 @@ config ZMK_SCROLL_SNAP_GATE
     bool "Scroll snap hold (zmk,behavior-scroll-snap-hold, zmk,input-processor-scroll-snap-gate)"
     default y
     depends on (DT_HAS_ZMK_BEHAVIOR_SCROLL_SNAP_HOLD_ENABLED || DT_HAS_ZMK_INPUT_PROCESSOR_SCROLL_SNAP_GATE_ENABLED) && ZMK_POINTING
+
+config ZMK_KEY_STREAM
+    bool "Send key position events to the host over a vendor raw HID (USB and BLE)"
+    depends on !ZMK_SPLIT || ZMK_SPLIT_ROLE_CENTRAL
+    depends on ZMK_USB || ZMK_BLE
+    help
+      キーが押された／離されたときに、その位置番号を raw HID で PC のアプリに送る（lalapad/src/key_stream.c）。
+      アプリから「開始」を受けている間だけ送る。USB で使うときは CONFIG_USB_HID_DEVICE_COUNT=2 も必要。
+
+if ZMK_KEY_STREAM
+
+config ZMK_KEY_STREAM_USB
+    bool "Key stream over USB (a second USB HID device)"
+    default y
+    depends on ZMK_USB
+
+config ZMK_KEY_STREAM_BLE
+    bool "Key stream over BLE (a second HID over GATT service)"
+    default y
+    depends on ZMK_BLE
+
+config ZMK_KEY_STREAM_USAGE_PAGE
+    hex "Vendor usage page of the raw HID"
+    default 0xFF4C
+    range 0xFF00 0xFFFF
+
+config ZMK_KEY_STREAM_USAGE
+    hex "Usage of the raw HID"
+    default 0x01
+    range 0x01 0x7F
+
+config ZMK_KEY_STREAM_USB_DEVICE
+    string "Zephyr USB HID device used for the key stream"
+    default "HID_1"
+
+config ZMK_KEY_STREAM_TRACKPAD_FIRST
+    int "First key position that comes from the trackpads"
+    default 52
+    help
+      この番号以降の位置は、トラックパッドのタップ・ジェスチャー（lalapadgen2.dtsi の POS_TP_*）として扱い、
+      アプリが「開始」で指定したときだけ送る。
+
+config ZMK_KEY_STREAM_KEEPALIVE_TIMEOUT_MS
+    int "Stop sending when no start/keepalive arrives for this long (ms)"
+    default 6000
+
+config ZMK_KEY_STREAM_THREAD_STACK_SIZE
+    int "Stack size of the key stream work queue"
+    default 1536
+
+config ZMK_KEY_STREAM_THREAD_PRIORITY
+    int "Priority of the key stream work queue"
+    default 6
+
+endif
