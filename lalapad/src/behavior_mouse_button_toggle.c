@@ -3,21 +3,20 @@
  * keymap で button = <LCLK> などを付けたインスタンスを作って使う。
  *
  * 押すたびに、指定したマウスボタンを押しっぱなしにする／離す。
- * 入力イベントは共通の入力デバイス mouse_lock_input（zmk,mouse-button-lock-input）から INPUT_BTN_* として出し、
- * mouse_button_toggle.dtsi の入力リスナー（&mkp の mkp_input_listener と同じ形）が HID のマウスボタンに反映する。
  * 押しっぱなし中に同じボタンのクリック（&mkp による押下。トラックパッドのタップも含む）が来たら、
  * 押しっぱなしを解除する。ZMK v0.3.0 はマウスボタンの押下回数を数えているので、ここで解除しないと
- * クリックしてもボタンが押されたままになる。自分の押下は &mkp の入力としては現れないので、
- * &mkp の入力を監視すれば「ほかからのクリック」だけを確実に見分けられる。
- * 入力イベントは1つの列に並んで順に処理されるので、押しっぱなしが「効いている」とみなすのは、自分の「押す」が
- * その列から出てきた時点からにする（active）。押しっぱなしにする前に押したクリックが列で待っていても、
- * それで新しい押しっぱなしを解除しないように。
+ * クリックしてもボタンが押されたままになる。&mkp のクリックは &mkp の入力デバイスから入力イベントとして出るので、
+ * それを監視すれば「ほかからのクリック」だけを見分けられる。
  *
- * 接続先（USB・BLE プロファイル）が変わったときも、押しっぱなしを解除する。ZMK は接続先が変わると
- * キーボードの状態を消すが、押した数（ZMK のボタンごとの数）は残るので、ここで「離す」を送って数を合わせる
- * （そうしないと、次に押したときに解除になり、もう一度押すまで押しっぱなしにできない）。
- * 解除するのは、切り替わった時点で押しっぱなしだったものだけ。それをワークで離す前に、このキーを押したときは、
- * まず古い押しっぱなしを離してから、新しく押しっぱなしにする。
+ * クリックと押しっぱなしの切り替えを、操作した順に扱うため、切り替えもすべて入力イベントの列に並べて、
+ * 入力スレッドで1つずつ処理する。このキーを押したら、共通の入力デバイス mouse_lock_input
+ * （zmk,mouse-button-lock-input）から「切り替えて」という依頼（INPUT_EV_MSC）を出し、入力スレッドで受け取って
+ * HID のマウスボタンを押す／離す（ZMK の入力リスナーと同じく、入力スレッドで HID を変えて送る）。
+ * クリックも同じ列から届くので、「クリック → 押しっぱなし」「押しっぱなし → クリック」の順番が入れ替わらない。
+ *
+ * 接続先（USB・BLE プロファイル）が変わったときも、押しっぱなしを解除する（同じ列に「全部離して」を並べる）。
+ * ZMK は接続先が変わるとキーボードの状態を消すが、押した数（ZMK のボタンごとの数）は残るので、
+ * ここで離して数を合わせる（そうしないと、次に押したときに解除になり、もう一度押すまで押しっぱなしにできない）。
  * 制約: ZMK v0.3.0 は接続先を切り替えるとき、マウスのボタンの「離した」を切り替え前の PC に送らない
  * （キーボードの状態は送るが、マウスは送らない。切り替わったと知らされた時点で、送り先はもう切り替え後）。
  * そのため、切り替え前の PC ではボタンが押されたままに見えることがある（ZMK 標準の &mkp で押したままにした
@@ -28,17 +27,17 @@
 #include <zephyr/input/input.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/sys/atomic.h>
 #include <drivers/behavior.h>
 
 #include <zmk/behavior.h>
+#include <zmk/endpoints.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/endpoint_changed.h>
 #include <zmk/hid.h>
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
-/* ---- 共通の入力デバイス（zmk,mouse-button-lock-input）---- */
+/* ---- 依頼を入力イベントの列に並べるための入力デバイス（zmk,mouse-button-lock-input）---- */
 
 #define DT_DRV_COMPAT zmk_mouse_button_lock_input
 
@@ -52,71 +51,84 @@ DEVICE_DT_INST_DEFINE(0, NULL, NULL, NULL, NULL, POST_KERNEL, CONFIG_KERNEL_INIT
 
 #undef DT_DRV_COMPAT
 
-/* ---- 押しっぱなしの状態（全インスタンスで共有）---- */
+/* 依頼の種類（INPUT_EV_MSC の code。ZMK の入力リスナーは INPUT_EV_MSC を使わない） */
+#define REQUEST_TOGGLE 0     /* value のビットのボタンを、押しっぱなしにする／離す */
+#define REQUEST_UNLOCK_ALL 1 /* 押しっぱなしをすべて離す */
 
 #define MKP_NODE DT_NODELABEL(mkp)
 #define NUM_BUTTONS ZMK_HID_MOUSE_NUM_BUTTONS
 
-/* bit i: ボタン i を押しっぱなしにしている（behavior から切り替える） */
-static atomic_t locked;
-/* bit i: ボタン i の押しっぱなしが効いている（自分の「押す」が入力の列から出てきた。入力スレッドで切り替える） */
-static atomic_t active;
-/* 入力コールバックから依頼された解除（bit i）。システムワークキューで処理する */
-static atomic_t unlock_requests;
-
-static void report_button(int button, bool pressed) {
-    input_report_key(LOCK_INPUT_DEV, INPUT_BTN_0 + button, pressed ? 1 : 0, true, K_FOREVER);
+static void send_request(uint16_t request, uint32_t buttons) {
+    input_report(LOCK_INPUT_DEV, INPUT_EV_MSC, request, buttons, true, K_FOREVER);
 }
 
-static void unlock_work_handler(struct k_work *work) {
-    const atomic_val_t requests = atomic_clear(&unlock_requests);
-    for (int i = 0; i < NUM_BUTTONS; i++) {
-        if ((requests & BIT(i)) && atomic_test_and_clear_bit(&locked, i)) {
-            LOG_DBG("Mouse button %d unlocked (click or endpoint change)", i);
-            report_button(i, false);
-        }
+/* ---- 押しっぱなしの状態（入力スレッドでだけ触る）---- */
+
+/* bit i: ボタン i を押しっぱなしにしている */
+static uint32_t locked;
+
+static void set_locked(int button, bool on) {
+    WRITE_BIT(locked, button, on);
+    if (on) {
+        zmk_hid_mouse_button_press(button);
+    } else {
+        zmk_hid_mouse_button_release(button);
     }
 }
 
-static K_WORK_DEFINE(unlock_work, unlock_work_handler);
-
-/* 接続先が変わったら、押しっぱなしをすべて解除する（別のスレッドから呼ばれることがあるので、解除はワークに回す） */
-static int mbt_endpoint_listener(const zmk_event_t *eh) {
-    atomic_or(&unlock_requests, atomic_get(&locked));
-    k_work_submit(&unlock_work);
-    return ZMK_EV_EVENT_BUBBLE;
+/* 依頼を受け取る（入力スレッド。クリックと同じ列から、操作した順に届く） */
+static void lock_request_callback(struct input_event *evt) {
+    if (evt->type != INPUT_EV_MSC) {
+        return;
+    }
+    bool changed = false;
+    for (int i = 0; i < NUM_BUTTONS; i++) {
+        if (evt->code == REQUEST_TOGGLE && (evt->value & BIT(i))) {
+            set_locked(i, !(locked & BIT(i)));
+            changed = true;
+        } else if (evt->code == REQUEST_UNLOCK_ALL && (locked & BIT(i))) {
+            LOG_DBG("Mouse button %d unlocked (endpoint change)", i);
+            set_locked(i, false);
+            changed = true;
+        }
+    }
+    if (changed) {
+        zmk_endpoints_send_mouse_report();
+    }
 }
 
-ZMK_LISTENER(behavior_mouse_button_toggle, mbt_endpoint_listener);
-ZMK_SUBSCRIPTION(behavior_mouse_button_toggle, zmk_endpoint_changed);
+INPUT_CALLBACK_DEFINE(LOCK_INPUT_DEV, lock_request_callback);
 
-/* &mkp が出す入力イベント（＝ほかからのクリック）を監視する。入力スレッドで呼ばれるので、解除はワークに回す */
+/* &mkp のクリック（入力スレッド）: 押しっぱなし中の同じボタンなら、押しっぱなしを解除する */
 static void mkp_input_callback(struct input_event *evt) {
     if (evt->type != INPUT_EV_KEY || evt->value == 0 || evt->code < INPUT_BTN_0 ||
         evt->code >= INPUT_BTN_0 + NUM_BUTTONS) {
         return;
     }
-
     const int button = evt->code - INPUT_BTN_0;
-
-    // 押しっぱなしが効いた後のクリックだけで解除する（効く前に押して列で待っていたクリックでは解除しない）
-    if (atomic_test_bit(&active, button)) {
-        atomic_set_bit(&unlock_requests, button);
-        k_work_submit(&unlock_work);
+    if (locked & BIT(button)) {
+        LOG_DBG("Mouse button %d unlocked (click)", button);
+        set_locked(button, false);
+        // 送るのは ZMK の入力リスナーに任せる（このクリックの押下と合わせて送られる）
     }
 }
 
 INPUT_CALLBACK_DEFINE(DEVICE_DT_GET(MKP_NODE), mkp_input_callback);
 
-/* 自分の「押す」「離す」が入力の列から出てきた: 押しっぱなしが効いている／いないを切り替える（入力スレッド） */
-static void lock_input_callback(struct input_event *evt) {
-    if (evt->type != INPUT_EV_KEY || evt->code < INPUT_BTN_0 || evt->code >= INPUT_BTN_0 + NUM_BUTTONS) {
-        return;
-    }
-    atomic_set_bit_to(&active, evt->code - INPUT_BTN_0, evt->value != 0);
+/* ---- 接続先の切り替え ---- */
+
+static void unlock_all_work_handler(struct k_work *work) { send_request(REQUEST_UNLOCK_ALL, 0); }
+
+static K_WORK_DEFINE(unlock_all_work, unlock_all_work_handler);
+
+/* 別のスレッドから呼ばれることがあるので、依頼はワークから出す */
+static int mbt_endpoint_listener(const zmk_event_t *eh) {
+    k_work_submit(&unlock_all_work);
+    return ZMK_EV_EVENT_BUBBLE;
 }
 
-INPUT_CALLBACK_DEFINE(LOCK_INPUT_DEV, lock_input_callback);
+ZMK_LISTENER(behavior_mouse_button_toggle, mbt_endpoint_listener);
+ZMK_SUBSCRIPTION(behavior_mouse_button_toggle, zmk_endpoint_changed);
 
 /* ---- behavior（zmk,behavior-mouse-button-toggle）---- */
 
@@ -130,25 +142,8 @@ static int on_mbt_binding_pressed(struct zmk_behavior_binding *binding,
                                   struct zmk_behavior_binding_event event) {
     const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
     const struct behavior_mbt_config *cfg = dev->config;
-
-    for (int i = 0; i < NUM_BUTTONS; i++) {
-        if (!(cfg->buttons & BIT(i))) {
-            continue;
-        }
-        // 解除を頼まれたまま（接続先の切り替え・ほかからのクリック）の押しっぱなしは、先に離す
-        // （このキーは、新しく押しっぱなしにする操作になる）
-        if (atomic_test_and_clear_bit(&unlock_requests, i) && atomic_test_and_clear_bit(&locked, i)) {
-            report_button(i, false);
-        }
-        if (atomic_test_and_clear_bit(&locked, i)) {
-            // 押しっぱなし中 → 離す（もう一度押しても外れる）
-            report_button(i, false);
-        } else {
-            atomic_set_bit(&locked, i);
-            report_button(i, true);
-        }
-    }
-
+    // 切り替えは入力スレッドで行う（クリックと同じ列に並べて、操作した順に扱う）
+    send_request(REQUEST_TOGGLE, cfg->buttons & BIT_MASK(NUM_BUTTONS));
     return ZMK_BEHAVIOR_OPAQUE;
 }
 

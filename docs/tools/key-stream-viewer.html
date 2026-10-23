@@ -73,6 +73,8 @@ const KEEPALIVE_MS = 2000;
 
 const $ = (id) => document.getElementById(id);
 let device = null, timer = null, nextSeq = null, received = 0, lost = 0;
+// 機器を閉じている途中（閉じ終わるまで、つなぎ直さない）
+let closing = false;
 // キーの位置の数（この番号から先がトラックパッドのタップ・ジェスチャー。状態のレポートで受け取る）
 let keyPositions = 52;
 
@@ -210,21 +212,27 @@ async function close(unplugged = false) {
   const dev = device;
   if (!dev) return;
   device = null;
+  closing = true; // 閉じ終わるまで、つなぎ直さない（同じ機器を開き直した後に、ここで閉じてしまわないように）
   clearInterval(timer); timer = null;
   dev.removeEventListener('inputreport', onReport);
   Object.values(keyEls).forEach((el) => el.classList.remove('on'));
   $('device').textContent = '—'; $('right').textContent = '—'; $('right').className = '';
-  $('connect').disabled = false; $('disconnect').disabled = true; $('query').disabled = true;
-  log('切りました');
-  if (!unplugged) await send(CMD_STOP, 0, dev);
-  try { await dev.close(); } catch (e) { /* 切れていてもよい */ }
+  $('connect').disabled = true; $('disconnect').disabled = true; $('query').disabled = true;
+  try {
+    if (!unplugged) await send(CMD_STOP, 0, dev);
+    try { await dev.close(); } catch (e) { /* 切れていてもよい */ }
+  } finally {
+    closing = false;
+    $('connect').disabled = false;
+    log('切りました');
+  }
 }
 
 // つないでいる途中に、もう一度「つなぐ」を押しても受け付けない（2つの機器の処理が重ならないように）
 let connecting = false;
 $('connect').addEventListener('click', async () => {
   if (!('hid' in navigator)) { log('このブラウザでは WebHID が使えません（Chrome か Edge で開いてください）'); return; }
-  if (connecting || device) return;
+  if (connecting || closing || device) return;
   connecting = true;
   $('connect').disabled = true;
   try {
