@@ -93,10 +93,14 @@ for (const row of ROWS) {
   }
 }
 
+// 記録は新しいものから LOG_LINES 行だけ残す（長く開いたままでも重くならないように）
+const LOG_LINES = 500;
 function log(text) {
   const box = $('log');
-  const time = new Date().toLocaleTimeString();
-  box.textContent += `${time}  ${text}\n`;
+  const line = document.createElement('div');
+  line.textContent = `${new Date().toLocaleTimeString()}  ${text}`;
+  box.appendChild(line);
+  while (box.childElementCount > LOG_LINES) box.firstElementChild.remove();
   box.scrollTop = box.scrollHeight;
 }
 
@@ -161,10 +165,11 @@ async function open(dev) {
   timer = setInterval(() => send(CMD_START, mask()), KEEPALIVE_MS);
 }
 
-async function close() {
+// unplugged: 機器が外れたとき（終了を送れないので送らない）
+async function close(unplugged = false) {
   clearInterval(timer); timer = null;
   if (device) {
-    await send(CMD_STOP);
+    if (!unplugged) await send(CMD_STOP);
     device.removeEventListener('inputreport', onReport);
     try { await device.close(); } catch (e) { /* 切れていてもよい */ }
   }
@@ -182,10 +187,10 @@ $('connect').addEventListener('click', async () => {
     await open(devices[0]);
   } catch (e) { log(`つなげませんでした: ${e.message}`); }
 });
-$('disconnect').addEventListener('click', close);
-$('clear').addEventListener('click', () => { $('log').textContent = ''; received = 0; lost = 0; $('count').textContent = 0; $('lost').textContent = 0; });
+$('disconnect').addEventListener('click', () => close());
+$('clear').addEventListener('click', () => { $('log').replaceChildren(); received = 0; lost = 0; $('count').textContent = 0; $('lost').textContent = 0; });
 $('trackpad').addEventListener('change', () => send(CMD_START, mask()));
-navigator.hid?.addEventListener('disconnect', (e) => { if (e.device === device) { log('機器が外れました'); close(); } });
+navigator.hid?.addEventListener('disconnect', (e) => { if (e.device === device) { log('機器が外れました'); close(true); } });
 window.addEventListener('pagehide', () => { if (device) send(CMD_STOP); });
 </script>
 </body>
