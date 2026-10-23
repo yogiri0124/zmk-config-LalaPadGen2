@@ -755,7 +755,16 @@ static const struct behavior_driver_api behavior_alt_code_driver_api = {
 #endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 };
 
+/* 時間の設定は 0〜10 秒（負の値や大きすぎる値で、待ち時間の計算がおかしくならないように） */
+#define ALT_CODE_CHECK_MS(n, prop)                                                                 \
+    BUILD_ASSERT(DT_INST_PROP(n, prop) >= 0 && DT_INST_PROP(n, prop) <= 10000,                     \
+                 "alt code: " #prop " must be 0-10000 ms");
+
 #define ALT_CODE_INST(n)                                                                           \
+    ALT_CODE_CHECK_MS(n, tap_ms)                                                                   \
+    ALT_CODE_CHECK_MS(n, wait_ms)                                                                  \
+    ALT_CODE_CHECK_MS(n, ime_wait_ms)                                                              \
+    BUILD_ASSERT(DT_INST_PROP(n, cursor_left) >= 0, "alt code: cursor-left must not be negative"); \
     static const uint32_t behavior_alt_code_codes_##n[] = DT_INST_PROP(n, codes);                  \
     static const struct behavior_alt_code_config behavior_alt_code_config_##n = {                 \
         .codes = behavior_alt_code_codes_##n,                                                      \
