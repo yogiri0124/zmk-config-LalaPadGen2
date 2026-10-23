@@ -13,6 +13,12 @@ properties:
     type: int
     default: 0
     description: 直前のキー入力からこの時間（ms）以内のトラックパッド操作では有効にしない
+  excluded-layers:
+    type: array
+    default: []
+    description: >
+      これらのレイヤーが有効な間は、マウスレイヤーを新しく有効にしない（入力リスナーの layers の上書きで
+      この処理を外しているレイヤーと同じものを書く。上書きに切り替わる前に届いた操作で有効になるのを防ぐ）
   excluded-positions:
     type: array
     default: []

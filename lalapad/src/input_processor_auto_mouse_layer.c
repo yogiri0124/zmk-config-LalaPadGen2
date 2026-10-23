@@ -21,6 +21,9 @@
  *   右（子機）から中継しているデバイス（zmk,input-split）は、右が切れたら離れたとみなす
  *   （切れると「離れた」は届かないため）。
  * - 直前のキー入力から require-prior-idle-ms 以内のトラックパッド操作では有効にしない（打鍵中の誤動作防止）。
+ * - excluded-layers のレイヤーが有効な間は、有効にしない（入力リスナーの layers の上書きで、その間は
+ *   この処理を通さないようにしていても、上書きに切り替わる前に届いた操作で有効になることがあるため。
+ *   有効化を予約したときと、実際に有効にするときの両方で確かめる）。
  * - トラックパッドの操作で有効化を予約した後、実際に有効にする前にキーが押されたら、その予約では有効にしない
  *   （&mo で数字・記号レイヤーに入るキーなど、キーコードを出さないキーを押した直後に、マウスレイヤーが
  *   上に重なってしまわないように。その後もトラックパッドを操作すれば、改めて予約される）。
@@ -64,6 +67,8 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 struct auto_mouse_config {
     int32_t require_prior_idle_ms;
+    const zmk_keymap_layer_id_t *excluded_layers;
+    size_t num_excluded_layers;
     const uint16_t *excluded_positions;
     size_t num_positions;
     uint32_t touch_stale_ms;
@@ -126,6 +131,16 @@ static bool position_is_bound(zmk_keymap_layer_id_t layer, uint32_t position) {
         return false;
     }
     return strcmp(binding->behavior_dev, TRANS_BEHAVIOR_NAME) != 0;
+}
+
+/* excluded-layers のどれかが有効か（有効なら、マウスレイヤーを新しく有効にしない） */
+static bool excluded_layer_active(const struct auto_mouse_config *cfg) {
+    for (size_t i = 0; i < cfg->num_excluded_layers; i++) {
+        if (zmk_keymap_layer_active(cfg->excluded_layers[i])) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static bool is_mouse_key(const struct device *dev, uint32_t position) {
@@ -210,8 +225,9 @@ static void activity_work_cb(struct k_work *work) {
 
     k_mutex_lock(&data->lock, K_FOREVER);
     if (!data->active) {
-        // 予約の後にキーが押されていたら有効にしない（そのキーで入ったレイヤーの上に重ねないように）
-        if (data->requested_press_count != data->press_count) {
+        // 予約の後にキーが押されていたら、または有効にしないレイヤーにいたら有効にしない
+        // （そのキーで入ったレイヤーの上に重ねないように）
+        if (data->requested_press_count != data->press_count || excluded_layer_active(cfg)) {
             k_mutex_unlock(&data->lock);
             return;
         }
@@ -278,6 +294,11 @@ static int auto_mouse_handle_event(const struct device *dev, struct input_event 
 
     // 触れている／離れたの合図は touch-devices から直接受け取るので、ここでは有効化のきっかけにしない
     if (event->type == INPUT_EV_KEY && event->code == INPUT_BTN_TOUCH) {
+        return ZMK_INPUT_PROC_CONTINUE;
+    }
+
+    // 有効にしないレイヤーにいる間は、きっかけにしない
+    if (excluded_layer_active(dev->config)) {
         return ZMK_INPUT_PROC_CONTINUE;
     }
 
@@ -464,8 +485,12 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
         .disable_work = Z_WORK_DELAYABLE_INITIALIZER(disable_work_cb),                             \
     };                                                                                             \
     static const uint16_t auto_mouse_excluded_##n[] = DT_INST_PROP(n, excluded_positions);         \
+    static const zmk_keymap_layer_id_t auto_mouse_excluded_layers_##n[] = {                        \
+        DT_INST_FOREACH_PROP_ELEM_SEP(n, excluded_layers, DT_PROP_BY_IDX, (, ))};                   \
     static const struct auto_mouse_config auto_mouse_config_##n = {                                \
         .require_prior_idle_ms = DT_INST_PROP(n, require_prior_idle_ms),                           \
+        .excluded_layers = auto_mouse_excluded_layers_##n,                                         \
+        .num_excluded_layers = DT_INST_PROP_LEN(n, excluded_layers),                               \
         .excluded_positions = auto_mouse_excluded_##n,                                             \
         .num_positions = DT_INST_PROP_LEN(n, excluded_positions),                                  \
         .touch_stale_ms = DT_INST_PROP(n, touch_stale_ms),                                         \

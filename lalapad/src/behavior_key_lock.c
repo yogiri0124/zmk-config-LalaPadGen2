@@ -12,6 +12,8 @@
  * 接続先（USB・BLE プロファイル）が変わったときは、押しっぱなしを解除する。ZMK は接続先が変わると
  * PC へ送る状態を消すが、押した数（ZMK の修飾キーごとの数）は残るので、ここで「離す」を送って数を合わせる
  * （そうしないと、次に押したときに解除になり、もう一度押すまで押しっぱなしにできない）。
+ * 解除するのは、切り替わった時点で押しっぱなしだったものだけ（印を付けておき、ワークで離す）。
+ * 印の付いたキーをワークより先に押したときは、まず古い押しっぱなしを離してから、新しく押しっぱなしにする。
  */
 
 #define DT_DRV_COMPAT zmk_behavior_key_lock
@@ -19,6 +21,7 @@
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/atomic.h>
 #include <drivers/behavior.h>
 
 #include <zmk/behavior.h>
@@ -32,10 +35,24 @@ struct behavior_key_lock_config {
     uint32_t keycode;
 };
 
-struct behavior_key_lock_data {
-    /* 押しっぱなしにしているか（behavior のコールバックと解除のワークは、どちらもシステムワークキューで動く） */
-    bool locked;
+/* 状態のビット（接続先の切り替えの通知は別のスレッドから届くことがあるので atomic で持つ） */
+enum {
+    KEY_LOCK_LOCKED,         /* 押しっぱなしにしている */
+    KEY_LOCK_UNLOCK_PENDING, /* 接続先が切り替わった時点で押しっぱなしだった（ワークで離す） */
 };
+
+struct behavior_key_lock_data {
+    atomic_t flags;
+};
+
+/* 接続先の切り替えで印を付けたものなら、離す（システムワークキューで呼ぶ） */
+static void unlock_if_pending(const struct behavior_key_lock_config *cfg,
+                              struct behavior_key_lock_data *data, int64_t timestamp) {
+    if (atomic_test_and_clear_bit(&data->flags, KEY_LOCK_UNLOCK_PENDING) &&
+        atomic_test_and_clear_bit(&data->flags, KEY_LOCK_LOCKED)) {
+        raise_zmk_keycode_state_changed_from_encoded(cfg->keycode, false, timestamp);
+    }
+}
 
 static void unlock_all_work_handler(struct k_work *work);
 static K_WORK_DEFINE(unlock_all_work, unlock_all_work_handler);
@@ -46,9 +63,12 @@ static int on_key_lock_binding_pressed(struct zmk_behavior_binding *binding,
     const struct behavior_key_lock_config *cfg = dev->config;
     struct behavior_key_lock_data *data = dev->data;
 
+    // 接続先が切り替わる前の押しっぱなしが残っていれば、先に離す（このキーは新しく押しっぱなしにする操作になる）
+    unlock_if_pending(cfg, data, event.timestamp);
     // 押しっぱなしなら離す、そうでなければ押す（もう一度押すと解除）
-    data->locked = !data->locked;
-    raise_zmk_keycode_state_changed_from_encoded(cfg->keycode, data->locked, event.timestamp);
+    const bool locked = !atomic_test_bit(&data->flags, KEY_LOCK_LOCKED);
+    atomic_set_bit_to(&data->flags, KEY_LOCK_LOCKED, locked);
+    raise_zmk_keycode_state_changed_from_encoded(cfg->keycode, locked, event.timestamp);
     return ZMK_BEHAVIOR_OPAQUE;
 }
 
@@ -81,20 +101,21 @@ DT_INST_FOREACH_STATUS_OKAY(KEY_LOCK_INST)
 
 static const struct device *const key_lock_devs[] = {DT_INST_FOREACH_STATUS_OKAY(KEY_LOCK_DEV)};
 
-/* 接続先が変わった: 押しっぱなしにしているキーをすべて離す */
+/* 接続先が変わった: その時点で押しっぱなしだったキーを離す */
 static void unlock_all_work_handler(struct k_work *work) {
     for (size_t i = 0; i < ARRAY_SIZE(key_lock_devs); i++) {
-        const struct behavior_key_lock_config *cfg = key_lock_devs[i]->config;
-        struct behavior_key_lock_data *data = key_lock_devs[i]->data;
-        if (data->locked) {
-            data->locked = false;
-            raise_zmk_keycode_state_changed_from_encoded(cfg->keycode, false, k_uptime_get());
-        }
+        unlock_if_pending(key_lock_devs[i]->config, key_lock_devs[i]->data, k_uptime_get());
     }
 }
 
-/* 別のスレッドから呼ばれることがあるので、解除はワークに回す */
+/* 別のスレッドから呼ばれることがあるので、ここでは押しっぱなしのものに印を付けるだけにして、離すのはワークで行う */
 static int key_lock_endpoint_listener(const zmk_event_t *eh) {
+    for (size_t i = 0; i < ARRAY_SIZE(key_lock_devs); i++) {
+        struct behavior_key_lock_data *data = key_lock_devs[i]->data;
+        if (atomic_test_bit(&data->flags, KEY_LOCK_LOCKED)) {
+            atomic_set_bit(&data->flags, KEY_LOCK_UNLOCK_PENDING);
+        }
+    }
     k_work_submit(&unlock_all_work);
     return ZMK_EV_EVENT_BUBBLE;
 }

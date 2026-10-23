@@ -161,7 +161,7 @@
 
 | 名前 | 中身 | 書き方 |
 | --- | --- | --- |
-| `&mt2` | hold-tap（`tap-preferred`、350ms、quick-tap 200、require-prior-idle 125、`<&kp>, <&kp>`） | `&mt2 押し続けキー タップキー` |
+| `&mt2` | hold-tap（`tap-preferred`、350ms、quick-tap 200、`<&kp>, <&kp>`）。以前あった require-prior-idle 125 は外した（直前の打鍵から 125ms 以内に押すと、長押ししても Shift にならず rrrr と連続入力になったため。戻すときは keymap の mt2 に `require-prior-idle-ms = <125>;` を足す） | `&mt2 押し続けキー タップキー` |
 | `&zip_dyn_scale` | トラックパッドの倍率を増減・リセット（ドライバ v1.0.0） | `&zip_dyn_scale 対象 操作` |
 | `&zip_dyn_scale_set` | トラックパッドの倍率を直接指定 | `&zip_dyn_scale_set 対象 値` |
 

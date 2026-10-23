@@ -119,6 +119,11 @@ ZMK_LISTENER(key_stream_usb, key_stream_usb_listener);
 ZMK_SUBSCRIPTION(key_stream_usb, zmk_usb_conn_state_changed);
 
 static int key_stream_usb_init(void) {
+    // HID_0 はキーボード（ZMK）が使う。指定すると、キーボードの HID の記述を上書きしてしまう
+    if (strcmp(CONFIG_ZMK_KEY_STREAM_USB_DEVICE, "HID_0") == 0) {
+        LOG_ERR("Key stream: HID_0 is used by the keyboard, set CONFIG_ZMK_KEY_STREAM_USB_DEVICE to HID_1");
+        return -EINVAL;
+    }
     hid_dev = device_get_binding(CONFIG_ZMK_KEY_STREAM_USB_DEVICE);
     if (hid_dev == NULL) {
         LOG_ERR("Key stream: USB HID device %s not found", CONFIG_ZMK_KEY_STREAM_USB_DEVICE);

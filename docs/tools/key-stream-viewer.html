@@ -68,10 +68,13 @@ const MSG_KEYS = 0x01, MSG_STATUS = 0x02, MSG_PRESSED = 0x03;
 const CMD_START = 0x81, CMD_STOP = 0x82, CMD_STATUS = 0x83;
 const STREAM_KEYS = 0x01, STREAM_TRACKPAD = 0x02;
 const REPORT_SIZE = 32;
+const KEYS_PER_REPORT = 4;
 const KEEPALIVE_MS = 2000;
 
 const $ = (id) => document.getElementById(id);
 let device = null, timer = null, nextSeq = null, received = 0, lost = 0;
+// 機器を閉じている途中（閉じ終わるまで、つなぎ直さない）
+let closing = false;
 // キーの位置の数（この番号から先がトラックパッドのタップ・ジェスチャー。状態のレポートで受け取る）
 let keyPositions = 52;
 
@@ -111,11 +114,12 @@ function mask() {
   return STREAM_KEYS | ($('trackpad').checked ? STREAM_TRACKPAD : 0);
 }
 
-async function send(type, arg = 0) {
-  if (!device) return;
+// dev: 送る機器（省略すると今つないでいる機器）
+async function send(type, arg = 0, dev = device) {
+  if (!dev) return;
   const data = new Uint8Array(REPORT_SIZE);
   data[0] = VERSION; data[1] = type; data[2] = arg;
-  try { await device.sendReport(0, data); }
+  try { await dev.sendReport(0, data); }
   catch (e) { log(`送れませんでした: ${e.message}`); }
 }
 
@@ -129,6 +133,8 @@ function checkSeq(seq) {
 
 function onReport(event) {
   const d = event.data;
+  // 決まりごとでは 32 バイト。短いものは読まない（読み出しが範囲を超えないように）
+  if (d.byteLength < REPORT_SIZE) { log(`レポートが短すぎます: ${d.byteLength} バイト`); return; }
   if (d.getUint8(0) !== VERSION) { log(`形式の版が違います: ${d.getUint8(0)}`); return; }
   const type = d.getUint8(1);
   if (type === MSG_STATUS) {
@@ -146,6 +152,7 @@ function onReport(event) {
   if (type === MSG_KEYS) {
     let seq = d.getUint16(2, true);
     const n = d.getUint8(4);
+    if (n < 1 || n > KEYS_PER_REPORT) { log(`キーの件数がおかしいです: ${n}`); return; }
     checkSeq(seq);
     for (let i = 0; i < n; i++) {
       const o = 5 + 6 * i;
@@ -189,33 +196,43 @@ async function open(dev) {
   nextSeq = null;
   Object.values(keyEls).forEach((el) => el.classList.remove('on'));
   log(`つなぎました: ${device.productName}`);
-  await send(CMD_START, mask());
+  await send(CMD_START, mask(), dev);
   // 開き直したときなど、キーボードがまだ前の「開始」で送り続けていると、今の「開始」は生存確認として扱われ、
   // 状態と押されているキーが届かない。問い合わせて、今の状態を受け取る
-  await send(CMD_STATUS);
+  await send(CMD_STATUS, 0, dev);
+  // 送っている間に切れていたら（または別の機器につなぎ直していたら）、生存確認は始めない
+  if (device !== dev) return;
   timer = setInterval(() => send(CMD_START, mask()), KEEPALIVE_MS);
 }
 
 // unplugged: 機器が外れたとき（終了を送れないので送らない）
 async function close(unplugged = false) {
-  clearInterval(timer); timer = null;
-  if (device) {
-    if (!unplugged) await send(CMD_STOP);
-    device.removeEventListener('inputreport', onReport);
-    try { await device.close(); } catch (e) { /* 切れていてもよい */ }
-  }
+  // 切る機器をここで取り出し、つないでいる状態はすぐに空にする（終了を送っている間に、もう一度切る処理が
+  // 走ったり、新しくつないだりしても、この処理はこの機器だけを扱う）
+  const dev = device;
+  if (!dev) return;
   device = null;
+  closing = true; // 閉じ終わるまで、つなぎ直さない（同じ機器を開き直した後に、ここで閉じてしまわないように）
+  clearInterval(timer); timer = null;
+  dev.removeEventListener('inputreport', onReport);
   Object.values(keyEls).forEach((el) => el.classList.remove('on'));
   $('device').textContent = '—'; $('right').textContent = '—'; $('right').className = '';
-  $('connect').disabled = false; $('disconnect').disabled = true; $('query').disabled = true;
-  log('切りました');
+  $('connect').disabled = true; $('disconnect').disabled = true; $('query').disabled = true;
+  try {
+    if (!unplugged) await send(CMD_STOP, 0, dev);
+    try { await dev.close(); } catch (e) { /* 切れていてもよい */ }
+  } finally {
+    closing = false;
+    $('connect').disabled = false;
+    log('切りました');
+  }
 }
 
 // つないでいる途中に、もう一度「つなぐ」を押しても受け付けない（2つの機器の処理が重ならないように）
 let connecting = false;
 $('connect').addEventListener('click', async () => {
   if (!('hid' in navigator)) { log('このブラウザでは WebHID が使えません（Chrome か Edge で開いてください）'); return; }
-  if (connecting || device) return;
+  if (connecting || closing || device) return;
   connecting = true;
   $('connect').disabled = true;
   try {

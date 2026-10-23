@@ -128,4 +128,4 @@ setInterval(() => device.sendReport(0, start), 2000); // 生存確認
 
 - 書き込んだ後、Windows が Bluetooth のキーボードの情報を古いまま覚えていると、増えた HID が見えないことがあります。そのときは、Windows の Bluetooth 設定でキーボードを削除して、ペアリングし直してください。
 - 書き込むのは左だけです（右は変わりません）。
-- 止めたいときは、`config/lalapadgen2_left.conf` の `CONFIG_ZMK_KEY_STREAM=y` を消します。Bluetooth 側だけ止めるなら `CONFIG_ZMK_KEY_STREAM_BLE=n` を足します。
+- 止めたいときは、`config/lalapadgen2_left.conf` の `CONFIG_ZMK_KEY_STREAM=y` と `CONFIG_USB_HID_DEVICE_COUNT=2` の両方を消します（HID の数を 2 のままにすると、使わない HID が USB に残ります）。Bluetooth 側だけ止めるなら `CONFIG_ZMK_KEY_STREAM_BLE=n` を足します。

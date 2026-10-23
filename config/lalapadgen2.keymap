@@ -24,6 +24,10 @@
 
 &lt { quick-tap-ms = <200>; };
 
+// オートマウスレイヤー（lalapadgen2.dtsi）: 数字・記号レイヤーの間は、トラックパッドを操作してもマウスレイヤーにしない
+// （トラックパッドのリスナーの lowspeedmode（layers = <2>,<3>）と同じレイヤー）
+&zip_auto_mouse_layer { excluded-layers = <SECONDARY_LAYER TERTIARY_LAYER>; };
+
 / {
     behaviors {
         zip_dyn_scale: zip_dyn_scale {
@@ -42,6 +46,9 @@
             flavor = "tap-preferred";
             tapping-term-ms = <350>;
             quick-tap-ms = <200>;
+            // require-prior-idle-ms（以前は 125）は外した。直前の打鍵から 125ms 以内に押すと、長押ししても
+            // Shift にならず、押したままのタップとして rrrr と連続入力になったため。戻すときは次の行を足す
+            //   require-prior-idle-ms = <125>;
             bindings = <&kp>, <&kp>;
         };
 
