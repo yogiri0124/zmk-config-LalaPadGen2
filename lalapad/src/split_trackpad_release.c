@@ -14,7 +14,10 @@
  * 離すのは、切れた接続の間に押された位置だけ。押したときに「それまでに右とつながった回数」を覚えておき、
  * 切れたという出来事の ended_connections 以下のものを離す（出来事が届く前につなぎ直して押した位置は、離さない）。
  * 切れる前に右から届いていて、切れた後に処理された押下も、つなぎ直す前ならこれで離せる。
- * それが切れたという出来事より後に処理された場合（右とつながっていないのに押された）は、その場で離す。
+ * 右とつながっていないときに処理された押下（切れたという出来事より後に処理された、古い接続の押下）は、
+ * 捨てる（ほかに伝えない）。後から離すと、その間につなぎ直して押した新しい押下まで離してしまうため。
+ * 捨てた押下をほかのモジュールの listener が数えないよう、この listener は自作モジュールの中で最初に呼ばれる
+ * ようにしている（CMakeLists.txt でこのファイルを最初に足す。listener はリンクの順に呼ばれる）。
  */
 
 #include <zephyr/kernel.h>
@@ -73,31 +76,20 @@ static void release_pressed_until(uint32_t ended_connections) {
     }
 }
 
-/* 右とつながっていないのに押された（切れる前に届いていた押下が、切れたという出来事の後に処理された）位置。
- * 押した出来事の処理の中では離せないので、ワークで離す */
-static atomic_t stale_mask;
 
-static void release_stale_work_handler(struct k_work *work) {
-    const atomic_val_t mask = atomic_clear(&stale_mask);
-    for (size_t i = 0; i < ARRAY_SIZE(right_trackpad_positions); i++) {
-        if ((mask & BIT(i)) && atomic_set(&pressed_at[i], 0) != 0) {
-            release(i);
-        }
-    }
-}
-
-static K_WORK_DEFINE(release_stale_work, release_stale_work_handler);
 
 static int split_trackpad_release_listener(const zmk_event_t *eh) {
     const struct zmk_position_state_changed *pos = as_zmk_position_state_changed(eh);
     if (pos != NULL) {
         const int idx = right_trackpad_index(pos->position);
         if (idx >= 0) {
-            atomic_set(&pressed_at[idx], pos->state ? (atomic_val_t)lalapad_split_link_connections() : 0);
             if (pos->state && !lalapad_split_link_connected()) {
-                atomic_or(&stale_mask, BIT(idx));
-                k_work_submit(&release_stale_work);
+                // 右とつながっていないのに届いた押下（古い接続のもの）: 捨てる
+                LOG_DBG("Dropped trackpad position %d pressed after the right half disconnected",
+                        pos->position);
+                return ZMK_EV_EVENT_HANDLED;
             }
+            atomic_set(&pressed_at[idx], pos->state ? (atomic_val_t)lalapad_split_link_connections() : 0);
         }
         return ZMK_EV_EVENT_BUBBLE;
     }

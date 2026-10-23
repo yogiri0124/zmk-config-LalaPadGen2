@@ -4,6 +4,9 @@
 target_include_directories(app PRIVATE include)
 
 if((NOT CONFIG_ZMK_SPLIT) OR CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
+  # 最初に足す: この listener が、右と切れた後に届いた古いトラックパッドの押下を、ほかのモジュールより先に捨てるため
+  # （listener はリンクの順に呼ばれる）
+  target_sources_ifdef(CONFIG_ZMK_SPLIT_TRACKPAD_RELEASE app PRIVATE src/split_trackpad_release.c)
   if(CONFIG_ZMK_BEHAVIOR_KANA)
     target_sources(app PRIVATE
       src/kana_output.c
@@ -34,7 +37,6 @@ if((NOT CONFIG_ZMK_SPLIT) OR CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
     src/input_processor_cursor_slow.c
   )
   target_sources_ifdef(CONFIG_LALAPAD_SPLIT_LINK app PRIVATE src/split_link.c)
-  target_sources_ifdef(CONFIG_ZMK_SPLIT_TRACKPAD_RELEASE app PRIVATE src/split_trackpad_release.c)
   target_sources_ifdef(CONFIG_ZMK_KEY_STREAM app PRIVATE src/key_stream.c)
   target_sources_ifdef(CONFIG_ZMK_KEY_STREAM_USB app PRIVATE src/key_stream_usb.c)
   target_sources_ifdef(CONFIG_ZMK_KEY_STREAM_BLE app PRIVATE src/key_stream_ble.c)
