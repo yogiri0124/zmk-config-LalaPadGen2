@@ -44,6 +44,7 @@
 <div class="bar">
   <button id="connect">つなぐ</button>
   <button id="disconnect" disabled>切る</button>
+  <button id="query" disabled>問い合わせる</button>
   <label><input type="checkbox" id="trackpad"> トラックパッドも受け取る</label>
   <button id="clear">記録を消す</button>
 </div>
@@ -63,8 +64,8 @@
 // ファームウェア（lalapad/src/key_stream.c）との取り決め
 const FILTER = { vendorId: 0x1D50, productId: 0x615E, usagePage: 0xFF4C, usage: 0x01 };
 const VERSION = 1;
-const MSG_KEYS = 0x01, MSG_STATUS = 0x02;
-const CMD_START = 0x81, CMD_STOP = 0x82;
+const MSG_KEYS = 0x01, MSG_STATUS = 0x02, MSG_PRESSED = 0x03;
+const CMD_START = 0x81, CMD_STOP = 0x82, CMD_STATUS = 0x83;
 const STREAM_KEYS = 0x01, STREAM_TRACKPAD = 0x02;
 const REPORT_SIZE = 32;
 const KEEPALIVE_MS = 2000;
@@ -159,6 +160,22 @@ function onReport(event) {
     $('count').textContent = received;
     return;
   }
+  if (type === MSG_PRESSED) {
+    // 押されているキーの一覧: 押している表示を、この一覧で丸ごと置き換える
+    const seq = d.getUint16(2, true);
+    const count = d.getUint8(4);
+    checkSeq(seq);
+    nextSeq = seq;
+    const list = [];
+    for (const [pos, el] of Object.entries(keyEls)) {
+      const p = Number(pos);
+      const on = p < count && (d.getUint8(5 + (p >> 3)) & (1 << (p & 7))) !== 0;
+      el.classList.toggle('on', on);
+      if (on) list.push(p);
+    }
+    log(`押されているキー: ${list.length ? list.join(' ') : 'なし'}（次の通し番号=${seq}）`);
+    return;
+  }
   // 知らない種類は読み飛ばす
 }
 
@@ -167,7 +184,7 @@ async function open(dev) {
   if (!device.opened) await device.open();
   device.addEventListener('inputreport', onReport);
   $('device').textContent = device.productName || '(名前なし)';
-  $('connect').disabled = true; $('disconnect').disabled = false;
+  $('connect').disabled = true; $('disconnect').disabled = false; $('query').disabled = false;
   nextSeq = null;
   Object.values(keyEls).forEach((el) => el.classList.remove('on'));
   log(`つなぎました: ${device.productName}`);
@@ -185,7 +202,7 @@ async function close(unplugged = false) {
   }
   device = null;
   $('device').textContent = '—'; $('right').textContent = '—'; $('right').className = '';
-  $('connect').disabled = false; $('disconnect').disabled = true;
+  $('connect').disabled = false; $('disconnect').disabled = true; $('query').disabled = true;
   log('切りました');
 }
 
@@ -198,6 +215,7 @@ $('connect').addEventListener('click', async () => {
   } catch (e) { log(`つなげませんでした: ${e.message}`); }
 });
 $('disconnect').addEventListener('click', () => close());
+$('query').addEventListener('click', () => send(CMD_STATUS));
 $('clear').addEventListener('click', () => { $('log').replaceChildren(); received = 0; lost = 0; $('count').textContent = 0; $('lost').textContent = 0; });
 $('trackpad').addEventListener('change', () => {
   // 受け取るのをやめたトラックパッドの位置は、この後「離した」が届かないので、押している表示を消しておく
