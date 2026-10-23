@@ -24,9 +24,6 @@
  * - excluded-layers のレイヤーが有効な間は、有効にしない（入力リスナーの layers の上書きで、その間は
  *   この処理を通さないようにしていても、上書きに切り替わる前に届いた操作で有効になることがあるため。
  *   有効化を予約したときと、実際に有効にするときの両方で確かめる）。
- * - トラックパッドの操作で有効化を予約した後、実際に有効にする前にキーが押されたら、その予約では有効にしない
- *   （&mo で数字・記号レイヤーに入るキーなど、キーコードを出さないキーを押した直後に、マウスレイヤーが
- *   上に重なってしまわないように。その後もトラックパッドを操作すれば、改めて予約される）。
  * - 状態はインスタンスごとに持つので、左右のリスナーに別々のインスタンスを入れれば別々に動く。
  *   1つのインスタンスで扱うレイヤーは1つだけ。別のレイヤーを使うリスナーには別のインスタンスを入れること
  *   （有効中に違う param1 が来ても、有効にしたレイヤーのまま扱う）。
@@ -87,9 +84,6 @@ struct auto_mouse_data {
     /* トラックパッドの操作で指定された値（入力スレッドから書く） */
     zmk_keymap_layer_id_t requested_layer;
     uint32_t timeout_ms;
-    /* キーを押した回数と、有効化を予約したときの回数（違えば、予約の後にキーが押された） */
-    uint32_t press_count;
-    uint32_t requested_press_count;
 
     /* レイヤーの状態 */
     bool active;
@@ -225,9 +219,8 @@ static void activity_work_cb(struct k_work *work) {
 
     k_mutex_lock(&data->lock, K_FOREVER);
     if (!data->active) {
-        // 予約の後にキーが押されていたら、または有効にしないレイヤーにいたら有効にしない
-        // （そのキーで入ったレイヤーの上に重ねないように）
-        if (data->requested_press_count != data->press_count || excluded_layer_active(cfg)) {
+        // 有効にしないレイヤーにいたら有効にしない（予約の後に、そのレイヤーに入ったときのため）
+        if (excluded_layer_active(cfg)) {
             k_mutex_unlock(&data->lock);
             return;
         }
@@ -314,7 +307,6 @@ static int auto_mouse_handle_event(const struct device *dev, struct input_event 
 
     data->requested_layer = param1;
     data->timeout_ms = param2;
-    data->requested_press_count = data->press_count;
     k_mutex_unlock(&data->lock);
 
     k_work_submit(&data->activity_work);
@@ -361,7 +353,6 @@ static void handle_position(const struct device *dev,
     k_mutex_lock(&data->lock, K_FOREVER);
     data->pressed[ev->position] = ev->state;
     if (ev->state) {
-        data->press_count++;
         if (data->active) {
             if (is_mouse_key(dev, ev->position)) {
                 if (!data->held[ev->position]) {

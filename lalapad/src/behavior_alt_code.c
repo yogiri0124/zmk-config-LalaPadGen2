@@ -41,10 +41,6 @@
  *     覚えておけない（記録があふれた）ときは、捨てずに通す（押した数と離した数を必ず合わせるため）。
  *     「離す」の分の空きは、預かった「押す」の数と、PC 側で押されているキー（held）の数だけ残しておく
  *     （どちらの「離す」も、同じキーが待っている間は預かるため）。
- *   - 預かった後に接続先（USB・BLE プロファイル）が切り替わったら、切り替え前に預かった「押す」は
- *     通さずに捨てる（切り替え前の PC に向けて押したキーを、切り替え先の PC に送らないため）。
- *     捨てた「押す」は上と同じく覚えておき、同じキーの「離す」も捨てる。「離す」は、押したほうを
- *     通していれば、切り替えの前後に関係なくそのまま通す（ZMK の押した数を合わせるため）。
  *   - 制約: 送信中（数十〜数百 ms）に押したキーの behavior は、押した時点の PC 側の状態（押されている
  *     修飾キーなど）を見る。預かった入力はまだ反映されていないので、mod-morph や &kt のように押した
  *     時点の修飾キーの状態で動きを変える behavior は、送信中に押すと違う動きになることがある
@@ -158,8 +154,6 @@ static bool capturing;
 /* 預かったイベント（ZMK のイベントは送り手のスタックにあるので、中身を写して持つ）。
  * 先頭 captured_head から captured_count 個の輪状の待ち行列。先頭は、通し終えるまで取り除かない */
 static struct zmk_keycode_state_changed_event captured[MAX_CAPTURED];
-/* 預かったときの接続先の世代番号（captured と同じ位置） */
-static atomic_val_t captured_generation[MAX_CAPTURED];
 static size_t captured_head;
 static size_t captured_count;
 /* これまでに預かった入力の通し番号（次に預かる入力の番号）。先頭の番号は captured_pushed - captured_count */
@@ -319,8 +313,7 @@ static void start_capturing(void) {
  * all = true: 全部通して、預かるのをやめる（送信がすべて終わったとき）。
  * all = false: 通し番号が mark より前の分だけ通す（次の送信の目印より前に届いた分）。預かるのは続ける。
  * 先頭を写してロックの外で通し、通し終えてから待ち行列から取り除いて held に数える。
- * その間に届いた入力は後ろに並ぶ。
- * 預かった後に接続先が切り替わった「押す」と、捨てた「押す」の「離す」は、通さずに捨てる */
+ * その間に届いた入力は後ろに並ぶ。捨てた「押す」の「離す」は、通さずに捨てる */
 static void release_captured(bool all, uint32_t mark) {
     while (true) {
         struct zmk_keycode_state_changed_event ev;
@@ -336,24 +329,11 @@ static void release_captured(bool all, uint32_t mark) {
             return;
         }
         ev = captured[captured_head];
-        bool drop = false;
-        if (!ev.data.state) {
-            // 捨てた「押す」の「離す」も捨てる
-            drop = remove_key(dropped, MAX_DROPPED, &ev.data);
-        } else if (captured_generation[captured_head] != atomic_get(&endpoint_generation)) {
-            // 切り替え前の接続先に向けて押したキー: 切り替え先には送らない。
-            // ただし捨てたことを記録できなければ通す（「離す」だけが通って、押した数が合わなくなるのを防ぐ）
-            if (add_key(dropped, MAX_DROPPED, &ev.data)) {
-                drop = true;
-            } else {
-                LOG_WRN("Too many dropped keys to track, passing 0x%02X", ev.data.keycode);
-            }
-        }
+        // 捨てた「押す」の「離す」も捨てる
+        const bool drop = !ev.data.state && remove_key(dropped, MAX_DROPPED, &ev.data);
         k_spin_unlock(&capture_lock, key);
 
-        if (drop) {
-            LOG_DBG("Dropped captured key 0x%02X (endpoint changed)", ev.data.keycode);
-        } else {
+        if (!drop) {
             // 預かったところ（このモジュールの listener）の次から、残りの listener に通す
             ZMK_EVENT_RELEASE(ev);
         }
@@ -683,7 +663,6 @@ static int alt_code_keycode_listener(const zmk_event_t *eh) {
         if (captured_count + captured_open + held_total() + 2 <= MAX_CAPTURED) {
             const size_t tail = (captured_head + captured_count) % MAX_CAPTURED;
             captured[tail] = copy_raised_zmk_keycode_state_changed(ev);
-            captured_generation[tail] = atomic_get(&endpoint_generation);
             captured_count++;
             captured_pushed++;
             captured_open++;
@@ -708,7 +687,6 @@ static int alt_code_keycode_listener(const zmk_event_t *eh) {
         }
         const size_t tail = (captured_head + captured_count) % MAX_CAPTURED;
         captured[tail] = copy_raised_zmk_keycode_state_changed(ev);
-        captured_generation[tail] = atomic_get(&endpoint_generation);
         captured_count++;
         captured_pushed++;
         ret = ZMK_EV_EVENT_CAPTURED;
