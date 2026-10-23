@@ -1,0 +1,6 @@
+# マウスボタンの押しっぱなし切り替え（zmk,behavior-mouse-button-toggle）が、切り替えの依頼（INPUT_EV_MSC）を
+# 入力イベントの列に並べるための共通の入力デバイス（クリックと同じ列で、操作した順に処理するため）。
+
+description: Shared input device that queues mouse button toggle requests
+
+compatible: "zmk,mouse-button-lock-input"
