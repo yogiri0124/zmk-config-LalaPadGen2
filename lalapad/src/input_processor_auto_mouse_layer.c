@@ -45,8 +45,8 @@
 #include <zmk/events/keycode_state_changed.h>
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/events/position_state_changed.h>
-#if IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
-#include <zmk/events/split_peripheral_status_changed.h>
+#if IS_ENABLED(CONFIG_LALAPAD_SPLIT_LINK)
+#include "split_link.h"
 #endif
 #include <zmk/keymap.h>
 #include <zmk/matrix.h>
@@ -410,9 +410,8 @@ static void dispatch(const struct device *dev, const zmk_event_t *eh) {
         handle_layer_state(dev);
         return;
     }
-#if IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
-    const struct zmk_split_peripheral_status_changed *split =
-        as_zmk_split_peripheral_status_changed(eh);
+#if IS_ENABLED(CONFIG_LALAPAD_SPLIT_LINK)
+    const struct zmk_lalapad_split_link_changed *split = as_zmk_lalapad_split_link_changed(eh);
     if (split != NULL && !split->connected) {
         handle_split_disconnected(dev);
     }
@@ -430,8 +429,8 @@ ZMK_LISTENER(auto_mouse_layer, auto_mouse_listener);
 ZMK_SUBSCRIPTION(auto_mouse_layer, zmk_position_state_changed);
 ZMK_SUBSCRIPTION(auto_mouse_layer, zmk_keycode_state_changed);
 ZMK_SUBSCRIPTION(auto_mouse_layer, zmk_layer_state_changed);
-#if IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
-ZMK_SUBSCRIPTION(auto_mouse_layer, zmk_split_peripheral_status_changed);
+#if IS_ENABLED(CONFIG_LALAPAD_SPLIT_LINK)
+ZMK_SUBSCRIPTION(auto_mouse_layer, zmk_lalapad_split_link_changed);
 #endif
 
 static struct zmk_input_processor_driver_api auto_mouse_driver_api = {

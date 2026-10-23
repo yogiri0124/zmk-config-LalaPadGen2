@@ -18,8 +18,9 @@
 
 #include <zmk/event_manager.h>
 #include <zmk/events/position_state_changed.h>
-#include <zmk/events/split_peripheral_status_changed.h>
 #include <zmk/matrix.h>
+
+#include "split_link.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -69,8 +70,7 @@ static int split_trackpad_release_listener(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
 
-    const struct zmk_split_peripheral_status_changed *split =
-        as_zmk_split_peripheral_status_changed(eh);
+    const struct zmk_lalapad_split_link_changed *split = as_zmk_lalapad_split_link_changed(eh);
     if (split != NULL && !split->connected) {
         // 「離した」はワークで出す（切れたことの通知の処理の中から、さらに出来事を出さないように）
         k_work_submit(&release_work);
@@ -80,4 +80,4 @@ static int split_trackpad_release_listener(const zmk_event_t *eh) {
 
 ZMK_LISTENER(split_trackpad_release, split_trackpad_release_listener);
 ZMK_SUBSCRIPTION(split_trackpad_release, zmk_position_state_changed);
-ZMK_SUBSCRIPTION(split_trackpad_release, zmk_split_peripheral_status_changed);
+ZMK_SUBSCRIPTION(split_trackpad_release, zmk_lalapad_split_link_changed);

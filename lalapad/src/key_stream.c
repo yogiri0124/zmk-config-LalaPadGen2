@@ -47,8 +47,8 @@
 #include <zmk/hid.h>
 #include <zmk/matrix.h>
 
-#if IS_ENABLED(CONFIG_ZMK_SPLIT)
-#include <zmk/events/split_peripheral_status_changed.h>
+#if IS_ENABLED(CONFIG_LALAPAD_SPLIT_LINK)
+#include "split_link.h"
 #endif
 
 #if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_BLE)
@@ -154,8 +154,6 @@ static struct bt_conn *in_flight_conn;
 
 /* いま押されている位置（開始したときや、押されているキーの一覧で知らせるため） */
 static bool pressed[ZMK_KEYMAP_LEN];
-/* 右がつながっているか */
-static bool peripheral_connected;
 
 /* ---- 命令（PC から届いたもの。写して、専用のワークキューで処理する） ---- */
 
@@ -256,7 +254,9 @@ static void stop(void) {
 
 static void build_status(uint8_t *report) {
     report[1] = MSG_STATUS;
-    report[2] = peripheral_connected ? 1 : 0;
+#if IS_ENABLED(CONFIG_LALAPAD_SPLIT_LINK)
+    report[2] = lalapad_split_link_connected() ? 1 : 0;
+#endif
     report[3] = stream_mask;
     report[4] = MIN(CONFIG_ZMK_KEY_STREAM_TRACKPAD_FIRST, ZMK_KEYMAP_LEN);
     report[5] = ZMK_KEYMAP_LEN;
@@ -567,12 +567,10 @@ static int key_stream_listener(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
 
-#if IS_ENABLED(CONFIG_ZMK_SPLIT)
-    const struct zmk_split_peripheral_status_changed *split =
-        as_zmk_split_peripheral_status_changed(eh);
-    if (split != NULL) {
+#if IS_ENABLED(CONFIG_LALAPAD_SPLIT_LINK)
+    // 右とのつながりが変わった: 状態を送り直す（値は送るときに調べる）
+    if (as_zmk_lalapad_split_link_changed(eh) != NULL) {
         k_spinlock_key_t key = k_spin_lock(&lock);
-        peripheral_connected = split->connected;
         const bool send = streaming;
         if (send) {
             status_requested++;
@@ -589,8 +587,8 @@ static int key_stream_listener(const zmk_event_t *eh) {
 
 ZMK_LISTENER(key_stream, key_stream_listener);
 ZMK_SUBSCRIPTION(key_stream, zmk_position_state_changed);
-#if IS_ENABLED(CONFIG_ZMK_SPLIT)
-ZMK_SUBSCRIPTION(key_stream, zmk_split_peripheral_status_changed);
+#if IS_ENABLED(CONFIG_LALAPAD_SPLIT_LINK)
+ZMK_SUBSCRIPTION(key_stream, zmk_lalapad_split_link_changed);
 #endif
 
 static int key_stream_init(void) {
