@@ -33,10 +33,18 @@ config ZMK_SCROLL_SNAP_GATE
     default y
     depends on (DT_HAS_ZMK_BEHAVIOR_SCROLL_SNAP_HOLD_ENABLED || DT_HAS_ZMK_INPUT_PROCESSOR_SCROLL_SNAP_GATE_ENABLED) && ZMK_POINTING
 
+config LALAPAD_SPLIT_LINK
+    bool
+    default y
+    depends on ZMK_SPLIT && ZMK_SPLIT_ROLE_CENTRAL && ZMK_SPLIT_BLE
+    help
+      親機（左）から見た右（子機）とのつながりを見て、変わったら zmk_lalapad_split_link_changed を出す
+      （lalapad/src/split_link.c）。ZMK v0.3.0 の zmk_split_peripheral_status_changed は親機では出ないため。
+
 config ZMK_SPLIT_TRACKPAD_RELEASE
     bool "Release right trackpad positions when the peripheral disconnects"
     default y
-    depends on ZMK_SPLIT && ZMK_SPLIT_ROLE_CENTRAL
+    depends on LALAPAD_SPLIT_LINK
     depends on $(dt_nodelabel_enabled,trackpad_key_behaviors_R)
     help
       右（子機）が切れたときに、右のトラックパッドのタップ・ジェスチャーで押されたままの位置を離す
