@@ -274,13 +274,17 @@ void kana_mode_on(const struct zmk_behavior_binding_event *event, zmk_keymap_lay
         return;
     }
 
+    // IME オンを先に並べるので、この後に押したかなは必ず IME オンの後に送られる。
+    // 並べられなかったら（キューが満杯、または「離す」の再試行中）、かな配列モードには入らない（もう一度押す）。
+    // -EAGAIN は「押す」は並んでいる（「離す」は自動で再試行される）ので、そのまま入る
+    const int ret = kana_output_tap(event, LANGUAGE_1, tap_ms, wait_ms);
+    if (ret == -EBUSY || ret == -ENOSPC) {
+        LOG_WRN("Could not queue IME on (err %d), kana mode not entered", ret);
+        return;
+    }
+
     kana_layer = layer;
     kana_active = true;
-
-    // IME オンを先に並べるので、この後に押したかなは必ず IME オンの後に送られる
-    if (kana_output_tap(event, LANGUAGE_1, tap_ms, wait_ms) < 0) {
-        LOG_WRN("Could not queue IME on");
-    }
     zmk_keymap_layer_activate(kana_layer);
     LOG_DBG("Kana mode on (layer %d)", kana_layer);
 }

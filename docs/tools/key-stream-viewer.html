@@ -180,8 +180,9 @@ function onReport(event) {
 }
 
 async function open(dev) {
+  // 開けてから（失敗しても前の状態を残さないよう）この機器を使う
+  if (!dev.opened) await dev.open();
   device = dev;
-  if (!device.opened) await device.open();
   device.addEventListener('inputreport', onReport);
   $('device').textContent = device.productName || '(名前なし)';
   $('connect').disabled = true; $('disconnect').disabled = false; $('query').disabled = false;
@@ -210,13 +211,23 @@ async function close(unplugged = false) {
   log('切りました');
 }
 
+// つないでいる途中に、もう一度「つなぐ」を押しても受け付けない（2つの機器の処理が重ならないように）
+let connecting = false;
 $('connect').addEventListener('click', async () => {
   if (!('hid' in navigator)) { log('このブラウザでは WebHID が使えません（Chrome か Edge で開いてください）'); return; }
+  if (connecting || device) return;
+  connecting = true;
+  $('connect').disabled = true;
   try {
     const devices = await navigator.hid.requestDevice({ filters: [FILTER] });
     if (devices.length === 0) { log('機器が選ばれませんでした'); return; }
     await open(devices[0]);
-  } catch (e) { log(`つなげませんでした: ${e.message}`); }
+  } catch (e) {
+    log(`つなげませんでした: ${e.message}`);
+  } finally {
+    connecting = false;
+    if (!device) $('connect').disabled = false;
+  }
 });
 $('disconnect').addEventListener('click', () => close());
 $('query').addEventListener('click', () => send(CMD_STATUS));
