@@ -189,6 +189,9 @@ async function open(dev) {
   Object.values(keyEls).forEach((el) => el.classList.remove('on'));
   log(`つなぎました: ${device.productName}`);
   await send(CMD_START, mask());
+  // 開き直したときなど、キーボードがまだ前の「開始」で送り続けていると、今の「開始」は生存確認として扱われ、
+  // 状態と押されているキーが届かない。問い合わせて、今の状態を受け取る
+  await send(CMD_STATUS);
   timer = setInterval(() => send(CMD_START, mask()), KEEPALIVE_MS);
 }
 

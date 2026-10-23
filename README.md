@@ -153,7 +153,7 @@ Racket 配列は、親指に文字（R）を置く配列です。
 | 43〜46（左スイッチを倒す） | 倒した向きの矢印キー | 47〜50（右スイッチを倒す） | 倒した向きの矢印キー |
 | | | 51（右スイッチを押し込む） | かなモードに入る |
 
-- 20（X）と 34（R）は、長押し（350ms）で左 Shift になります。
+- 20（X）と 34（R）は、長押し（350ms）で左 Shift になります。ただし、直前に別のキーを打ってから 125ms 以内に押したときと、同じキーを 200ms 以内に続けて押したときは、長押ししても文字（X・R）になります（打鍵中の誤動作を防ぐため）。
 - 0＋1 の同時押しで Esc、10＋11 の同時押しで Tab です（かなのレイヤー以外で有効）。
 
 ### 1：Control
@@ -397,7 +397,7 @@ ks_touten: ks_touten {
 
 - 送るのは、アプリから「開始」を受けている間だけです。アプリを開いていない間は何も送らないので、ふだんの入力や電池には影響しません。
 - 左右のキーをまとめて、左（親機）から送ります。トラックパッドのタップ・ジェスチャーは、アプリが指定したときだけ送ります。
-- 決まりごと（見分けるための値、データの形）は [docs/key-stream.md](docs/key-stream.md) にあります。
+- 決まりごと（見分けるための値、データの形）は [docs/key-stream.md](docs/key-stream.md) に、キーの実際の配置（カラムスタッガード）は [docs/key-stream-layout.json](docs/key-stream-layout.json) にあります。
 - 確かめるには、[docs/tools/key-stream-viewer.html](docs/tools/key-stream-viewer.html) を Chrome か Edge で開いて「つなぐ」を押します。
 - 書き込んだ後、Bluetooth でつないでいると増えた HID が見えないことがあります。そのときは、Windows の Bluetooth 設定でキーボードを削除して、ペアリングし直してください。
 
@@ -407,9 +407,9 @@ ks_touten: ks_touten {
 | --- | --- |
 | `config/lalapadgen2.keymap` | キーマップ（レイヤーと、カスタムキーの定義） |
 | `config/*.conf`、`config/boards/shields/lalapadgen2/` | ファームウェアとトラックパッドの設定、シールドの定義 |
-| `lalapad/` | 自作モジュール（かな入力、記号キー、オートマウスレイヤー、カーソル低速、クリック・修飾キーの押しっぱなし、スクロールスナップの切り替え、Alt コード入力、キー位置の送信） |
+| `lalapad/` | 自作モジュール（かな入力、記号キー、オートマウスレイヤー、カーソル低速、クリック・修飾キーの押しっぱなし、スクロールスナップの切り替え、Alt コード入力、キー位置の送信、右が切れたときのトラックパッドの解放） |
 | `docs/google-ime/` | Google 日本語入力のローマ字テーブルと、読み込みの手順 |
-| `docs/key-stream.md`、`docs/tools/` | キー位置の送信の決まりごとと、確認用のページ |
+| `docs/key-stream.md`、`docs/key-stream-layout.json`、`docs/tools/` | キー位置の送信の決まりごと、キーの実際の配置、確認用のページ |
 | `docs/reference/` | キーコードや設定項目の資料 |
 | `AGENTS.md`、`CLAUDE.md` | AI エージェント（Claude Code・Codex）で編集するときの運用ルール |
 

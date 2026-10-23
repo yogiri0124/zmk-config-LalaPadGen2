@@ -137,14 +137,18 @@ static uint16_t next_seq;
 
 /* 状態のレポートを頼まれた回数と、送り始めた時点の回数（違えば送り待ち）。
  * 送っている最中に頼まれ直しても、その分を落とさないよう回数で持つ */
-static uint8_t status_requested;
-static uint8_t status_sent;
-/* 押されているキーの一覧も同じく回数で持つ（送り待ちのキーを送り終えてから送る） */
-static uint8_t pressed_list_requested;
-static uint8_t pressed_list_sent;
-/* 送っている最中のレポートがある（送り終わるまで次を送らない）。送った送り道と接続（参照を持つ）も覚えておき、
- * その送り道の「送り終わった」か「切れた」で解く（送る先が別の送り道に変わった後でも、前の送り道を待ち続けないように） */
+static uint32_t status_requested;
+static uint32_t status_sent;
+/* 押されているキーの一覧も同じく回数で持つ（送り待ちのキーを送り終えてから送る）。
+ * あふれて捨てるたびに増えるので、一周して「頼まれていない」に見えないよう 32 ビットにする */
+static uint32_t pressed_list_requested;
+static uint32_t pressed_list_sent;
+/* 送っている最中のレポートがある（送り終わるまで次を送らない）。送るたびに番号を付け、「送り終わった」は
+ * その番号で照合する（送る先を変えた後に、前の送り道から遅れて届いた「送り終わった」と取り違えないように）。
+ * 送った送り道と接続（参照を持つ）も覚えておき、その送り道が切れたら待つのをやめる */
 static bool in_flight;
+static uint32_t in_flight_id;
+static uint32_t last_send_id;
 static enum key_stream_transport in_flight_transport;
 static struct bt_conn *in_flight_conn;
 
@@ -300,7 +304,7 @@ static void send_work_handler(struct k_work *work) {
     report[0] = KEY_STREAM_PROTOCOL_VERSION;
     // 送る順: 状態 → 送り待ちのキー → 押されているキーの一覧（一覧は、それより前のキーを送り終えた時点のもの）
     uint8_t kind;
-    uint8_t gen = 0;
+    uint32_t gen = 0;
     uint16_t first_seq = 0;
     size_t n = 0;
     if (status_requested != status_sent) {
@@ -328,7 +332,9 @@ static void send_work_handler(struct k_work *work) {
         conn = bt_conn_ref(stream_conn);
     }
 #endif
+    const uint32_t id = ++last_send_id;
     in_flight = true;
+    in_flight_id = id;
     in_flight_transport = transport;
     in_flight_conn = NULL;
 #if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_BLE)
@@ -341,11 +347,11 @@ static void send_work_handler(struct k_work *work) {
     int err = -ENOTSUP;
     if (transport == KEY_STREAM_TRANSPORT_USB) {
 #if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_USB)
-        err = key_stream_usb_send(report);
+        err = key_stream_usb_send(report, id);
 #endif
     } else if (transport == KEY_STREAM_TRANSPORT_BLE) {
 #if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_BLE)
-        err = key_stream_ble_send(conn, report);
+        err = key_stream_ble_send(conn, report, id);
 #endif
     }
 
@@ -368,7 +374,7 @@ static void send_work_handler(struct k_work *work) {
     }
     // 送れなかった: 送っている最中の印を外す（送っている間に送り道が切れて、もう外れていることもある）
     struct bt_conn *done = NULL;
-    if (in_flight_on_locked(transport, conn)) {
+    if (in_flight && in_flight_id == id) {
         done = finish_in_flight_locked();
     }
     k_spin_unlock(&lock, key);
@@ -383,9 +389,9 @@ static void send_work_handler(struct k_work *work) {
     }
 }
 
-void key_stream_sent(enum key_stream_transport transport, struct bt_conn *conn) {
+void key_stream_sent(uint32_t id) {
     k_spinlock_key_t key = k_spin_lock(&lock);
-    const bool finished = in_flight_on_locked(transport, conn);
+    const bool finished = in_flight && in_flight_id == id;
     struct bt_conn *done = finished ? finish_in_flight_locked() : NULL;
     k_spin_unlock(&lock, key);
     release_conn(done);
@@ -407,7 +413,8 @@ static void start(enum key_stream_transport transport, struct bt_conn *conn, uin
     if (fresh) {
         old_conn = stop_locked();
         // 前の送り道で送っている最中なら、その「送り終わった」は待たない（USB がサスペンドしたままなどで、
-        // 届かないことがあるため）。後から届いても、送り道が違うので無視される
+        // 届かないことがあるため）。後から届いても、番号が違うので無視される。
+        // 前の送り道がまだ送っている間は、その送り道は次を受け付けない（-EAGAIN）ので、戻ってきても重ならない
         if (in_flight && !in_flight_on_locked(transport, conn)) {
             abandoned = finish_in_flight_locked();
         }

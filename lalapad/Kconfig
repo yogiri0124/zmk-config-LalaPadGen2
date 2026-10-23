@@ -33,6 +33,15 @@ config ZMK_SCROLL_SNAP_GATE
     default y
     depends on (DT_HAS_ZMK_BEHAVIOR_SCROLL_SNAP_HOLD_ENABLED || DT_HAS_ZMK_INPUT_PROCESSOR_SCROLL_SNAP_GATE_ENABLED) && ZMK_POINTING
 
+config ZMK_SPLIT_TRACKPAD_RELEASE
+    bool "Release right trackpad positions when the peripheral disconnects"
+    default y
+    depends on ZMK_SPLIT && ZMK_SPLIT_ROLE_CENTRAL
+    depends on $(dt_nodelabel_enabled,trackpad_key_behaviors_R)
+    help
+      右（子機）が切れたときに、右のトラックパッドのタップ・ジェスチャーで押されたままの位置を離す
+      （lalapad/src/split_trackpad_release.c）。
+
 config ZMK_KEY_STREAM
     bool "Send key position events to the host over a vendor raw HID (USB and BLE)"
     depends on !ZMK_SPLIT || ZMK_SPLIT_ROLE_CENTRAL
