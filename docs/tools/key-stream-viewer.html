@@ -88,6 +88,8 @@ const ROWS = [
   [52, 53, 54, -1, -1, -1, -1, -1, -1, -1, -1, 55, 56, 57],
   [58, 59, 60, 61, 62, -1, -1, -1, -1, 63, 64, 65, 66, 67],
 ];
+// 右のトラックパッドのタップ・ジェスチャーの位置（右が切れても「離した」が届かない）
+const RIGHT_TRACKPAD = [55, 56, 57, 63, 64, 65, 66, 67];
 const keyEls = {};
 for (const row of ROWS) {
   for (const pos of row) {
@@ -114,13 +116,13 @@ function mask() {
   return STREAM_KEYS | ($('trackpad').checked ? STREAM_TRACKPAD : 0);
 }
 
-// dev: 送る機器（省略すると今つないでいる機器）
+// dev: 送る機器（省略すると今つないでいる機器）。送れたら true
 async function send(type, arg = 0, dev = device) {
-  if (!dev) return;
+  if (!dev) return false;
   const data = new Uint8Array(REPORT_SIZE);
   data[0] = VERSION; data[1] = type; data[2] = arg;
-  try { await dev.sendReport(0, data); }
-  catch (e) { log(`送れませんでした: ${e.message}`); }
+  try { await dev.sendReport(0, data); return true; }
+  catch (e) { log(`送れませんでした: ${e.message}`); return false; }
 }
 
 // 届いた通し番号が、次に来るはずの番号から飛んでいれば、その分を取りこぼしとして数える
@@ -141,6 +143,8 @@ function onReport(event) {
     const right = d.getUint8(2) === 1;
     $('right').textContent = right ? 'つながっている' : '切れている';
     $('right').className = right ? 'good' : 'bad';
+    // 右が切れたら、右のトラックパッドの位置は離れた扱いにする（キーボードからは「離した」が届かないため）
+    if (!right) RIGHT_TRACKPAD.forEach((pos) => keyEls[pos]?.classList.remove('on'));
     keyPositions = d.getUint8(4);
     const seq = d.getUint16(6, true);
     log(`状態: 右=${right ? 'つながっている' : '切れている'} 種類=0x${d.getUint8(3).toString(16)} キーの位置=${keyPositions} 位置の数=${d.getUint8(5)} 次の通し番号=${seq}`);
@@ -199,7 +203,10 @@ async function open(dev) {
   await send(CMD_START, mask(), dev);
   // 開き直したときなど、キーボードがまだ前の「開始」で送り続けていると、今の「開始」は生存確認として扱われ、
   // 状態と押されているキーが届かない。問い合わせて、今の状態を受け取る
-  await send(CMD_STATUS, 0, dev);
+  // 送れなかったら、少し待って送り直す（届かないと、押されたままの表示が直らない）
+  for (let i = 0; i < 3 && device === dev && !(await send(CMD_STATUS, 0, dev)); i++) {
+    await new Promise((r) => setTimeout(r, 300));
+  }
   // 送っている間に切れていたら（または別の機器につなぎ直していたら）、生存確認は始めない
   if (device !== dev) return;
   timer = setInterval(() => send(CMD_START, mask()), KEEPALIVE_MS);

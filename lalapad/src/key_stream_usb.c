@@ -104,6 +104,8 @@ int key_stream_usb_send(const uint8_t *report, uint32_t id) {
     return err;
 }
 
+void key_stream_usb_abort(void) { atomic_clear(&tx_busy); }
+
 /* USB を抜いた（PC から使えなくなった）ら、USB で送っていた分をやめる */
 static int key_stream_usb_listener(const zmk_event_t *eh) {
     const struct zmk_usb_conn_state_changed *ev = as_zmk_usb_conn_state_changed(eh);

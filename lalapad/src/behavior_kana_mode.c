@@ -83,6 +83,8 @@ static const struct behavior_driver_api behavior_kana_mode_driver_api = {
                  "kana_sw: sub-layers is out of range");
 
 #define KANA_MODE_INST(n)                                                                          \
+    KANA_CHECK_MS(n, tap_ms, 10000)                                                                \
+    KANA_CHECK_MS(n, wait_ms, 10000)                                                               \
     BUILD_ASSERT(DT_INST_PROP(n, layer) < ZMK_KEYMAP_LAYERS_LEN,                                   \
                  "kana_sw: layer is out of range");                                                \
     DT_INST_FOREACH_PROP_ELEM(n, sub_layers, KANA_MODE_CHECK_SUB_LAYER)                            \

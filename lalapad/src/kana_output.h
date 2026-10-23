@@ -11,6 +11,12 @@
 #include <zmk/behavior.h>
 #include <zmk/keymap.h>
 
+/* 時間の設定（DT のプロパティ prop）が 0〜max ms かをビルド時に確かめる（各 behavior の DT_DRV_COMPAT で使う）。
+ * 負の値は送るときに大きな待ち時間になってしまうため */
+#define KANA_CHECK_MS(n, prop, max)                                                                \
+    BUILD_ASSERT(DT_INST_PROP(n, prop) >= 0 && DT_INST_PROP(n, prop) <= (max),                     \
+                 #prop " is out of range (0-" #max " ms)");
+
 /* keycode を1回タップする操作（押す→離す）を behavior queue に並べる。
  * 戻り値: 0 = 登録できた
  *         -EBUSY  = 前のキーの「離す」を再試行中なので何も登録していない

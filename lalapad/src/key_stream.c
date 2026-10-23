@@ -410,14 +410,20 @@ static void start(enum key_stream_transport transport, struct bt_conn *conn, uin
     const bool fresh = !streaming || stream_transport != transport || stream_conn != conn ||
                        stream_mask != mask;
     struct bt_conn *abandoned = NULL;
+    bool reset_usb = false;
     if (fresh) {
+        const bool was_streaming = streaming;
         old_conn = stop_locked();
-        // 前の送り道で送っている最中なら、その「送り終わった」は待たない（USB がサスペンドしたままなどで、
-        // 届かないことがあるため）。後から届いても、番号が違うので無視される。
-        // 前の送り道がまだ送っている間は、その送り道は次を受け付けない（-EAGAIN）ので、戻ってきても重ならない
-        if (in_flight && !in_flight_on_locked(transport, conn)) {
+        // 送るのをやめていた後（生存確認が途切れた、終了を受けた）や、送り道が変わったときは、送っている最中の
+        // ものの「送り終わった」を待たない（USB がサスペンドしたまま、USB のリセットで転送が取り消された、などで
+        // 届かないことがあるため。後から届いても、番号が違うので無視される）。
+        // 送っている間に種類だけ変わったときは、送り終わるのを待つ（送っている最中の USB のバッファを書き換えないように）
+        if (in_flight && (!was_streaming || !in_flight_on_locked(transport, conn))) {
             abandoned = finish_in_flight_locked();
         }
+        // USB で始めるときに、待っている転送がなければ、USB 側に残った「送っている最中」も外す
+        // （前に待つのをやめた転送が、終わらないまま残っていても、送れるようにする）
+        reset_usb = transport == KEY_STREAM_TRANSPORT_USB && !in_flight;
         streaming = true;
         stream_transport = transport;
         stream_conn = conn; // 参照は命令から引き継ぐ
@@ -439,6 +445,11 @@ static void start(enum key_stream_transport transport, struct bt_conn *conn, uin
 
     release_conn(old_conn);
     release_conn(abandoned);
+#if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_USB)
+    if (reset_usb) {
+        key_stream_usb_abort();
+    }
+#endif
     release_conn(conn); // 生存確認だけのとき: 命令の参照は要らない
     k_work_reschedule_for_queue(&key_stream_q, &timeout_work,
                                 K_MSEC(CONFIG_ZMK_KEY_STREAM_KEEPALIVE_TIMEOUT_MS));

@@ -43,38 +43,98 @@ struct kana_entry {
 #define K2(a, b) {.len = 2, .keys = {a, b}}
 #define K3(a, b, c) {.len = 3, .keys = {a, b, c}}
 
-/* 文字 ID → 送るキー列（英語配列・ローマ字入力） */
-static const struct kana_entry kana_table[KN_MAX_ID + 1] = {
-    [KN_A] = K1(A),        [KN_I] = K1(I),        [KN_U] = K1(U),        [KN_E] = K1(E),
-    [KN_O] = K1(O),        [KN_KA] = K2(K, A),    [KN_KI] = K2(K, I),    [KN_KU] = K2(K, U),
-    [KN_KE] = K2(K, E),    [KN_KO] = K2(K, O),    [KN_SA] = K2(S, A),    [KN_SI] = K2(S, I),
-    [KN_SU] = K2(S, U),    [KN_SE] = K2(S, E),    [KN_SO] = K2(S, O),    [KN_TA] = K2(T, A),
-    [KN_TI] = K2(T, I),    [KN_TU] = K2(T, U),    [KN_TE] = K2(T, E),    [KN_TO] = K2(T, O),
-    [KN_NA] = K2(N, A),    [KN_NI] = K2(N, I),    [KN_NU] = K2(N, U),    [KN_NE] = K2(N, E),
-    [KN_NO] = K2(N, O),    [KN_HA] = K2(H, A),    [KN_HI] = K2(H, I),    [KN_HU] = K2(H, U),
-    [KN_HE] = K2(H, E),    [KN_HO] = K2(H, O),    [KN_MA] = K2(M, A),    [KN_MI] = K2(M, I),
-    [KN_MU] = K2(M, U),    [KN_ME] = K2(M, E),    [KN_MO] = K2(M, O),    [KN_YA] = K2(Y, A),
-    [KN_YU] = K2(Y, U),    [KN_YO] = K2(Y, O),    [KN_RA] = K2(R, A),    [KN_RI] = K2(R, I),
-    [KN_RU] = K2(R, U),    [KN_RE] = K2(R, E),    [KN_RO] = K2(R, O),    [KN_WA] = K2(W, A),
-    [KN_WO] = K2(W, O),    [KN_NN] = K2(N, N),
+/* 文字 ID・表示名（ZMK Studio の一覧に出る名前）・送るキー列（英語配列・ローマ字入力）。
+ * 送るキー列の表と ZMK Studio の一覧は、どちらもこの1つの一覧から作る（取り違えや書き漏れが起きないように）。
+ * 引数の名前を X にしないこと（キー X を送る行が、引数に置き換わってしまう） */
+#define KANA_LIST(ENTRY)                                                                             \
+    ENTRY(KN_A, "あ", K1(A)) \
+    ENTRY(KN_I, "い", K1(I)) \
+    ENTRY(KN_U, "う", K1(U)) \
+    ENTRY(KN_E, "え", K1(E)) \
+    ENTRY(KN_O, "お", K1(O)) \
+    ENTRY(KN_KA, "か", K2(K, A)) \
+    ENTRY(KN_KI, "き", K2(K, I)) \
+    ENTRY(KN_KU, "く", K2(K, U)) \
+    ENTRY(KN_KE, "け", K2(K, E)) \
+    ENTRY(KN_KO, "こ", K2(K, O)) \
+    ENTRY(KN_SA, "さ", K2(S, A)) \
+    ENTRY(KN_SI, "し", K2(S, I)) \
+    ENTRY(KN_SU, "す", K2(S, U)) \
+    ENTRY(KN_SE, "せ", K2(S, E)) \
+    ENTRY(KN_SO, "そ", K2(S, O)) \
+    ENTRY(KN_TA, "た", K2(T, A)) \
+    ENTRY(KN_TI, "ち", K2(T, I)) \
+    ENTRY(KN_TU, "つ", K2(T, U)) \
+    ENTRY(KN_TE, "て", K2(T, E)) \
+    ENTRY(KN_TO, "と", K2(T, O)) \
+    ENTRY(KN_NA, "な", K2(N, A)) \
+    ENTRY(KN_NI, "に", K2(N, I)) \
+    ENTRY(KN_NU, "ぬ", K2(N, U)) \
+    ENTRY(KN_NE, "ね", K2(N, E)) \
+    ENTRY(KN_NO, "の", K2(N, O)) \
+    ENTRY(KN_HA, "は", K2(H, A)) \
+    ENTRY(KN_HI, "ひ", K2(H, I)) \
+    ENTRY(KN_HU, "ふ", K2(H, U)) \
+    ENTRY(KN_HE, "へ", K2(H, E)) \
+    ENTRY(KN_HO, "ほ", K2(H, O)) \
+    ENTRY(KN_MA, "ま", K2(M, A)) \
+    ENTRY(KN_MI, "み", K2(M, I)) \
+    ENTRY(KN_MU, "む", K2(M, U)) \
+    ENTRY(KN_ME, "め", K2(M, E)) \
+    ENTRY(KN_MO, "も", K2(M, O)) \
+    ENTRY(KN_YA, "や", K2(Y, A)) \
+    ENTRY(KN_YU, "ゆ", K2(Y, U)) \
+    ENTRY(KN_YO, "よ", K2(Y, O)) \
+    ENTRY(KN_RA, "ら", K2(R, A)) \
+    ENTRY(KN_RI, "り", K2(R, I)) \
+    ENTRY(KN_RU, "る", K2(R, U)) \
+    ENTRY(KN_RE, "れ", K2(R, E)) \
+    ENTRY(KN_RO, "ろ", K2(R, O)) \
+    ENTRY(KN_WA, "わ", K2(W, A)) \
+    ENTRY(KN_WO, "を", K2(W, O)) \
+    ENTRY(KN_NN, "ん", K2(N, N)) \
+    ENTRY(KN_GA, "が", K2(G, A)) \
+    ENTRY(KN_GI, "ぎ", K2(G, I)) \
+    ENTRY(KN_GU, "ぐ", K2(G, U)) \
+    ENTRY(KN_GE, "げ", K2(G, E)) \
+    ENTRY(KN_GO, "ご", K2(G, O)) \
+    ENTRY(KN_ZA, "ざ", K2(Z, A)) \
+    ENTRY(KN_ZI, "じ", K2(Z, I)) \
+    ENTRY(KN_ZU, "ず", K2(Z, U)) \
+    ENTRY(KN_ZE, "ぜ", K2(Z, E)) \
+    ENTRY(KN_ZO, "ぞ", K2(Z, O)) \
+    ENTRY(KN_DA, "だ", K2(D, A)) \
+    ENTRY(KN_DI, "ぢ", K2(D, I)) \
+    ENTRY(KN_DU, "づ", K2(D, U)) \
+    ENTRY(KN_DE, "で", K2(D, E)) \
+    ENTRY(KN_DO, "ど", K2(D, O)) \
+    ENTRY(KN_BA, "ば", K2(B, A)) \
+    ENTRY(KN_BI, "び", K2(B, I)) \
+    ENTRY(KN_BU, "ぶ", K2(B, U)) \
+    ENTRY(KN_BE, "べ", K2(B, E)) \
+    ENTRY(KN_BO, "ぼ", K2(B, O)) \
+    ENTRY(KN_PA, "ぱ", K2(P, A)) \
+    ENTRY(KN_PI, "ぴ", K2(P, I)) \
+    ENTRY(KN_PU, "ぷ", K2(P, U)) \
+    ENTRY(KN_PE, "ぺ", K2(P, E)) \
+    ENTRY(KN_PO, "ぽ", K2(P, O)) \
+    ENTRY(KN_XYA, "ゃ", K3(X, Y, A)) \
+    ENTRY(KN_XYU, "ゅ", K3(X, Y, U)) \
+    ENTRY(KN_XYO, "ょ", K3(X, Y, O)) \
+    ENTRY(KN_XA, "ぁ", K2(X, A)) \
+    ENTRY(KN_XI, "ぃ", K2(X, I)) \
+    ENTRY(KN_XU, "ぅ", K2(X, U)) \
+    ENTRY(KN_XE, "ぇ", K2(X, E)) \
+    ENTRY(KN_XO, "ぉ", K2(X, O)) \
+    ENTRY(KN_XTU, "っ", K3(X, T, U)) \
+    ENTRY(KN_VU, "ゔ", K2(V, U)) \
+    ENTRY(KE_SPACE, "スペース", K1(SPACE)) \
+    ENTRY(KE_ENTER, "エンター", K1(ENTER)) \
+    ENTRY(KE_BSPC, "バックスペース", K1(BACKSPACE))
 
-    [KN_GA] = K2(G, A),    [KN_GI] = K2(G, I),    [KN_GU] = K2(G, U),    [KN_GE] = K2(G, E),
-    [KN_GO] = K2(G, O),    [KN_ZA] = K2(Z, A),    [KN_ZI] = K2(Z, I),    [KN_ZU] = K2(Z, U),
-    [KN_ZE] = K2(Z, E),    [KN_ZO] = K2(Z, O),    [KN_DA] = K2(D, A),    [KN_DI] = K2(D, I),
-    [KN_DU] = K2(D, U),    [KN_DE] = K2(D, E),    [KN_DO] = K2(D, O),    [KN_BA] = K2(B, A),
-    [KN_BI] = K2(B, I),    [KN_BU] = K2(B, U),    [KN_BE] = K2(B, E),    [KN_BO] = K2(B, O),
+#define KANA_TABLE_ENTRY(id, name, keys) [id] = keys,
 
-    [KN_PA] = K2(P, A),    [KN_PI] = K2(P, I),    [KN_PU] = K2(P, U),    [KN_PE] = K2(P, E),
-    [KN_PO] = K2(P, O),
-
-    [KN_XYA] = K3(X, Y, A), [KN_XYU] = K3(X, Y, U), [KN_XYO] = K3(X, Y, O), [KN_XA] = K2(X, A),
-    [KN_XI] = K2(X, I),     [KN_XU] = K2(X, U),     [KN_XE] = K2(X, E),     [KN_XO] = K2(X, O),
-    [KN_XTU] = K3(X, T, U), [KN_VU] = K2(V, U),
-
-    [KE_SPACE] = K1(SPACE),
-    [KE_ENTER] = K1(ENTER),
-    [KE_BSPC] = K1(BACKSPACE),
-};
+static const struct kana_entry kana_table[KN_MAX_ID + 1] = {KANA_LIST(KANA_TABLE_ENTRY)};
 
 struct behavior_kana_config {
     uint32_t tap_ms;
@@ -90,32 +150,14 @@ static bool is_hold_key(uint32_t id) { return id == KE_SPACE || id == KE_ENTER |
 
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 
-#define KV(id, name)                                                                               \
-    {.display_name = name, .value = id, .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE}
+#define KANA_METADATA_ENTRY(id, name, keys)                                                        \
+    {.display_name = name, .value = id, .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE},
 
 static const struct behavior_parameter_value_metadata param_values[] = {
-    KV(KN_A, "あ"),   KV(KN_I, "い"),   KV(KN_U, "う"),   KV(KN_E, "え"),   KV(KN_O, "お"),
-    KV(KN_KA, "か"),  KV(KN_KI, "き"),  KV(KN_KU, "く"),  KV(KN_KE, "け"),  KV(KN_KO, "こ"),
-    KV(KN_SA, "さ"),  KV(KN_SI, "し"),  KV(KN_SU, "す"),  KV(KN_SE, "せ"),  KV(KN_SO, "そ"),
-    KV(KN_TA, "た"),  KV(KN_TI, "ち"),  KV(KN_TU, "つ"),  KV(KN_TE, "て"),  KV(KN_TO, "と"),
-    KV(KN_NA, "な"),  KV(KN_NI, "に"),  KV(KN_NU, "ぬ"),  KV(KN_NE, "ね"),  KV(KN_NO, "の"),
-    KV(KN_HA, "は"),  KV(KN_HI, "ひ"),  KV(KN_HU, "ふ"),  KV(KN_HE, "へ"),  KV(KN_HO, "ほ"),
-    KV(KN_MA, "ま"),  KV(KN_MI, "み"),  KV(KN_MU, "む"),  KV(KN_ME, "め"),  KV(KN_MO, "も"),
-    KV(KN_YA, "や"),  KV(KN_YU, "ゆ"),  KV(KN_YO, "よ"),  KV(KN_RA, "ら"),  KV(KN_RI, "り"),
-    KV(KN_RU, "る"),  KV(KN_RE, "れ"),  KV(KN_RO, "ろ"),  KV(KN_WA, "わ"),  KV(KN_WO, "を"),
-    KV(KN_NN, "ん"),  KV(KN_GA, "が"),  KV(KN_GI, "ぎ"),  KV(KN_GU, "ぐ"),  KV(KN_GE, "げ"),
-    KV(KN_GO, "ご"),  KV(KN_ZA, "ざ"),  KV(KN_ZI, "じ"),  KV(KN_ZU, "ず"),  KV(KN_ZE, "ぜ"),
-    KV(KN_ZO, "ぞ"),  KV(KN_DA, "だ"),  KV(KN_DI, "ぢ"),  KV(KN_DU, "づ"),  KV(KN_DE, "で"),
-    KV(KN_DO, "ど"),  KV(KN_BA, "ば"),  KV(KN_BI, "び"),  KV(KN_BU, "ぶ"),  KV(KN_BE, "べ"),
-    KV(KN_BO, "ぼ"),  KV(KN_PA, "ぱ"),  KV(KN_PI, "ぴ"),  KV(KN_PU, "ぷ"),  KV(KN_PE, "ぺ"),
-    KV(KN_PO, "ぽ"),  KV(KN_XYA, "ゃ"), KV(KN_XYU, "ゅ"), KV(KN_XYO, "ょ"), KV(KN_XA, "ぁ"),
-    KV(KN_XI, "ぃ"),  KV(KN_XU, "ぅ"),  KV(KN_XE, "ぇ"),  KV(KN_XO, "ぉ"),  KV(KN_XTU, "っ"),
-    KV(KN_VU, "ゔ"),
-    KV(KE_SPACE, "スペース"), KV(KE_ENTER, "エンター"), KV(KE_BSPC, "バックスペース"),
-};
+    KANA_LIST(KANA_METADATA_ENTRY)};
 
-/* かな（1〜KN_VU）と、編集用のキー3つ。その間の番号は欠番 */
-BUILD_ASSERT(ARRAY_SIZE(param_values) == KN_VU + 3, "kana metadata must cover every kana ID");
+/* かな（1〜KN_VU）と、編集用のキー3つ。その間の番号は欠番（kana.h に ID を足したら KANA_LIST にも足す） */
+BUILD_ASSERT(ARRAY_SIZE(param_values) == KN_VU + 3, "KANA_LIST must cover every kana ID");
 
 static const struct behavior_parameter_metadata_set param_metadata_set[] = {{
     .param1_values = param_values,
@@ -207,6 +249,9 @@ static const struct behavior_driver_api behavior_kana_driver_api = {
 };
 
 #define KANA_INST(n)                                                                               \
+    KANA_CHECK_MS(n, tap_ms, 10000)                                                                \
+    KANA_CHECK_MS(n, wait_ms, 10000)                                                               \
+    KANA_CHECK_MS(n, ime_resync_ms, 60000)                                                         \
     static const struct behavior_kana_config behavior_kana_config_##n = {                         \
         .tap_ms = DT_INST_PROP(n, tap_ms),                                                         \
         .wait_ms = DT_INST_PROP(n, wait_ms),                                                       \

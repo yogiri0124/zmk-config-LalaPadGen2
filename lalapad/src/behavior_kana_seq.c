@@ -92,6 +92,9 @@ static const struct behavior_driver_api behavior_kana_seq_driver_api = {
 };
 
 #define KANA_SEQ_INST(n)                                                                           \
+    KANA_CHECK_MS(n, tap_ms, 10000)                                                                \
+    KANA_CHECK_MS(n, wait_ms, 10000)                                                               \
+    KANA_CHECK_MS(n, ime_resync_ms, 60000)                                                         \
     static const uint32_t behavior_kana_seq_keys_##n[] = DT_INST_PROP(n, keys);                    \
     static const struct behavior_kana_seq_config behavior_kana_seq_config_##n = {                 \
         .keys = behavior_kana_seq_keys_##n,                                                        \

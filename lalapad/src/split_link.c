@@ -17,34 +17,23 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 ZMK_EVENT_IMPL(zmk_lalapad_split_link_changed);
 
-/* 右との接続の数と、切れた回数（Bluetooth のスレッドで数える） */
+/* 右との接続の数（Bluetooth のスレッドで数える） */
 static atomic_t link_count;
-static atomic_t disconnect_count;
-/* 最後に出来事で知らせた状態と、そのときまでに知らせた切れた回数（システムワークキューでだけ触る） */
+/* 最後に出来事で知らせた状態（システムワークキューでだけ触る） */
 static bool reported;
-static atomic_val_t reported_disconnects;
 
 bool lalapad_split_link_connected(void) { return atomic_get(&link_count) > 0; }
 
-static void report(bool connected) {
+/* 今の状態が、最後に知らせた状態と違えば知らせる */
+static void notify_work_handler(struct k_work *work) {
+    const bool connected = lalapad_split_link_connected();
+    if (connected == reported) {
+        return;
+    }
     reported = connected;
     LOG_DBG("Split link %s", connected ? "connected" : "disconnected");
     raise_zmk_lalapad_split_link_changed(
         (struct zmk_lalapad_split_link_changed){.connected = connected});
-}
-
-static void notify_work_handler(struct k_work *work) {
-    // ワークが動く前に「切れた → つながった」と続いても、切れたことは必ず知らせる
-    // （切れる前に押されていた位置を離すなど、切れたことをきっかけにする処理があるため）
-    const atomic_val_t disconnects = atomic_get(&disconnect_count);
-    if (disconnects != reported_disconnects) {
-        reported_disconnects = disconnects;
-        report(false); // 知らせていた状態が「切れている」でも、もう一度知らせる（受け取る側は重なっても困らない）
-    }
-    const bool connected = lalapad_split_link_connected();
-    if (connected != reported) {
-        report(connected);
-    }
 }
 
 static K_WORK_DEFINE(notify_work, notify_work_handler);
@@ -68,12 +57,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason) {
     if (!is_split_link(conn)) {
         return;
     }
-    // 数え始める前からの接続の「切れた」で負にならないように
-    atomic_val_t count = atomic_get(&link_count);
-    while (count > 0 && !atomic_cas(&link_count, count, count - 1)) {
-        count = atomic_get(&link_count);
-    }
-    atomic_inc(&disconnect_count);
+    atomic_dec(&link_count);
     k_work_submit(&notify_work);
 }
 
