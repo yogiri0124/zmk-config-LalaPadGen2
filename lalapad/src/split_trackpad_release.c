@@ -23,7 +23,8 @@
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
-#define RIGHT_TRACKPAD_NODE DT_NODELABEL(trackpad_key_behaviors_R)
+// DT のマクロではラベルを小文字で書く（lalapadgen2.dtsi の trackpad_key_behaviors_R）
+#define RIGHT_TRACKPAD_NODE DT_NODELABEL(trackpad_key_behaviors_r)
 
 #define RIGHT_TRACKPAD_POSITION(node, prop, idx) DT_PHA_BY_IDX(node, prop, idx, param1),
 

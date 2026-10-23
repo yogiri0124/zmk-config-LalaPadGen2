@@ -204,6 +204,7 @@ async function close(unplugged = false) {
     try { await device.close(); } catch (e) { /* 切れていてもよい */ }
   }
   device = null;
+  Object.values(keyEls).forEach((el) => el.classList.remove('on'));
   $('device').textContent = '—'; $('right').textContent = '—'; $('right').className = '';
   $('connect').disabled = false; $('disconnect').disabled = true; $('query').disabled = true;
   log('切りました');
