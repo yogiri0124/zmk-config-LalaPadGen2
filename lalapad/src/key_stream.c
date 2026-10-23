@@ -128,8 +128,10 @@ static size_t events_head;
 static size_t events_count;
 static uint16_t next_seq;
 
-/* 送り待ちの状態のレポート */
-static bool status_pending;
+/* 状態のレポートを頼まれた回数と、送り始めた時点の回数（違えば送り待ち）。
+ * 送っている最中に頼まれ直しても、その分を落とさないよう回数で持つ */
+static uint8_t status_requested;
+static uint8_t status_sent;
 /* 送っている最中のレポートがある（送り終わるまで次を送らない） */
 static bool in_flight;
 
@@ -192,7 +194,7 @@ static struct bt_conn *stop_locked(void) {
     stream_conn = NULL;
     stream_mask = 0;
     events_count = 0;
-    status_pending = false;
+    status_sent = status_requested;
     return conn;
 }
 
@@ -223,7 +225,8 @@ static void build_status(uint8_t *report) {
     report[3] = stream_mask;
     report[4] = MIN(CONFIG_ZMK_KEY_STREAM_TRACKPAD_FIRST, ZMK_KEYMAP_LEN);
     report[5] = ZMK_KEYMAP_LEN;
-    sys_put_le16(next_seq, &report[6]);
+    // 次に届くキーの通し番号（送り待ちがあれば、その先頭。状態は送り待ちのキーより先に送るため）
+    sys_put_le16(events_count > 0 ? events[events_head].seq : next_seq, &report[6]);
 }
 
 /* キーのレポートを作る。入れた件数を返す */
@@ -253,11 +256,13 @@ static void send_work_handler(struct k_work *work) {
     memset(report, 0, sizeof(report));
     report[0] = KEY_STREAM_PROTOCOL_VERSION;
     bool is_status = false;
+    uint8_t status_gen = 0;
     uint16_t first_seq = 0;
     size_t n = 0;
-    if (status_pending) {
+    if (status_requested != status_sent) {
         build_status(report);
         is_status = true;
+        status_gen = status_requested;
     } else if (events_count > 0) {
         first_seq = events[events_head].seq;
         n = build_keys(report);
@@ -266,7 +271,13 @@ static void send_work_handler(struct k_work *work) {
         return;
     }
     const enum key_stream_transport transport = stream_transport;
-    struct bt_conn *conn = stream_conn;
+    struct bt_conn *conn = NULL;
+#if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_BLE)
+    // 送っている間に接続が切れて本体の参照が手放されても使えるよう、自分の参照を持つ
+    if (stream_conn != NULL) {
+        conn = bt_conn_ref(stream_conn);
+    }
+#endif
     in_flight = true;
     k_spin_unlock(&lock, key);
 
@@ -280,12 +291,13 @@ static void send_work_handler(struct k_work *work) {
         err = key_stream_ble_send(conn, report);
 #endif
     }
+    release_conn(conn);
 
     key = k_spin_lock(&lock);
     if (err == 0) {
         // 送り始めた分を取り除く（送っている間にあふれて先頭が進んでいたら、その分は数えない）
         if (is_status) {
-            status_pending = false;
+            status_sent = status_gen;
         } else {
             while (events_count > 0 && (int16_t)(events[events_head].seq - first_seq) < (int16_t)n) {
                 events_head = (events_head + 1) % EVENT_QUEUE_SIZE;
@@ -329,7 +341,7 @@ static void start(enum key_stream_transport transport, struct bt_conn *conn, uin
         stream_conn = conn; // 参照は命令から引き継ぐ
         conn = NULL;
         stream_mask = mask;
-        status_pending = true;
+        status_requested++;
         // 押されたままのキーを知らせる（アプリが途中から見ても、押しっぱなしの扱いを合わせられるように）
         for (uint32_t pos = 0; pos < ZMK_KEYMAP_LEN; pos++) {
             if (pressed[pos] && position_wanted(mask, pos)) {
@@ -376,7 +388,7 @@ static void command_work_handler(struct k_work *work) {
         case CMD_STATUS: {
             k_spinlock_key_t key = k_spin_lock(&lock);
             if (streaming && stream_transport == cmd.transport && stream_conn == cmd.conn) {
-                status_pending = true;
+                status_requested++;
             }
             k_spin_unlock(&lock, key);
             release_conn(cmd.conn);
@@ -470,7 +482,7 @@ static int key_stream_listener(const zmk_event_t *eh) {
         peripheral_connected = split->connected;
         const bool send = streaming;
         if (send) {
-            status_pending = true;
+            status_requested++;
         }
         k_spin_unlock(&lock, key);
         if (send) {

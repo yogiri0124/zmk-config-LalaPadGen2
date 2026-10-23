@@ -1,7 +1,7 @@
 /*
  * オートマウスレイヤーの入力処理 (zmk,input-processor-auto-mouse-layer)。
  *
- * トラックパッドのリスナーに <&zip_auto_mouse_layer 4 700> のように入れると、
+ * トラックパッドのリスナーに <&zip_auto_mouse_layer 5 700> のように入れると、
  * トラックパッドの操作でレイヤー param1 を有効にし、操作が止まって param2 ms たったら解除する。
  * ZMK 標準の zmk,input-processor-temp-layer と同じ使い方で、次の点が違う。
  *

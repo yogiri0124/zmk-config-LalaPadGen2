@@ -23,6 +23,9 @@
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
+// HID_0 はキーボード（ZMK）が使うので、キー位置の送信用にもう1つ要る
+BUILD_ASSERT(CONFIG_USB_HID_DEVICE_COUNT >= 2, "key stream over USB needs CONFIG_USB_HID_DEVICE_COUNT=2");
+
 #define HID_GET_REPORT_TYPE_MASK 0xff00
 #define HID_REPORT_TYPE_OUTPUT 0x200
 
@@ -102,8 +105,7 @@ ZMK_SUBSCRIPTION(key_stream_usb, zmk_usb_conn_state_changed);
 static int key_stream_usb_init(void) {
     hid_dev = device_get_binding(CONFIG_ZMK_KEY_STREAM_USB_DEVICE);
     if (hid_dev == NULL) {
-        LOG_ERR("Key stream: USB HID device %s not found (set CONFIG_USB_HID_DEVICE_COUNT=2)",
-                CONFIG_ZMK_KEY_STREAM_USB_DEVICE);
+        LOG_ERR("Key stream: USB HID device %s not found", CONFIG_ZMK_KEY_STREAM_USB_DEVICE);
         return -ENODEV;
     }
     usb_hid_register_device(hid_dev, key_stream_report_desc, key_stream_report_desc_size, &ops);
