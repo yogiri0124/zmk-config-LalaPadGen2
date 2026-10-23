@@ -21,6 +21,7 @@
 #include <zmk/behavior.h>
 #include <zmk/behavior_queue.h>
 #include <zmk/keymap.h>
+#include <zmk/matrix.h>
 #include <zmk/events/keycode_state_changed.h>
 
 #include <dt-bindings/zmk/keys.h>
@@ -37,8 +38,11 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 /* ---- 送信キュー ---- */
 
-/* 「押す」は登録済みで、キューが満杯のため「離す」をまだ登録できていないキー（登録できるまで順に再試行する） */
-#define PENDING_RELEASE_MAX 8
+/* 「押す」は登録済みで、キューが満杯のため「離す」をまだ登録できていないキー（登録できるまで順に再試行する）。
+ * 押しっぱなしのキー（スペースなど）の「離す」はキー位置ごとに1つまで、タップの「離す」は再試行中に次の
+ * タップを受け付けない（-EBUSY）ので1つまで。全キー位置に押しっぱなしのキーを置いても足りる数にする
+ * （足りないと、下の「その場で離す」が、まだキューにある「押す」より先に実行されてしまう） */
+#define PENDING_RELEASE_MAX (ZMK_KEYMAP_LEN + 2)
 
 struct pending_release {
     struct zmk_behavior_binding binding;
@@ -57,7 +61,7 @@ static bool release_pending(void) { return pending_count > 0; }
 static void add_pending_release(const struct zmk_behavior_binding_event *event,
                                 struct zmk_behavior_binding binding, uint32_t wait) {
     if (pending_count >= PENDING_RELEASE_MAX) {
-        // 通常は起きない。押しっぱなしを避けるため、順番より解放を優先してその場で離す
+        // 上の数え方では起きない（念のため）。押しっぱなしを避けるため、順番より解放を優先してその場で離す
         LOG_ERR("Too many pending releases, releasing 0x%08X immediately", binding.param1);
         raise_zmk_keycode_state_changed_from_encoded(binding.param1, false, k_uptime_get());
         return;
