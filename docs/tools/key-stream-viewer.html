@@ -88,6 +88,8 @@ const ROWS = [
   [52, 53, 54, -1, -1, -1, -1, -1, -1, -1, -1, 55, 56, 57],
   [58, 59, 60, 61, 62, -1, -1, -1, -1, 63, 64, 65, 66, 67],
 ];
+// 右のトラックパッドのタップ・ジェスチャーの位置（右が切れても「離した」が届かない）
+const RIGHT_TRACKPAD = [55, 56, 57, 63, 64, 65, 66, 67];
 const keyEls = {};
 for (const row of ROWS) {
   for (const pos of row) {
@@ -141,6 +143,8 @@ function onReport(event) {
     const right = d.getUint8(2) === 1;
     $('right').textContent = right ? 'つながっている' : '切れている';
     $('right').className = right ? 'good' : 'bad';
+    // 右が切れたら、右のトラックパッドの位置は離れた扱いにする（キーボードからは「離した」が届かないため）
+    if (!right) RIGHT_TRACKPAD.forEach((pos) => keyEls[pos]?.classList.remove('on'));
     keyPositions = d.getUint8(4);
     const seq = d.getUint16(6, true);
     log(`状態: 右=${right ? 'つながっている' : '切れている'} 種類=0x${d.getUint8(3).toString(16)} キーの位置=${keyPositions} 位置の数=${d.getUint8(5)} 次の通し番号=${seq}`);
