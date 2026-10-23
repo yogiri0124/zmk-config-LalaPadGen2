@@ -44,92 +44,93 @@ struct kana_entry {
 #define K3(a, b, c) {.len = 3, .keys = {a, b, c}}
 
 /* 文字 ID・表示名（ZMK Studio の一覧に出る名前）・送るキー列（英語配列・ローマ字入力）。
- * 送るキー列の表と ZMK Studio の一覧は、どちらもこの1つの一覧から作る（取り違えや書き漏れが起きないように） */
-#define KANA_LIST(X)                                                                               \
-    X(KN_A, "あ", K1(A)) \
-    X(KN_I, "い", K1(I)) \
-    X(KN_U, "う", K1(U)) \
-    X(KN_E, "え", K1(E)) \
-    X(KN_O, "お", K1(O)) \
-    X(KN_KA, "か", K2(K, A)) \
-    X(KN_KI, "き", K2(K, I)) \
-    X(KN_KU, "く", K2(K, U)) \
-    X(KN_KE, "け", K2(K, E)) \
-    X(KN_KO, "こ", K2(K, O)) \
-    X(KN_SA, "さ", K2(S, A)) \
-    X(KN_SI, "し", K2(S, I)) \
-    X(KN_SU, "す", K2(S, U)) \
-    X(KN_SE, "せ", K2(S, E)) \
-    X(KN_SO, "そ", K2(S, O)) \
-    X(KN_TA, "た", K2(T, A)) \
-    X(KN_TI, "ち", K2(T, I)) \
-    X(KN_TU, "つ", K2(T, U)) \
-    X(KN_TE, "て", K2(T, E)) \
-    X(KN_TO, "と", K2(T, O)) \
-    X(KN_NA, "な", K2(N, A)) \
-    X(KN_NI, "に", K2(N, I)) \
-    X(KN_NU, "ぬ", K2(N, U)) \
-    X(KN_NE, "ね", K2(N, E)) \
-    X(KN_NO, "の", K2(N, O)) \
-    X(KN_HA, "は", K2(H, A)) \
-    X(KN_HI, "ひ", K2(H, I)) \
-    X(KN_HU, "ふ", K2(H, U)) \
-    X(KN_HE, "へ", K2(H, E)) \
-    X(KN_HO, "ほ", K2(H, O)) \
-    X(KN_MA, "ま", K2(M, A)) \
-    X(KN_MI, "み", K2(M, I)) \
-    X(KN_MU, "む", K2(M, U)) \
-    X(KN_ME, "め", K2(M, E)) \
-    X(KN_MO, "も", K2(M, O)) \
-    X(KN_YA, "や", K2(Y, A)) \
-    X(KN_YU, "ゆ", K2(Y, U)) \
-    X(KN_YO, "よ", K2(Y, O)) \
-    X(KN_RA, "ら", K2(R, A)) \
-    X(KN_RI, "り", K2(R, I)) \
-    X(KN_RU, "る", K2(R, U)) \
-    X(KN_RE, "れ", K2(R, E)) \
-    X(KN_RO, "ろ", K2(R, O)) \
-    X(KN_WA, "わ", K2(W, A)) \
-    X(KN_WO, "を", K2(W, O)) \
-    X(KN_NN, "ん", K2(N, N)) \
-    X(KN_GA, "が", K2(G, A)) \
-    X(KN_GI, "ぎ", K2(G, I)) \
-    X(KN_GU, "ぐ", K2(G, U)) \
-    X(KN_GE, "げ", K2(G, E)) \
-    X(KN_GO, "ご", K2(G, O)) \
-    X(KN_ZA, "ざ", K2(Z, A)) \
-    X(KN_ZI, "じ", K2(Z, I)) \
-    X(KN_ZU, "ず", K2(Z, U)) \
-    X(KN_ZE, "ぜ", K2(Z, E)) \
-    X(KN_ZO, "ぞ", K2(Z, O)) \
-    X(KN_DA, "だ", K2(D, A)) \
-    X(KN_DI, "ぢ", K2(D, I)) \
-    X(KN_DU, "づ", K2(D, U)) \
-    X(KN_DE, "で", K2(D, E)) \
-    X(KN_DO, "ど", K2(D, O)) \
-    X(KN_BA, "ば", K2(B, A)) \
-    X(KN_BI, "び", K2(B, I)) \
-    X(KN_BU, "ぶ", K2(B, U)) \
-    X(KN_BE, "べ", K2(B, E)) \
-    X(KN_BO, "ぼ", K2(B, O)) \
-    X(KN_PA, "ぱ", K2(P, A)) \
-    X(KN_PI, "ぴ", K2(P, I)) \
-    X(KN_PU, "ぷ", K2(P, U)) \
-    X(KN_PE, "ぺ", K2(P, E)) \
-    X(KN_PO, "ぽ", K2(P, O)) \
-    X(KN_XYA, "ゃ", K3(X, Y, A)) \
-    X(KN_XYU, "ゅ", K3(X, Y, U)) \
-    X(KN_XYO, "ょ", K3(X, Y, O)) \
-    X(KN_XA, "ぁ", K2(X, A)) \
-    X(KN_XI, "ぃ", K2(X, I)) \
-    X(KN_XU, "ぅ", K2(X, U)) \
-    X(KN_XE, "ぇ", K2(X, E)) \
-    X(KN_XO, "ぉ", K2(X, O)) \
-    X(KN_XTU, "っ", K3(X, T, U)) \
-    X(KN_VU, "ゔ", K2(V, U)) \
-    X(KE_SPACE, "スペース", K1(SPACE)) \
-    X(KE_ENTER, "エンター", K1(ENTER)) \
-    X(KE_BSPC, "バックスペース", K1(BACKSPACE))
+ * 送るキー列の表と ZMK Studio の一覧は、どちらもこの1つの一覧から作る（取り違えや書き漏れが起きないように）。
+ * 引数の名前を X にしないこと（キー X を送る行が、引数に置き換わってしまう） */
+#define KANA_LIST(ENTRY)                                                                             \
+    ENTRY(KN_A, "あ", K1(A)) \
+    ENTRY(KN_I, "い", K1(I)) \
+    ENTRY(KN_U, "う", K1(U)) \
+    ENTRY(KN_E, "え", K1(E)) \
+    ENTRY(KN_O, "お", K1(O)) \
+    ENTRY(KN_KA, "か", K2(K, A)) \
+    ENTRY(KN_KI, "き", K2(K, I)) \
+    ENTRY(KN_KU, "く", K2(K, U)) \
+    ENTRY(KN_KE, "け", K2(K, E)) \
+    ENTRY(KN_KO, "こ", K2(K, O)) \
+    ENTRY(KN_SA, "さ", K2(S, A)) \
+    ENTRY(KN_SI, "し", K2(S, I)) \
+    ENTRY(KN_SU, "す", K2(S, U)) \
+    ENTRY(KN_SE, "せ", K2(S, E)) \
+    ENTRY(KN_SO, "そ", K2(S, O)) \
+    ENTRY(KN_TA, "た", K2(T, A)) \
+    ENTRY(KN_TI, "ち", K2(T, I)) \
+    ENTRY(KN_TU, "つ", K2(T, U)) \
+    ENTRY(KN_TE, "て", K2(T, E)) \
+    ENTRY(KN_TO, "と", K2(T, O)) \
+    ENTRY(KN_NA, "な", K2(N, A)) \
+    ENTRY(KN_NI, "に", K2(N, I)) \
+    ENTRY(KN_NU, "ぬ", K2(N, U)) \
+    ENTRY(KN_NE, "ね", K2(N, E)) \
+    ENTRY(KN_NO, "の", K2(N, O)) \
+    ENTRY(KN_HA, "は", K2(H, A)) \
+    ENTRY(KN_HI, "ひ", K2(H, I)) \
+    ENTRY(KN_HU, "ふ", K2(H, U)) \
+    ENTRY(KN_HE, "へ", K2(H, E)) \
+    ENTRY(KN_HO, "ほ", K2(H, O)) \
+    ENTRY(KN_MA, "ま", K2(M, A)) \
+    ENTRY(KN_MI, "み", K2(M, I)) \
+    ENTRY(KN_MU, "む", K2(M, U)) \
+    ENTRY(KN_ME, "め", K2(M, E)) \
+    ENTRY(KN_MO, "も", K2(M, O)) \
+    ENTRY(KN_YA, "や", K2(Y, A)) \
+    ENTRY(KN_YU, "ゆ", K2(Y, U)) \
+    ENTRY(KN_YO, "よ", K2(Y, O)) \
+    ENTRY(KN_RA, "ら", K2(R, A)) \
+    ENTRY(KN_RI, "り", K2(R, I)) \
+    ENTRY(KN_RU, "る", K2(R, U)) \
+    ENTRY(KN_RE, "れ", K2(R, E)) \
+    ENTRY(KN_RO, "ろ", K2(R, O)) \
+    ENTRY(KN_WA, "わ", K2(W, A)) \
+    ENTRY(KN_WO, "を", K2(W, O)) \
+    ENTRY(KN_NN, "ん", K2(N, N)) \
+    ENTRY(KN_GA, "が", K2(G, A)) \
+    ENTRY(KN_GI, "ぎ", K2(G, I)) \
+    ENTRY(KN_GU, "ぐ", K2(G, U)) \
+    ENTRY(KN_GE, "げ", K2(G, E)) \
+    ENTRY(KN_GO, "ご", K2(G, O)) \
+    ENTRY(KN_ZA, "ざ", K2(Z, A)) \
+    ENTRY(KN_ZI, "じ", K2(Z, I)) \
+    ENTRY(KN_ZU, "ず", K2(Z, U)) \
+    ENTRY(KN_ZE, "ぜ", K2(Z, E)) \
+    ENTRY(KN_ZO, "ぞ", K2(Z, O)) \
+    ENTRY(KN_DA, "だ", K2(D, A)) \
+    ENTRY(KN_DI, "ぢ", K2(D, I)) \
+    ENTRY(KN_DU, "づ", K2(D, U)) \
+    ENTRY(KN_DE, "で", K2(D, E)) \
+    ENTRY(KN_DO, "ど", K2(D, O)) \
+    ENTRY(KN_BA, "ば", K2(B, A)) \
+    ENTRY(KN_BI, "び", K2(B, I)) \
+    ENTRY(KN_BU, "ぶ", K2(B, U)) \
+    ENTRY(KN_BE, "べ", K2(B, E)) \
+    ENTRY(KN_BO, "ぼ", K2(B, O)) \
+    ENTRY(KN_PA, "ぱ", K2(P, A)) \
+    ENTRY(KN_PI, "ぴ", K2(P, I)) \
+    ENTRY(KN_PU, "ぷ", K2(P, U)) \
+    ENTRY(KN_PE, "ぺ", K2(P, E)) \
+    ENTRY(KN_PO, "ぽ", K2(P, O)) \
+    ENTRY(KN_XYA, "ゃ", K3(X, Y, A)) \
+    ENTRY(KN_XYU, "ゅ", K3(X, Y, U)) \
+    ENTRY(KN_XYO, "ょ", K3(X, Y, O)) \
+    ENTRY(KN_XA, "ぁ", K2(X, A)) \
+    ENTRY(KN_XI, "ぃ", K2(X, I)) \
+    ENTRY(KN_XU, "ぅ", K2(X, U)) \
+    ENTRY(KN_XE, "ぇ", K2(X, E)) \
+    ENTRY(KN_XO, "ぉ", K2(X, O)) \
+    ENTRY(KN_XTU, "っ", K3(X, T, U)) \
+    ENTRY(KN_VU, "ゔ", K2(V, U)) \
+    ENTRY(KE_SPACE, "スペース", K1(SPACE)) \
+    ENTRY(KE_ENTER, "エンター", K1(ENTER)) \
+    ENTRY(KE_BSPC, "バックスペース", K1(BACKSPACE))
 
 #define KANA_TABLE_ENTRY(id, name, keys) [id] = keys,
 

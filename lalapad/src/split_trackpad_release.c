@@ -11,8 +11,10 @@
  * 対象の位置は、右のトラックパッドの入力処理（lalapadgen2.dtsi の trackpad_key_behaviors_R）の
  * bindings の引数（&tp_to_pos の位置番号）から、ビルド時に取り出す。
  *
- * 離すのは、切れる前に押されていた位置だけ。押したときに「それまでに切れた回数」を覚えておき、切れたという
- * 出来事の回数より小さいものだけを離す（出来事が届く前につなぎ直して押した位置は、離さない）。
+ * 離すのは、切れた接続の間に押された位置だけ。押したときに「それまでに右とつながった回数」を覚えておき、
+ * 切れたという出来事の ended_connections 以下のものを離す（出来事が届く前につなぎ直して押した位置は、離さない）。
+ * 切れる前に右から届いていて、切れた後に処理された押下も、つなぎ直す前ならこれで離せる。
+ * それが切れたという出来事より後に処理された場合（右とつながっていないのに押された）は、その場で離す。
  */
 
 #include <zephyr/kernel.h>
@@ -36,8 +38,10 @@ static const uint32_t right_trackpad_positions[] = {
     DT_FOREACH_PROP_ELEM(RIGHT_TRACKPAD_NODE, bindings, RIGHT_TRACKPAD_POSITION)};
 
 /* 位置ごとの状態（right_trackpad_positions と同じ順番。入力スレッドとシステムワークキューの両方から触るので atomic）。
- * 押されていれば「押したときまでに切れた回数 + 1」、押されていなければ 0 */
+ * 押されていれば「押したときまでに右とつながった回数」（1 以上）、押されていなければ 0 */
 static atomic_t pressed_at[ARRAY_SIZE(right_trackpad_positions)];
+
+BUILD_ASSERT(ARRAY_SIZE(right_trackpad_positions) <= 32, "too many right trackpad positions");
 
 /* 右のトラックパッドの位置なら、その順番。違えば -1 */
 static int right_trackpad_index(uint32_t position) {
@@ -49,37 +53,58 @@ static int right_trackpad_index(uint32_t position) {
     return -1;
 }
 
-/* 切れた: その時点（disconnects 回目）より前に押されていた位置を離す（システムワークキュー） */
-static void release_pressed_before(uint32_t disconnects) {
+static void release(size_t i) {
+    LOG_DBG("Right half disconnected, releasing trackpad position %d", right_trackpad_positions[i]);
+    raise_zmk_position_state_changed((struct zmk_position_state_changed){
+        .source = ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL,
+        .state = false,
+        .position = right_trackpad_positions[i],
+        .timestamp = k_uptime_get(),
+    });
+}
+
+/* 切れた: もう切れた接続（ended_connections 回目まで）の間に押されていた位置を離す（システムワークキュー） */
+static void release_pressed_until(uint32_t ended_connections) {
     for (size_t i = 0; i < ARRAY_SIZE(right_trackpad_positions); i++) {
         const atomic_val_t at = atomic_get(&pressed_at[i]);
-        // 押したときまでに切れた回数（at - 1）が、今回の切れた回数より小さい = 切れる前に押した
-        if (at == 0 || (uint32_t)(at - 1) >= disconnects || !atomic_cas(&pressed_at[i], at, 0)) {
-            continue;
+        if (at != 0 && (uint32_t)at <= ended_connections && atomic_cas(&pressed_at[i], at, 0)) {
+            release(i);
         }
-        LOG_DBG("Right half disconnected, releasing trackpad position %d", right_trackpad_positions[i]);
-        raise_zmk_position_state_changed((struct zmk_position_state_changed){
-            .source = ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL,
-            .state = false,
-            .position = right_trackpad_positions[i],
-            .timestamp = k_uptime_get(),
-        });
     }
 }
+
+/* 右とつながっていないのに押された（切れる前に届いていた押下が、切れたという出来事の後に処理された）位置。
+ * 押した出来事の処理の中では離せないので、ワークで離す */
+static atomic_t stale_mask;
+
+static void release_stale_work_handler(struct k_work *work) {
+    const atomic_val_t mask = atomic_clear(&stale_mask);
+    for (size_t i = 0; i < ARRAY_SIZE(right_trackpad_positions); i++) {
+        if ((mask & BIT(i)) && atomic_set(&pressed_at[i], 0) != 0) {
+            release(i);
+        }
+    }
+}
+
+static K_WORK_DEFINE(release_stale_work, release_stale_work_handler);
 
 static int split_trackpad_release_listener(const zmk_event_t *eh) {
     const struct zmk_position_state_changed *pos = as_zmk_position_state_changed(eh);
     if (pos != NULL) {
         const int idx = right_trackpad_index(pos->position);
         if (idx >= 0) {
-            atomic_set(&pressed_at[idx], pos->state ? (atomic_val_t)lalapad_split_link_disconnects() + 1 : 0);
+            atomic_set(&pressed_at[idx], pos->state ? (atomic_val_t)lalapad_split_link_connections() : 0);
+            if (pos->state && !lalapad_split_link_connected()) {
+                atomic_or(&stale_mask, BIT(idx));
+                k_work_submit(&release_stale_work);
+            }
         }
         return ZMK_EV_EVENT_BUBBLE;
     }
 
     const struct zmk_lalapad_split_link_changed *split = as_zmk_lalapad_split_link_changed(eh);
     if (split != NULL && !split->connected) {
-        release_pressed_before(split->disconnects);
+        release_pressed_until(split->ended_connections);
     }
     return ZMK_EV_EVENT_BUBBLE;
 }

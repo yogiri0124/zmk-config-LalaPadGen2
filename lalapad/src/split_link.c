@@ -17,23 +17,25 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 ZMK_EVENT_IMPL(zmk_lalapad_split_link_changed);
 
-/* 右との接続の数と、切れた回数（Bluetooth のスレッドで数える） */
+/* 右との接続の数、つながった回数、切れた回数、最後に切れたときのつながった回数（Bluetooth のスレッドで数える） */
 static atomic_t link_count;
+static atomic_t connect_count;
 static atomic_t disconnect_count;
+static atomic_t ended_connections;
 /* 最後に出来事で知らせた状態と、そのときまでに知らせた切れた回数（システムワークキューでだけ触る） */
 static bool reported;
 static atomic_val_t reported_disconnects;
 
 bool lalapad_split_link_connected(void) { return atomic_get(&link_count) > 0; }
 
-uint32_t lalapad_split_link_disconnects(void) { return (uint32_t)atomic_get(&disconnect_count); }
+uint32_t lalapad_split_link_connections(void) { return (uint32_t)atomic_get(&connect_count); }
 
-static void report(bool connected, atomic_val_t disconnects) {
+static void report(bool connected) {
     reported = connected;
     LOG_DBG("Split link %s", connected ? "connected" : "disconnected");
     raise_zmk_lalapad_split_link_changed((struct zmk_lalapad_split_link_changed){
         .connected = connected,
-        .disconnects = (uint32_t)disconnects,
+        .ended_connections = (uint32_t)atomic_get(&ended_connections),
     });
 }
 
@@ -43,11 +45,11 @@ static void notify_work_handler(struct k_work *work) {
     const atomic_val_t disconnects = atomic_get(&disconnect_count);
     if (disconnects != reported_disconnects) {
         reported_disconnects = disconnects;
-        report(false, disconnects); // 知らせていた状態が「切れている」でも、もう一度知らせる（受け取る側は重なっても困らない）
+        report(false); // 知らせていた状態が「切れている」でも、もう一度知らせる（受け取る側は重なっても困らない）
     }
     const bool connected = lalapad_split_link_connected();
     if (connected != reported) {
-        report(connected, disconnects);
+        report(connected);
     }
 }
 
@@ -63,6 +65,7 @@ static void connected(struct bt_conn *conn, uint8_t err) {
     if (err != 0 || !is_split_link(conn)) {
         return;
     }
+    atomic_inc(&connect_count);
     atomic_inc(&link_count);
     k_work_submit(&notify_work);
 }
@@ -72,6 +75,8 @@ static void disconnected(struct bt_conn *conn, uint8_t reason) {
     if (!is_split_link(conn)) {
         return;
     }
+    // ここまでにつながった接続は、もう切れている（この後につなぎ直した接続と区別するため、回数を残す）
+    atomic_set(&ended_connections, atomic_get(&connect_count));
     // 数え始める前からの接続の「切れた」で負にならないように
     atomic_val_t count = atomic_get(&link_count);
     while (count > 0 && !atomic_cas(&link_count, count, count - 1)) {
