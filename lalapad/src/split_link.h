@@ -21,7 +21,3 @@ ZMK_EVENT_DECLARE(zmk_lalapad_split_link_changed);
 
 /* 今、右とつながっているか */
 bool lalapad_split_link_connected(void);
-
-/* これまでに右とつながった回数（つながった瞬間に増える。どのスレッドから呼んでもよい）。
- * 押したときにこの値を覚えておけば、どの接続の間に押したものかが分かる（split_trackpad_release.c） */
-uint32_t lalapad_split_link_connections(void);

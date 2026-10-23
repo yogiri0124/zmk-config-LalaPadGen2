@@ -16,8 +16,8 @@
  *
  * 接続先（USB・BLE プロファイル）が変わったときも、押しっぱなしを解除する（同じ列に「全部離して」を並べる）。
  * 依頼には、接続先が何回切り替わったか（世代）を付ける。「全部離して」は、その世代より前に押しっぱなしにした
- * ものだけを離し、切り替わる前に押された「切り替えて」は捨てる（切り替わった後に押しっぱなしにしたものまで
- * 離したり、切り替え前の操作を切り替え先の PC に送ったりしないように）。
+ * ものだけを離す。「切り替えて」は、受け取った時点の接続先の世代と違えば（切り替わる前に押されたもの）捨てる
+ * （切り替わった後に押しっぱなしにしたものまで離したり、切り替え前の操作を切り替え先の PC に送ったりしないように）。
  * ZMK は接続先が変わるとキーボードの状態を消すが、押した数（ZMK のボタンごとの数）は残るので、
  * ここで離して数を合わせる（そうしないと、次に押したときに解除になり、もう一度押すまで押しっぱなしにできない）。
  * 制約: ZMK v0.3.0 は接続先を切り替えるとき、マウスのボタンの「離した」を切り替え前の PC に送らない
@@ -61,6 +61,8 @@ DEVICE_DT_INST_DEFINE(0, NULL, NULL, NULL, NULL, POST_KERNEL, CONFIG_KERNEL_INIT
 #define REQUEST_UNLOCK_ALL 1 /* この世代より前の押しっぱなしを、すべて離す */
 #define REQUEST_BUTTONS_MASK 0xFF
 #define REQUEST_GEN_SHIFT 8
+/* value に入る世代の範囲（これを超えると 0 から数え直す。比べるときも同じ範囲にそろえる） */
+#define REQUEST_GEN_MASK ((uint32_t)INT32_MAX >> REQUEST_GEN_SHIFT)
 
 #define MKP_NODE DT_NODELABEL(mkp)
 #define NUM_BUTTONS ZMK_HID_MOUSE_NUM_BUTTONS
@@ -68,9 +70,12 @@ DEVICE_DT_INST_DEFINE(0, NULL, NULL, NULL, NULL, POST_KERNEL, CONFIG_KERNEL_INIT
 /* 接続先が切り替わった回数（世代）。切り替わったと知らされた時点で増やす */
 static atomic_t endpoint_gen;
 
+/* 今の接続先の世代（value に入る範囲にそろえたもの） */
+static uint32_t current_gen(void) { return (uint32_t)atomic_get(&endpoint_gen) & REQUEST_GEN_MASK; }
+
 static void send_request(uint16_t request, uint32_t buttons, uint32_t gen) {
-    const int32_t value = (int32_t)(((gen << REQUEST_GEN_SHIFT) | (buttons & REQUEST_BUTTONS_MASK)) &
-                                    INT32_MAX);
+    const int32_t value =
+        (int32_t)(((gen & REQUEST_GEN_MASK) << REQUEST_GEN_SHIFT) | (buttons & REQUEST_BUTTONS_MASK));
     input_report(LOCK_INPUT_DEV, INPUT_EV_MSC, request, value, true, K_FOREVER);
 }
 
@@ -80,8 +85,6 @@ static void send_request(uint16_t request, uint32_t buttons, uint32_t gen) {
 static uint32_t locked;
 /* ボタンごとに、押しっぱなしにしたときの世代 */
 static uint32_t locked_gen[NUM_BUTTONS];
-/* 受け取った「全部離して」の世代（これより前の世代の「切り替えて」は捨てる） */
-static uint32_t unlocked_gen;
 
 static void set_locked(int button, bool on) {
     WRITE_BIT(locked, button, on);
@@ -99,9 +102,7 @@ static void lock_request_callback(struct input_event *evt) {
     }
     const uint32_t buttons = (uint32_t)evt->value & REQUEST_BUTTONS_MASK;
     const uint32_t gen = (uint32_t)evt->value >> REQUEST_GEN_SHIFT;
-    if (evt->code == REQUEST_UNLOCK_ALL && gen > unlocked_gen) {
-        unlocked_gen = gen;
-    } else if (evt->code == REQUEST_TOGGLE && gen < unlocked_gen) {
+    if (evt->code == REQUEST_TOGGLE && gen != current_gen()) {
         // 接続先が切り替わる前に押された「切り替えて」: 切り替え先の PC には送らない
         return;
     }
@@ -111,7 +112,7 @@ static void lock_request_callback(struct input_event *evt) {
             set_locked(i, !(locked & BIT(i)));
             locked_gen[i] = gen;
             changed = true;
-        } else if (evt->code == REQUEST_UNLOCK_ALL && (locked & BIT(i)) && locked_gen[i] < gen) {
+        } else if (evt->code == REQUEST_UNLOCK_ALL && (locked & BIT(i)) && locked_gen[i] != gen) {
             LOG_DBG("Mouse button %d unlocked (endpoint change)", i);
             set_locked(i, false);
             changed = true;
@@ -143,7 +144,7 @@ INPUT_CALLBACK_DEFINE(DEVICE_DT_GET(MKP_NODE), mkp_input_callback);
 /* ---- 接続先の切り替え ---- */
 
 static void unlock_all_work_handler(struct k_work *work) {
-    send_request(REQUEST_UNLOCK_ALL, 0, (uint32_t)atomic_get(&endpoint_gen));
+    send_request(REQUEST_UNLOCK_ALL, 0, current_gen());
 }
 
 static K_WORK_DEFINE(unlock_all_work, unlock_all_work_handler);
@@ -172,8 +173,7 @@ static int on_mbt_binding_pressed(struct zmk_behavior_binding *binding,
     const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
     const struct behavior_mbt_config *cfg = dev->config;
     // 切り替えは入力スレッドで行う（クリックと同じ列に並べて、操作した順に扱う）
-    send_request(REQUEST_TOGGLE, cfg->buttons & BIT_MASK(NUM_BUTTONS),
-                 (uint32_t)atomic_get(&endpoint_gen));
+    send_request(REQUEST_TOGGLE, cfg->buttons & BIT_MASK(NUM_BUTTONS), current_gen());
     return ZMK_BEHAVIOR_OPAQUE;
 }
 

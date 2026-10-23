@@ -13,12 +13,12 @@
  *
  * 順番を崩さないため、すべて入力スレッドの1つの列で処理する:
  * - 中継された右の入力は、入力イベントの列に並び、入力スレッドでキー位置の「押した／離した」になる。
- * - 右との接続が切れたら、その場で（Bluetooth のスレッドから）同じ列の末尾に「切れた」の合図を並べる。
- *   切れる前に届いた右の入力は、すべてこの合図より前に処理される。
- * - 合図を受け取ったら、押されている右のトラックパッドの位置を離す。それより後に処理される、その接続の押下は
- *   捨てる（ほかに伝えない）。押していない位置の「離した」も捨てる（ZMK が数える押した数が合わなくならないように）。
- * 押したときに「それまでに右とつながった回数」を覚えておき、合図の回数以下のものを、切れた接続の押下とみなす
- * （合図より後につなぎ直して押した位置は、離さない）。
+ * - 右とつながった・切れたら、その場で（Bluetooth のスレッドから）同じ列の末尾に「つながった」「切れた」の
+ *   合図を並べる。右の入力は、届いた接続の合図の後ろ、次の合図の前に並ぶので、列の順番で「どの接続の入力か」が
+ *   分かる（合図を受け取るたびに数える。処理した時点の接続の回数では数えない）。
+ * - 「切れた」の合図を受け取ったら、押されている右のトラックパッドの位置を離す。それより後に処理される、
+ *   切れた接続の押下は捨てる（ほかに伝えない）。押していない位置の「離した」も捨てる（ZMK が数える押した数が
+ *   合わなくならないように）。
  * 捨てた入力をほかのモジュールの listener が数えないよう、この listener は自作モジュールの中で最初に呼ばれる
  * ようにしている（CMakeLists.txt でこのファイルを最初に足す。listener はリンクの順に呼ばれる）。
  */
@@ -34,8 +34,6 @@
 #include <zmk/events/position_state_changed.h>
 #include <zmk/matrix.h>
 
-#include "split_link.h"
-
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 // DT のマクロではラベルを小文字で書く（lalapadgen2.dtsi の trackpad_key_behaviors_R）
@@ -48,7 +46,9 @@ static const uint32_t right_trackpad_positions[] = {
 
 /* ---- 入力スレッドでだけ触る状態 ---- */
 
-/* 位置ごとに、押されていれば「押したときまでに右とつながった回数」（1 以上）、押されていなければ 0
+/* 列の中で、いまの入力がどの接続のものか（「つながった」の合図を受け取った回数） */
+static uint32_t input_connection;
+/* 位置ごとに、押されていれば押したときの input_connection（1 以上）、押されていなければ 0
  * （right_trackpad_positions と同じ順番） */
 static uint32_t pressed_at[ARRAY_SIZE(right_trackpad_positions)];
 /* 「切れた」の合図を受け取った接続の回数（この回数までの接続の押下は、もう受け付けない） */
@@ -74,7 +74,7 @@ static int split_trackpad_release_listener(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
     if (pos->state) {
-        const uint32_t connections = lalapad_split_link_connections();
+        const uint32_t connections = input_connection;
         if (connections <= ended_connections) {
             // 切れた接続の押下（「切れた」の合図より後に処理された）: 捨てる
             LOG_DBG("Dropped trackpad position %d pressed on a disconnected link", pos->position);
@@ -94,7 +94,7 @@ static int split_trackpad_release_listener(const zmk_event_t *eh) {
 ZMK_LISTENER(split_trackpad_release, split_trackpad_release_listener);
 ZMK_SUBSCRIPTION(split_trackpad_release, zmk_position_state_changed);
 
-/* ---- 「切れた」の合図（入力イベントの列に並べて、入力スレッドで受け取る） ---- */
+/* ---- 「つながった」「切れた」の合図（入力イベントの列に並べて、入力スレッドで受け取る） ---- */
 
 /* 合図を並べるためだけの入力デバイス（DT を使わない） */
 DEVICE_DEFINE(lalapad_split_release_input, "lalapad_split_release", NULL, NULL, NULL, NULL,
@@ -102,11 +102,21 @@ DEVICE_DEFINE(lalapad_split_release_input, "lalapad_split_release", NULL, NULL, 
 
 #define SPLIT_RELEASE_INPUT_DEV DEVICE_GET(lalapad_split_release_input)
 
-/* 合図を受け取った: value 回目までの接続の間に押されていた位置を離す（入力スレッド） */
+/* 合図の種類（INPUT_EV_MSC の code）。value は、その接続が何回目の接続か */
+#define SIGNAL_CONNECTED 0
+#define SIGNAL_DISCONNECTED 1
+
+/* 合図を受け取った（入力スレッド） */
 static void split_release_callback(struct input_event *evt) {
     if (evt->type != INPUT_EV_MSC) {
         return;
     }
+    if (evt->code == SIGNAL_CONNECTED) {
+        // この後に並んでいる右の入力は、この接続のもの
+        input_connection = (uint32_t)evt->value;
+        return;
+    }
+    // 切れた: value 回目までの接続の間に押されていた位置を離す
     const uint32_t ended = (uint32_t)evt->value;
     if (ended > ended_connections) {
         ended_connections = ended;
@@ -128,31 +138,38 @@ static void split_release_callback(struct input_event *evt) {
 
 INPUT_CALLBACK_DEFINE(SPLIT_RELEASE_INPUT_DEV, split_release_callback);
 
-/* 合図を列に並べられなかった（列が満杯）ときに、ワークで並べ直す */
-static atomic_t pending_ended;
+/* 右とつながった回数（Bluetooth のスレッドで数える） */
+static atomic_t connect_count;
 
-static void report_ended_work_handler(struct k_work *work) {
-    input_report(SPLIT_RELEASE_INPUT_DEV, INPUT_EV_MSC, 0, atomic_get(&pending_ended), true,
+/* 合図を列の末尾に並べる（Bluetooth のスレッド）。列が満杯のときは待つ（合図を落とすと、どの接続の入力か
+ * 分からなくなるため。満杯でも入力スレッドが順に取り出すので、すぐに空く） */
+static void queue_signal(uint16_t code, uint32_t connection) {
+    input_report(SPLIT_RELEASE_INPUT_DEV, INPUT_EV_MSC, code, (int32_t)(connection & INT32_MAX), true,
                  K_FOREVER);
 }
 
-static K_WORK_DEFINE(report_ended_work, report_ended_work_handler);
+static bool is_split_link(struct bt_conn *conn) {
+    struct bt_conn_info info;
+    return bt_conn_get_info(conn, &info) == 0 && info.role == BT_CONN_ROLE_CENTRAL;
+}
 
-/* 右との接続が切れた（Bluetooth のスレッド）: その場で列の末尾に合図を並べる */
+static void connected(struct bt_conn *conn, uint8_t err) {
+    if (err != 0 || !is_split_link(conn)) {
+        return;
+    }
+    queue_signal(SIGNAL_CONNECTED, (uint32_t)atomic_inc(&connect_count) + 1);
+}
+
 static void disconnected(struct bt_conn *conn, uint8_t reason) {
     ARG_UNUSED(reason);
-    struct bt_conn_info info;
-    if (bt_conn_get_info(conn, &info) != 0 || info.role != BT_CONN_ROLE_CENTRAL) {
+    if (!is_split_link(conn)) {
         return;
     }
     // ここまでにつながった接続は、すべて切れている
-    const uint32_t ended = lalapad_split_link_connections();
-    atomic_set(&pending_ended, ended);
-    if (input_report(SPLIT_RELEASE_INPUT_DEV, INPUT_EV_MSC, 0, ended, true, K_NO_WAIT) != 0) {
-        k_work_submit(&report_ended_work);
-    }
+    queue_signal(SIGNAL_DISCONNECTED, (uint32_t)atomic_get(&connect_count));
 }
 
 BT_CONN_CB_DEFINE(split_trackpad_release_conn_callbacks) = {
+    .connected = connected,
     .disconnected = disconnected,
 };

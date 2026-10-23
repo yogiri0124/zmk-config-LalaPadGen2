@@ -471,9 +471,19 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
 #define AUTO_MOUSE_SPLIT_BIT(node_id, prop, idx)                                                   \
     (DT_NODE_HAS_COMPAT(DT_PHANDLE_BY_IDX(node_id, prop, idx), zmk_input_split) ? BIT(idx) : 0) |
 
+/* excluded-layers・excluded-positions の値が範囲内か（設定の誤りをビルドで見つける） */
+#define AUTO_MOUSE_CHECK_LAYER(node_id, prop, idx)                                                 \
+    BUILD_ASSERT(DT_PROP_BY_IDX(node_id, prop, idx) < ZMK_KEYMAP_LAYERS_LEN,                       \
+                 "auto mouse layer: excluded-layers is out of range");
+#define AUTO_MOUSE_CHECK_POSITION(node_id, prop, idx)                                              \
+    BUILD_ASSERT(DT_PROP_BY_IDX(node_id, prop, idx) < ZMK_KEYMAP_LEN,                              \
+                 "auto mouse layer: excluded-positions is out of range");
+
 #define AUTO_MOUSE_INST(n)                                                                         \
     BUILD_ASSERT(DT_INST_PROP_LEN_OR(n, touch_devices, 0) <= MAX_TOUCH_DEVICES,                    \
                  "too many touch-devices");                                                        \
+    DT_INST_FOREACH_PROP_ELEM(n, excluded_layers, AUTO_MOUSE_CHECK_LAYER)                          \
+    DT_INST_FOREACH_PROP_ELEM(n, excluded_positions, AUTO_MOUSE_CHECK_POSITION)                    \
     COND_CODE_1(DT_INST_NODE_HAS_PROP(n, touch_devices),                                           \
                 (static const struct device *const auto_mouse_touch_devs_##n[] = {                 \
                      DT_INST_FOREACH_PROP_ELEM(n, touch_devices, AUTO_MOUSE_TOUCH_DEV)};),         \

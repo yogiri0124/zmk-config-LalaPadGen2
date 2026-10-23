@@ -17,17 +17,14 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 ZMK_EVENT_IMPL(zmk_lalapad_split_link_changed);
 
-/* 右との接続の数、つながった回数、切れた回数（Bluetooth のスレッドで数える） */
+/* 右との接続の数と、切れた回数（Bluetooth のスレッドで数える） */
 static atomic_t link_count;
-static atomic_t connect_count;
 static atomic_t disconnect_count;
 /* 最後に出来事で知らせた状態と、そのときまでに知らせた切れた回数（システムワークキューでだけ触る） */
 static bool reported;
 static atomic_val_t reported_disconnects;
 
 bool lalapad_split_link_connected(void) { return atomic_get(&link_count) > 0; }
-
-uint32_t lalapad_split_link_connections(void) { return (uint32_t)atomic_get(&connect_count); }
 
 static void report(bool connected) {
     reported = connected;
@@ -62,7 +59,6 @@ static void connected(struct bt_conn *conn, uint8_t err) {
     if (err != 0 || !is_split_link(conn)) {
         return;
     }
-    atomic_inc(&connect_count);
     atomic_inc(&link_count);
     k_work_submit(&notify_work);
 }

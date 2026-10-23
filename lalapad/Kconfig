@@ -44,7 +44,7 @@ config LALAPAD_SPLIT_LINK
 config ZMK_SPLIT_TRACKPAD_RELEASE
     bool "Release right trackpad positions when the peripheral disconnects"
     default y
-    depends on LALAPAD_SPLIT_LINK
+    depends on ZMK_SPLIT && ZMK_SPLIT_ROLE_CENTRAL && ZMK_SPLIT_BLE
     depends on $(dt_nodelabel_enabled,trackpad_key_behaviors_R)
     help
       右（子機）が切れたときに、右のトラックパッドのタップ・ジェスチャーで押されたままの位置を離す
