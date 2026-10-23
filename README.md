@@ -361,7 +361,7 @@ Racket 配列は、親指に文字（R）を置く配列です。
 | `ks_` | `ks_touten` `ks_kuten` `ks_chouon` `ks_excl` `ks_ques` | 、 。 ー ！ ？ を入力する |
 | `pair_` | `pair_kagi` `pair_nijukagi` `pair_paren` `pair_cquote_ime` | 「」 『』 () “” を入力して、カーソルを中に入れる |
 | `sym_` | `sym_ellipsis` `sym_hbar_ime` `sym_tilde_ime` | … ―― ～ を入力する（―― は 1 回押すと ― が 2 つ入る） |
-| | `sym_hbar` `sym_tilde` `pair_cquote` | ―― ～ “” を Windows の Alt コードで入力する予備（ローマ字テーブルを読み込んでいない PC 用。先に打ったかなを送り終えてから送り、送っている間に押したキーは、送り終えてから入力されます） |
+| | `sym_hbar` `sym_tilde` `pair_cquote` | ―― ～ “” を Windows の Alt コードで入力する予備（ローマ字テーブルを読み込んでいない PC 用。先に打ったかなを送り終えてから送り、送っている間に押したキーは、送り終えてから入力されます。Alt を押している間は送りません） |
 | `kana_` | `kana_key` `kana_sw` | かなと Space・Enter・Backspace を送る／かなモードのオン・オフ |
 | | `mt2` | 押すとキー、長押し（350ms）で別のキー。`&mt2 長押しのキー 押したときのキー` |
 

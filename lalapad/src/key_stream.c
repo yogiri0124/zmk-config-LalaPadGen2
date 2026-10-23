@@ -320,16 +320,22 @@ static void send_work_handler(struct k_work *work) {
         return;
     }
     const enum key_stream_transport transport = stream_transport;
+    // 参照を2つ持つ: conn はこの関数で送り終えるまで使う分、in_flight_conn は「送り終わった」を待つ間の印の分
+    // （待つ間の分は、接続が切れたときにほかのスレッドで手放されることがあるので、送る処理では使わない）
     struct bt_conn *conn = NULL;
 #if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_BLE)
-    // 送っている間に接続が切れて本体の参照が手放されても使えるよう、送り終わるまで自分の参照を持つ
     if (stream_conn != NULL) {
         conn = bt_conn_ref(stream_conn);
     }
 #endif
     in_flight = true;
     in_flight_transport = transport;
-    in_flight_conn = conn;
+    in_flight_conn = NULL;
+#if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_BLE)
+    if (conn != NULL) {
+        in_flight_conn = bt_conn_ref(conn);
+    }
+#endif
     k_spin_unlock(&lock, key);
 
     int err = -ENOTSUP;
@@ -357,6 +363,7 @@ static void send_work_handler(struct k_work *work) {
             }
         }
         k_spin_unlock(&lock, key);
+        release_conn(conn);
         return;
     }
     // 送れなかった: 送っている最中の印を外す（送っている間に送り道が切れて、もう外れていることもある）
@@ -366,6 +373,7 @@ static void send_work_handler(struct k_work *work) {
     }
     k_spin_unlock(&lock, key);
     release_conn(done);
+    release_conn(conn);
 
     if (err == -EAGAIN) {
         kick_send(K_MSEC(RETRY_MS));
@@ -395,8 +403,14 @@ static void start(enum key_stream_transport transport, struct bt_conn *conn, uin
     k_spinlock_key_t key = k_spin_lock(&lock);
     const bool fresh = !streaming || stream_transport != transport || stream_conn != conn ||
                        stream_mask != mask;
+    struct bt_conn *abandoned = NULL;
     if (fresh) {
         old_conn = stop_locked();
+        // 前の送り道で送っている最中なら、その「送り終わった」は待たない（USB がサスペンドしたままなどで、
+        // 届かないことがあるため）。後から届いても、送り道が違うので無視される
+        if (in_flight && !in_flight_on_locked(transport, conn)) {
+            abandoned = finish_in_flight_locked();
+        }
         streaming = true;
         stream_transport = transport;
         stream_conn = conn; // 参照は命令から引き継ぐ
@@ -417,6 +431,7 @@ static void start(enum key_stream_transport transport, struct bt_conn *conn, uin
     k_spin_unlock(&lock, key);
 
     release_conn(old_conn);
+    release_conn(abandoned);
     release_conn(conn); // 生存確認だけのとき: 命令の参照は要らない
     k_work_reschedule_for_queue(&key_stream_q, &timeout_work,
                                 K_MSEC(CONFIG_ZMK_KEY_STREAM_KEEPALIVE_TIMEOUT_MS));

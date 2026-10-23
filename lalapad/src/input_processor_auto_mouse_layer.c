@@ -19,6 +19,9 @@
  *   この場合は触れているか「分からない」状態として、次に入力が届いたら触れているとみなし直す
  *   （指を置いたまま止めていただけなら、動かせばまた使えるように）。
  * - 直前のキー入力から require-prior-idle-ms 以内のトラックパッド操作では有効にしない（打鍵中の誤動作防止）。
+ * - トラックパッドの操作で有効化を予約した後、実際に有効にする前にキーが押されたら、その予約では有効にしない
+ *   （&mo で数字・記号レイヤーに入るキーなど、キーコードを出さないキーを押した直後に、マウスレイヤーが
+ *   上に重なってしまわないように。その後もトラックパッドを操作すれば、改めて予約される）。
  * - 状態はインスタンスごとに持つので、左右のリスナーに別々のインスタンスを入れれば別々に動く。
  *   1つのインスタンスで扱うレイヤーは1つだけ。別のレイヤーを使うリスナーには別のインスタンスを入れること
  *   （有効中に違う param1 が来ても、有効にしたレイヤーのまま扱う）。
@@ -72,6 +75,9 @@ struct auto_mouse_data {
     /* トラックパッドの操作で指定された値（入力スレッドから書く） */
     zmk_keymap_layer_id_t requested_layer;
     uint32_t timeout_ms;
+    /* キーを押した回数と、有効化を予約したときの回数（違えば、予約の後にキーが押された） */
+    uint32_t press_count;
+    uint32_t requested_press_count;
 
     /* レイヤーの状態 */
     bool active;
@@ -197,6 +203,11 @@ static void activity_work_cb(struct k_work *work) {
 
     k_mutex_lock(&data->lock, K_FOREVER);
     if (!data->active) {
+        // 予約の後にキーが押されていたら有効にしない（そのキーで入ったレイヤーの上に重ねないように）
+        if (data->requested_press_count != data->press_count) {
+            k_mutex_unlock(&data->lock);
+            return;
+        }
         // 直前にキーを打っていたら有効にしない
         if (cfg->require_prior_idle_ms > 0 &&
             data->last_tapped + cfg->require_prior_idle_ms > k_uptime_get()) {
@@ -275,6 +286,7 @@ static int auto_mouse_handle_event(const struct device *dev, struct input_event 
 
     data->requested_layer = param1;
     data->timeout_ms = param2;
+    data->requested_press_count = data->press_count;
     k_mutex_unlock(&data->lock);
 
     k_work_submit(&data->activity_work);
@@ -321,6 +333,7 @@ static void handle_position(const struct device *dev,
     k_mutex_lock(&data->lock, K_FOREVER);
     data->pressed[ev->position] = ev->state;
     if (ev->state) {
+        data->press_count++;
         if (data->active) {
             if (is_mouse_key(dev, ev->position)) {
                 if (!data->held[ev->position]) {

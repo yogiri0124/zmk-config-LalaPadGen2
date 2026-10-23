@@ -70,6 +70,7 @@ config ZMK_KEY_STREAM_USB_DEVICE
 config ZMK_KEY_STREAM_TRACKPAD_FIRST
     int "First key position that comes from the trackpads"
     default 52
+    range 0 255
     help
       この番号以降の位置は、トラックパッドのタップ・ジェスチャー（lalapadgen2.dtsi の POS_TP_*）として扱い、
       アプリが「開始」で指定したときだけ送る。
@@ -77,13 +78,16 @@ config ZMK_KEY_STREAM_TRACKPAD_FIRST
 config ZMK_KEY_STREAM_KEEPALIVE_TIMEOUT_MS
     int "Stop sending when no start/keepalive arrives for this long (ms)"
     default 6000
+    range 1000 600000
 
 config ZMK_KEY_STREAM_THREAD_STACK_SIZE
     int "Stack size of the key stream work queue"
     default 1536
+    range 1024 8192
 
 config ZMK_KEY_STREAM_THREAD_PRIORITY
     int "Priority of the key stream work queue"
     default 6
+    range 0 14
 
 endif

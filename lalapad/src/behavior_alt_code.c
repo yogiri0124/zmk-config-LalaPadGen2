@@ -16,6 +16,9 @@
  * PC から届いている Num Lock の点灯状態（HID インジケーター）を見て、オフのときだけ
  * 前後で Num Lock を押して一時的にオンにし、送り終わったら元に戻す。
  *
+ * - Alt（左右どちらか）がすでに押されている間（Alt キーを押したまま、mod_lock_alt で押しっぱなし など）は
+ *   送らずに捨てる。ZMK は押した数で修飾キーを数えるので、ここで Alt を離しても PC 側の Alt は離れず、
+ *   Alt コードの区切りがつかない（2つ目以降の値が1つ目に続いて打たれ、違う文字になる）ため。
  * - 送る操作は開始時に一覧（steps）にまとめ、k_work で1つずつ順に送る。behavior queue を
  *   使わないので、キューが満杯で「離す」や Num Lock の復元が抜けることはない。
  * - 押したら、まず behavior queue の末尾に目印を並べ（kana_output_add_marker）、それより前に並んでいた
@@ -61,7 +64,8 @@
  *   「切り替わった」と判定する（切り替え時に ZMK が HID の状態を消し、Alt コードが途切れるため）。
  * - Num Lock を切り替えた直後は、PC からの点灯状態の報告が遅れて古い状態が残っていることがある。
  *   そのため切り替えてから ASSUME_MS の間は、PC の報告ではなく「実際に送った Num Lock の回数から
- *   わかる状態」（元に戻した／中止でオンのまま）という自分の記録を使う。記録は接続先ごとに持つ。
+ *   わかる状態」という自分の記録を使う。記録は、最後まで送って元に戻したときだけ作り（中止したときは作らず、
+ *   PC の報告に従う）、接続先ごとに持つ。
  *   （この間に別のキーボードなどで Num Lock を切り替えた場合は反映されない）
  *
  * behavior のコールバックと k_work はどちらもシステムワークキューで動くので、送信の状態の排他は不要。
@@ -83,6 +87,7 @@
 #include <zmk/event_manager.h>
 #include <zmk/events/endpoint_changed.h>
 #include <zmk/events/keycode_state_changed.h>
+#include <zmk/hid.h>
 
 #include <dt-bindings/zmk/keys.h>
 
@@ -510,6 +515,11 @@ static void start_next(void) {
         if (pressed_generation != atomic_get(&endpoint_generation)) {
             // 押した後に接続先が切り替わった: 押し直していない入力は送らない
             LOG_WRN("Endpoint changed since alt code key press, dropping");
+            continue;
+        }
+        if (zmk_hid_get_explicit_mods() & (MOD_LALT | MOD_RALT)) {
+            // Alt がすでに押されている: 自分の Alt を離しても区切れないので送らない
+            LOG_WRN("Alt is already held, dropping alt code");
             continue;
         }
         active_endpoint = zmk_endpoints_selected();
