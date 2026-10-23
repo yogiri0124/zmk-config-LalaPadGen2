@@ -19,10 +19,15 @@
  *               通し番号は1件ごとに1つ進む。飛んでいたら、その分を取りこぼしている
  *   0x02 状態:  [2] 右がつながっている（1/0） [3] 送っている種類（開始で指定したもの）
  *               [4] キーの位置の数（この番号より前がキー） [5] 位置の数の合計 [6..7] 次の通し番号（u16 LE）
+ *   0x03 押されているキーの一覧:  [2..3] 通し番号（u16 LE。この番号より前のキーまでを反映した一覧）
+ *               [4] 位置の数の合計  [5..] 押されている位置のビット（位置 p は [5 + p/8] の bit (p%8)。
+ *               送っている種類の位置だけ。ほかは 0）
+ *               キーの列の順番どおりに（それより前のキーを送り終えてから）送るので、通し番号は前のキーの続きになる。
+ *               「開始」したとき、問い合わせに答えるとき、送り待ちがあふれてキーを捨てたときに送る
  * PC → キーボード
  *   0x81 開始・生存確認: [2] 送ってほしい種類（bit0: キー、bit1: トラックパッドのタップ・ジェスチャー）
  *   0x82 終了
- *   0x83 状態の問い合わせ（送っている間だけ答える）
+ *   0x83 状態の問い合わせ（送っている間だけ答える。状態と、押されているキーの一覧を送る）
  * 知らない種類は無視する（あとで種類を足しても、古いアプリ・ファームウェアと組み合わせられる）。
  *
  * ふだんの入力に影響しないよう、キーの出来事は見るだけで止めない。送る処理と命令の処理は専用の
@@ -58,6 +63,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #define MSG_KEYS 0x01
 #define MSG_STATUS 0x02
+#define MSG_PRESSED 0x03
 #define CMD_START 0x81
 #define CMD_STOP 0x82
 #define CMD_STATUS 0x83
@@ -103,6 +109,7 @@ BUILD_ASSERT(CONFIG_ZMK_KEY_STREAM_USAGE >= 0x01 && CONFIG_ZMK_KEY_STREAM_USAGE 
              "usage must fit in one byte item");
 BUILD_ASSERT(5 + 6 * KEYS_PER_REPORT <= KEY_STREAM_REPORT_SIZE, "keys report too large");
 BUILD_ASSERT(ZMK_KEYMAP_LEN <= 255, "positions must fit in one byte");
+BUILD_ASSERT(5 + (ZMK_KEYMAP_LEN + 7) / 8 <= KEY_STREAM_REPORT_SIZE, "pressed list report too large");
 
 /* ---- 状態（lock で守る。キーの出来事はいろいろなスレッドから届くため） ---- */
 
@@ -130,12 +137,22 @@ static uint16_t next_seq;
 
 /* 状態のレポートを頼まれた回数と、送り始めた時点の回数（違えば送り待ち）。
  * 送っている最中に頼まれ直しても、その分を落とさないよう回数で持つ */
-static uint8_t status_requested;
-static uint8_t status_sent;
-/* 送っている最中のレポートがある（送り終わるまで次を送らない） */
+static uint32_t status_requested;
+static uint32_t status_sent;
+/* 押されているキーの一覧も同じく回数で持つ（送り待ちのキーを送り終えてから送る）。
+ * あふれて捨てるたびに増えるので、一周して「頼まれていない」に見えないよう 32 ビットにする */
+static uint32_t pressed_list_requested;
+static uint32_t pressed_list_sent;
+/* 送っている最中のレポートがある（送り終わるまで次を送らない）。送るたびに番号を付け、「送り終わった」は
+ * その番号で照合する（送る先を変えた後に、前の送り道から遅れて届いた「送り終わった」と取り違えないように）。
+ * 送った送り道と接続（参照を持つ）も覚えておき、その送り道が切れたら待つのをやめる */
 static bool in_flight;
+static uint32_t in_flight_id;
+static uint32_t last_send_id;
+static enum key_stream_transport in_flight_transport;
+static struct bt_conn *in_flight_conn;
 
-/* いま押されている位置（開始したときに、押されたままのキーを知らせるため） */
+/* いま押されている位置（開始したときや、押されているキーの一覧で知らせるため） */
 static bool pressed[ZMK_KEYMAP_LEN];
 /* 右がつながっているか */
 static bool peripheral_connected;
@@ -176,6 +193,8 @@ static void push_event(uint8_t position, uint8_t flags, uint32_t time) {
     if (events_count == EVENT_QUEUE_SIZE) {
         events_head = (events_head + 1) % EVENT_QUEUE_SIZE;
         events_count--;
+        // 捨てた中に「離した」があると、アプリでは押されたままに見える。送り待ちを送り終えたら一覧で直してもらう
+        pressed_list_requested++;
     }
     events[(events_head + events_count) % EVENT_QUEUE_SIZE] = (struct key_event){
         .seq = next_seq++,
@@ -195,6 +214,7 @@ static struct bt_conn *stop_locked(void) {
     stream_mask = 0;
     events_count = 0;
     status_sent = status_requested;
+    pressed_list_sent = pressed_list_requested;
     return conn;
 }
 
@@ -206,6 +226,21 @@ static void release_conn(struct bt_conn *conn) {
 #else
     ARG_UNUSED(conn);
 #endif
+}
+
+/* 送っている最中のレポートが、その送り道（Bluetooth ならその接続）のものか。lock の中で呼ぶ */
+static bool in_flight_on_locked(enum key_stream_transport transport, struct bt_conn *conn) {
+    return in_flight && in_flight_transport == transport &&
+           (transport != KEY_STREAM_TRANSPORT_BLE || in_flight_conn == conn);
+}
+
+/* 送っている最中の印を外す（lock の中で呼ぶ）。持っていた接続の参照は、戻り値で返して lock の外で手放す */
+static struct bt_conn *finish_in_flight_locked(void) {
+    struct bt_conn *conn = in_flight_conn;
+    in_flight = false;
+    in_flight_transport = KEY_STREAM_TRANSPORT_NONE;
+    in_flight_conn = NULL;
+    return conn;
 }
 
 static void stop(void) {
@@ -227,6 +262,18 @@ static void build_status(uint8_t *report) {
     report[5] = ZMK_KEYMAP_LEN;
     // 次に届くキーの通し番号（送り待ちがあれば、その先頭。状態は送り待ちのキーより先に送るため）
     sys_put_le16(events_count > 0 ? events[events_head].seq : next_seq, &report[6]);
+}
+
+/* 押されているキーの一覧のレポートを作る。送り待ちのキーがない（すべて送り始めた）ときに呼ぶ */
+static void build_pressed_list(uint8_t *report) {
+    report[1] = MSG_PRESSED;
+    sys_put_le16(next_seq, &report[2]);
+    report[4] = ZMK_KEYMAP_LEN;
+    for (uint32_t pos = 0; pos < ZMK_KEYMAP_LEN; pos++) {
+        if (pressed[pos] && position_wanted(stream_mask, pos)) {
+            report[5 + pos / 8] |= BIT(pos % 8);
+        }
+    }
 }
 
 /* キーのレポートを作る。入れた件数を返す */
@@ -255,49 +302,66 @@ static void send_work_handler(struct k_work *work) {
     }
     memset(report, 0, sizeof(report));
     report[0] = KEY_STREAM_PROTOCOL_VERSION;
-    bool is_status = false;
-    uint8_t status_gen = 0;
+    // 送る順: 状態 → 送り待ちのキー → 押されているキーの一覧（一覧は、それより前のキーを送り終えた時点のもの）
+    uint8_t kind;
+    uint32_t gen = 0;
     uint16_t first_seq = 0;
     size_t n = 0;
     if (status_requested != status_sent) {
         build_status(report);
-        is_status = true;
-        status_gen = status_requested;
+        kind = MSG_STATUS;
+        gen = status_requested;
     } else if (events_count > 0) {
         first_seq = events[events_head].seq;
         n = build_keys(report);
+        kind = MSG_KEYS;
+    } else if (pressed_list_requested != pressed_list_sent) {
+        build_pressed_list(report);
+        kind = MSG_PRESSED;
+        gen = pressed_list_requested;
     } else {
         k_spin_unlock(&lock, key);
         return;
     }
     const enum key_stream_transport transport = stream_transport;
+    // 参照を2つ持つ: conn はこの関数で送り終えるまで使う分、in_flight_conn は「送り終わった」を待つ間の印の分
+    // （待つ間の分は、接続が切れたときにほかのスレッドで手放されることがあるので、送る処理では使わない）
     struct bt_conn *conn = NULL;
 #if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_BLE)
-    // 送っている間に接続が切れて本体の参照が手放されても使えるよう、自分の参照を持つ
     if (stream_conn != NULL) {
         conn = bt_conn_ref(stream_conn);
     }
 #endif
+    const uint32_t id = ++last_send_id;
     in_flight = true;
+    in_flight_id = id;
+    in_flight_transport = transport;
+    in_flight_conn = NULL;
+#if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_BLE)
+    if (conn != NULL) {
+        in_flight_conn = bt_conn_ref(conn);
+    }
+#endif
     k_spin_unlock(&lock, key);
 
     int err = -ENOTSUP;
     if (transport == KEY_STREAM_TRANSPORT_USB) {
 #if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_USB)
-        err = key_stream_usb_send(report);
+        err = key_stream_usb_send(report, id);
 #endif
     } else if (transport == KEY_STREAM_TRANSPORT_BLE) {
 #if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_BLE)
-        err = key_stream_ble_send(conn, report);
+        err = key_stream_ble_send(conn, report, id);
 #endif
     }
-    release_conn(conn);
 
     key = k_spin_lock(&lock);
     if (err == 0) {
         // 送り始めた分を取り除く（送っている間にあふれて先頭が進んでいたら、その分は数えない）
-        if (is_status) {
-            status_sent = status_gen;
+        if (kind == MSG_STATUS) {
+            status_sent = gen;
+        } else if (kind == MSG_PRESSED) {
+            pressed_list_sent = gen;
         } else {
             while (events_count > 0 && (int16_t)(events[events_head].seq - first_seq) < (int16_t)n) {
                 events_head = (events_head + 1) % EVENT_QUEUE_SIZE;
@@ -305,10 +369,17 @@ static void send_work_handler(struct k_work *work) {
             }
         }
         k_spin_unlock(&lock, key);
+        release_conn(conn);
         return;
     }
-    in_flight = false;
+    // 送れなかった: 送っている最中の印を外す（送っている間に送り道が切れて、もう外れていることもある）
+    struct bt_conn *done = NULL;
+    if (in_flight && in_flight_id == id) {
+        done = finish_in_flight_locked();
+    }
     k_spin_unlock(&lock, key);
+    release_conn(done);
+    release_conn(conn);
 
     if (err == -EAGAIN) {
         kick_send(K_MSEC(RETRY_MS));
@@ -318,11 +389,15 @@ static void send_work_handler(struct k_work *work) {
     }
 }
 
-void key_stream_sent(void) {
+void key_stream_sent(uint32_t id) {
     k_spinlock_key_t key = k_spin_lock(&lock);
-    in_flight = false;
+    const bool finished = in_flight && in_flight_id == id;
+    struct bt_conn *done = finished ? finish_in_flight_locked() : NULL;
     k_spin_unlock(&lock, key);
-    kick_send(K_NO_WAIT);
+    release_conn(done);
+    if (finished) {
+        kick_send(K_NO_WAIT);
+    }
 }
 
 /* ---- 命令（専用のワークキュー） ---- */
@@ -334,26 +409,36 @@ static void start(enum key_stream_transport transport, struct bt_conn *conn, uin
     k_spinlock_key_t key = k_spin_lock(&lock);
     const bool fresh = !streaming || stream_transport != transport || stream_conn != conn ||
                        stream_mask != mask;
+    struct bt_conn *abandoned = NULL;
     if (fresh) {
         old_conn = stop_locked();
+        // 前の送り道で送っている最中なら、その「送り終わった」は待たない（USB がサスペンドしたままなどで、
+        // 届かないことがあるため）。後から届いても、番号が違うので無視される。
+        // 前の送り道がまだ送っている間は、その送り道は次を受け付けない（-EAGAIN）ので、戻ってきても重ならない
+        if (in_flight && !in_flight_on_locked(transport, conn)) {
+            abandoned = finish_in_flight_locked();
+        }
         streaming = true;
         stream_transport = transport;
         stream_conn = conn; // 参照は命令から引き継ぐ
         conn = NULL;
         stream_mask = mask;
         status_requested++;
-        // 押されたままのキーを知らせる（アプリが途中から見ても、押しっぱなしの扱いを合わせられるように）
+        // 押されたままのキーを知らせる（アプリが途中から見ても、押しっぱなしの扱いを合わせられるように）。
+        // 1件ずつの「押した」（印の bit1）と、その後に押されているキーの一覧の両方を送る
         for (uint32_t pos = 0; pos < ZMK_KEYMAP_LEN; pos++) {
             if (pressed[pos] && position_wanted(mask, pos)) {
                 push_event((uint8_t)pos, FLAG_PRESSED | FLAG_SNAPSHOT, (uint32_t)now);
             }
         }
+        pressed_list_requested++;
         LOG_DBG("Key stream started (transport %d, mask 0x%02x)", transport, mask);
     }
     last_keepalive = now;
     k_spin_unlock(&lock, key);
 
     release_conn(old_conn);
+    release_conn(abandoned);
     release_conn(conn); // 生存確認だけのとき: 命令の参照は要らない
     k_work_reschedule_for_queue(&key_stream_q, &timeout_work,
                                 K_MSEC(CONFIG_ZMK_KEY_STREAM_KEEPALIVE_TIMEOUT_MS));
@@ -389,6 +474,7 @@ static void command_work_handler(struct k_work *work) {
             k_spinlock_key_t key = k_spin_lock(&lock);
             if (streaming && stream_transport == cmd.transport && stream_conn == cmd.conn) {
                 status_requested++;
+                pressed_list_requested++;
             }
             k_spin_unlock(&lock, key);
             release_conn(cmd.conn);
@@ -446,10 +532,17 @@ void key_stream_transport_lost(enum key_stream_transport transport, struct bt_co
                       (transport != KEY_STREAM_TRANSPORT_BLE || stream_conn == conn);
     if (same) {
         old_conn = stop_locked();
-        in_flight = false;
     }
+    // 切れた送り道で送っている最中だったら、その「送り終わった」はもう届かないので待つのをやめる
+    // （送る先がすでに別の送り道に変わっていれば、そちらで次を送れるようになる）
+    const bool was_in_flight = in_flight_on_locked(transport, conn);
+    struct bt_conn *done = was_in_flight ? finish_in_flight_locked() : NULL;
     k_spin_unlock(&lock, key);
     release_conn(old_conn);
+    release_conn(done);
+    if (was_in_flight) {
+        kick_send(K_NO_WAIT);
+    }
 }
 
 /* ---- キーの出来事・右のつながり（見るだけで、止めない） ---- */

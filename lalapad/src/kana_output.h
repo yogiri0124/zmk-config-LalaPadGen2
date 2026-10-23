@@ -44,7 +44,8 @@ bool kana_input_enabled(void);
 /* かな配列モードの解除処理中（受付停止からレイヤー解除まで）なら true。この間の入力は捨てる */
 bool kana_mode_exiting(void);
 
-/* かな配列モードをオンにする: かなレイヤーを即座に有効化し、IME オン (LANGUAGE_1) をキューに並べる。
+/* かな配列モードをオンにする: IME オン (LANGUAGE_1) をキューに並べ、かなレイヤーを即座に有効化する
+ * （IME オンを並べられなかったときは、オンにしない）。
  * layer は keymap の宣言順の番号（&mo などと同じくレイヤー ID として扱う） */
 void kana_mode_on(const struct zmk_behavior_binding_event *event, zmk_keymap_layer_id_t layer,
                   uint32_t tap_ms, uint32_t wait_ms);

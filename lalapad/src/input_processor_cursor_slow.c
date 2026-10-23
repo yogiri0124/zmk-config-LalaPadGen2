@@ -23,7 +23,8 @@ static int cursor_slow_handle_event(const struct device *dev, struct input_event
         return ZMK_INPUT_PROC_CONTINUE;
     }
 
-    if (!cursor_slow_is_active() || param2 == 0) {
+    // 端数は int16_t で持つので、割る数はその範囲まで（それを超える設定は、遅くせずにそのまま通す）
+    if (!cursor_slow_is_active() || param2 == 0 || param2 > INT16_MAX) {
         // 低速でないときは何もしない（前回の端数は捨てる）
         if (state && state->remainder) {
             *state->remainder = 0;
@@ -31,15 +32,16 @@ static int cursor_slow_handle_event(const struct device *dev, struct input_event
         return ZMK_INPUT_PROC_CONTINUE;
     }
 
-    int32_t value = (int32_t)event->value * (int32_t)param1;
+    // 掛け算があふれないよう 64 ビットで計算し、結果は int32_t の範囲に収める
+    int64_t value = (int64_t)event->value * (int64_t)param1;
     if (state && state->remainder) {
         value += *state->remainder;
     }
-    const int32_t scaled = value / (int32_t)param2;
+    const int64_t scaled = value / (int64_t)param2;
     if (state && state->remainder) {
-        *state->remainder = (int16_t)(value - scaled * (int32_t)param2);
+        *state->remainder = (int16_t)(value - scaled * (int64_t)param2);
     }
-    event->value = scaled;
+    event->value = (int32_t)CLAMP(scaled, INT32_MIN, INT32_MAX);
 
     return ZMK_INPUT_PROC_CONTINUE;
 }

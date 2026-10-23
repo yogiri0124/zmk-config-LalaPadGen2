@@ -33,6 +33,15 @@ config ZMK_SCROLL_SNAP_GATE
     default y
     depends on (DT_HAS_ZMK_BEHAVIOR_SCROLL_SNAP_HOLD_ENABLED || DT_HAS_ZMK_INPUT_PROCESSOR_SCROLL_SNAP_GATE_ENABLED) && ZMK_POINTING
 
+config ZMK_SPLIT_TRACKPAD_RELEASE
+    bool "Release right trackpad positions when the peripheral disconnects"
+    default y
+    depends on ZMK_SPLIT && ZMK_SPLIT_ROLE_CENTRAL
+    depends on $(dt_nodelabel_enabled,trackpad_key_behaviors_R)
+    help
+      右（子機）が切れたときに、右のトラックパッドのタップ・ジェスチャーで押されたままの位置を離す
+      （lalapad/src/split_trackpad_release.c）。
+
 config ZMK_KEY_STREAM
     bool "Send key position events to the host over a vendor raw HID (USB and BLE)"
     depends on !ZMK_SPLIT || ZMK_SPLIT_ROLE_CENTRAL
@@ -70,6 +79,7 @@ config ZMK_KEY_STREAM_USB_DEVICE
 config ZMK_KEY_STREAM_TRACKPAD_FIRST
     int "First key position that comes from the trackpads"
     default 52
+    range 0 255
     help
       この番号以降の位置は、トラックパッドのタップ・ジェスチャー（lalapadgen2.dtsi の POS_TP_*）として扱い、
       アプリが「開始」で指定したときだけ送る。
@@ -77,13 +87,16 @@ config ZMK_KEY_STREAM_TRACKPAD_FIRST
 config ZMK_KEY_STREAM_KEEPALIVE_TIMEOUT_MS
     int "Stop sending when no start/keepalive arrives for this long (ms)"
     default 6000
+    range 1000 600000
 
 config ZMK_KEY_STREAM_THREAD_STACK_SIZE
     int "Stack size of the key stream work queue"
     default 1536
+    range 1024 8192
 
 config ZMK_KEY_STREAM_THREAD_PRIORITY
     int "Priority of the key stream work queue"
     default 6
+    range 0 14
 
 endif

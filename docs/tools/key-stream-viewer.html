@@ -44,6 +44,7 @@
 <div class="bar">
   <button id="connect">つなぐ</button>
   <button id="disconnect" disabled>切る</button>
+  <button id="query" disabled>問い合わせる</button>
   <label><input type="checkbox" id="trackpad"> トラックパッドも受け取る</label>
   <button id="clear">記録を消す</button>
 </div>
@@ -63,14 +64,16 @@
 // ファームウェア（lalapad/src/key_stream.c）との取り決め
 const FILTER = { vendorId: 0x1D50, productId: 0x615E, usagePage: 0xFF4C, usage: 0x01 };
 const VERSION = 1;
-const MSG_KEYS = 0x01, MSG_STATUS = 0x02;
-const CMD_START = 0x81, CMD_STOP = 0x82;
+const MSG_KEYS = 0x01, MSG_STATUS = 0x02, MSG_PRESSED = 0x03;
+const CMD_START = 0x81, CMD_STOP = 0x82, CMD_STATUS = 0x83;
 const STREAM_KEYS = 0x01, STREAM_TRACKPAD = 0x02;
 const REPORT_SIZE = 32;
 const KEEPALIVE_MS = 2000;
 
 const $ = (id) => document.getElementById(id);
 let device = null, timer = null, nextSeq = null, received = 0, lost = 0;
+// キーの位置の数（この番号から先がトラックパッドのタップ・ジェスチャー。状態のレポートで受け取る）
+let keyPositions = 52;
 
 // キーの並び（README の位置番号の図と同じ。-1 はすき間）
 const ROWS = [
@@ -116,6 +119,14 @@ async function send(type, arg = 0) {
   catch (e) { log(`送れませんでした: ${e.message}`); }
 }
 
+// 届いた通し番号が、次に来るはずの番号から飛んでいれば、その分を取りこぼしとして数える
+function checkSeq(seq) {
+  if (nextSeq === null || seq === nextSeq) return;
+  const gap = (seq - nextSeq) & 0xFFFF;
+  lost += gap; $('lost').textContent = lost;
+  log(`取りこぼし: ${gap} 件`);
+}
+
 function onReport(event) {
   const d = event.data;
   if (d.getUint8(0) !== VERSION) { log(`形式の版が違います: ${d.getUint8(0)}`); return; }
@@ -124,18 +135,18 @@ function onReport(event) {
     const right = d.getUint8(2) === 1;
     $('right').textContent = right ? 'つながっている' : '切れている';
     $('right').className = right ? 'good' : 'bad';
-    nextSeq = d.getUint16(6, true);
-    log(`状態: 右=${right ? 'つながっている' : '切れている'} 種類=0x${d.getUint8(3).toString(16)} キーの位置=${d.getUint8(4)} 位置の数=${d.getUint8(5)} 次の通し番号=${nextSeq}`);
+    keyPositions = d.getUint8(4);
+    const seq = d.getUint16(6, true);
+    log(`状態: 右=${right ? 'つながっている' : '切れている'} 種類=0x${d.getUint8(3).toString(16)} キーの位置=${keyPositions} 位置の数=${d.getUint8(5)} 次の通し番号=${seq}`);
+    // 状態の「次の通し番号」も、前のキーから飛んでいれば、その間を取りこぼしている（あふれて捨てた分など）
+    checkSeq(seq);
+    nextSeq = seq;
     return;
   }
   if (type === MSG_KEYS) {
     let seq = d.getUint16(2, true);
     const n = d.getUint8(4);
-    if (nextSeq !== null && seq !== nextSeq) {
-      const gap = (seq - nextSeq) & 0xFFFF;
-      lost += gap; $('lost').textContent = lost;
-      log(`取りこぼし: ${gap} 件`);
-    }
+    checkSeq(seq);
     for (let i = 0; i < n; i++) {
       const o = 5 + 6 * i;
       const pos = d.getUint8(o), flags = d.getUint8(o + 1), t = d.getUint32(o + 2, true);
@@ -149,19 +160,39 @@ function onReport(event) {
     $('count').textContent = received;
     return;
   }
+  if (type === MSG_PRESSED) {
+    // 押されているキーの一覧: 押している表示を、この一覧で丸ごと置き換える
+    const seq = d.getUint16(2, true);
+    const count = d.getUint8(4);
+    checkSeq(seq);
+    nextSeq = seq;
+    const list = [];
+    for (const [pos, el] of Object.entries(keyEls)) {
+      const p = Number(pos);
+      const on = p < count && (d.getUint8(5 + (p >> 3)) & (1 << (p & 7))) !== 0;
+      el.classList.toggle('on', on);
+      if (on) list.push(p);
+    }
+    log(`押されているキー: ${list.length ? list.join(' ') : 'なし'}（次の通し番号=${seq}）`);
+    return;
+  }
   // 知らない種類は読み飛ばす
 }
 
 async function open(dev) {
+  // 開けてから（失敗しても前の状態を残さないよう）この機器を使う
+  if (!dev.opened) await dev.open();
   device = dev;
-  if (!device.opened) await device.open();
   device.addEventListener('inputreport', onReport);
   $('device').textContent = device.productName || '(名前なし)';
-  $('connect').disabled = true; $('disconnect').disabled = false;
+  $('connect').disabled = true; $('disconnect').disabled = false; $('query').disabled = false;
   nextSeq = null;
   Object.values(keyEls).forEach((el) => el.classList.remove('on'));
   log(`つなぎました: ${device.productName}`);
   await send(CMD_START, mask());
+  // 開き直したときなど、キーボードがまだ前の「開始」で送り続けていると、今の「開始」は生存確認として扱われ、
+  // 状態と押されているキーが届かない。問い合わせて、今の状態を受け取る
+  await send(CMD_STATUS);
   timer = setInterval(() => send(CMD_START, mask()), KEEPALIVE_MS);
 }
 
@@ -174,22 +205,40 @@ async function close(unplugged = false) {
     try { await device.close(); } catch (e) { /* 切れていてもよい */ }
   }
   device = null;
+  Object.values(keyEls).forEach((el) => el.classList.remove('on'));
   $('device').textContent = '—'; $('right').textContent = '—'; $('right').className = '';
-  $('connect').disabled = false; $('disconnect').disabled = true;
+  $('connect').disabled = false; $('disconnect').disabled = true; $('query').disabled = true;
   log('切りました');
 }
 
+// つないでいる途中に、もう一度「つなぐ」を押しても受け付けない（2つの機器の処理が重ならないように）
+let connecting = false;
 $('connect').addEventListener('click', async () => {
   if (!('hid' in navigator)) { log('このブラウザでは WebHID が使えません（Chrome か Edge で開いてください）'); return; }
+  if (connecting || device) return;
+  connecting = true;
+  $('connect').disabled = true;
   try {
     const devices = await navigator.hid.requestDevice({ filters: [FILTER] });
     if (devices.length === 0) { log('機器が選ばれませんでした'); return; }
     await open(devices[0]);
-  } catch (e) { log(`つなげませんでした: ${e.message}`); }
+  } catch (e) {
+    log(`つなげませんでした: ${e.message}`);
+  } finally {
+    connecting = false;
+    if (!device) $('connect').disabled = false;
+  }
 });
 $('disconnect').addEventListener('click', () => close());
+$('query').addEventListener('click', () => send(CMD_STATUS));
 $('clear').addEventListener('click', () => { $('log').replaceChildren(); received = 0; lost = 0; $('count').textContent = 0; $('lost').textContent = 0; });
-$('trackpad').addEventListener('change', () => send(CMD_START, mask()));
+$('trackpad').addEventListener('change', () => {
+  // 受け取るのをやめたトラックパッドの位置は、この後「離した」が届かないので、押している表示を消しておく
+  if (!$('trackpad').checked) {
+    for (const [pos, el] of Object.entries(keyEls)) if (Number(pos) >= keyPositions) el.classList.remove('on');
+  }
+  send(CMD_START, mask());
+});
 navigator.hid?.addEventListener('disconnect', (e) => { if (e.device === device) { log('機器が外れました'); close(true); } });
 window.addEventListener('pagehide', () => { if (device) send(CMD_STOP); });
 </script>

@@ -121,11 +121,10 @@ BT_GATT_SERVICE_DEFINE(
 
 static void notify_sent_cb(struct bt_conn *conn, void *user_data) {
     ARG_UNUSED(conn);
-    ARG_UNUSED(user_data);
-    key_stream_sent();
+    key_stream_sent((uint32_t)(uintptr_t)user_data);
 }
 
-int key_stream_ble_send(struct bt_conn *conn, const uint8_t *report) {
+int key_stream_ble_send(struct bt_conn *conn, const uint8_t *report, uint32_t id) {
     if (conn == NULL) {
         return -ENOTCONN;
     }
@@ -137,6 +136,7 @@ int key_stream_ble_send(struct bt_conn *conn, const uint8_t *report) {
         .data = report,
         .len = KEY_STREAM_REPORT_SIZE,
         .func = notify_sent_cb,
+        .user_data = (void *)(uintptr_t)id, // 「送り終わった」で、どの送信かを知らせる
     };
     // 送るバッファの空きがなければ待つことがある（専用のワークキューで呼ぶので、ほかの処理は止めない）
     const int err = bt_gatt_notify_cb(conn, &params);

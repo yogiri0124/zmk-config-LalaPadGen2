@@ -1,5 +1,5 @@
 # このリポジトリの自作モジュール（かな入力・記号キー、マウスボタン・キーの押しっぱなし切り替え、カーソル低速、
-# オートマウスレイヤー、Alt コード入力、スクロールスナップの切り替え、キー位置の送信）。
+# オートマウスレイヤー、Alt コード入力、スクロールスナップの切り替え、キー位置の送信、右が切れたときのトラックパッドの解放）。
 # behavior と入力処理は keymap を処理する側（central）でだけビルドする。
 target_include_directories(app PRIVATE include)
 
@@ -33,6 +33,7 @@ if((NOT CONFIG_ZMK_SPLIT) OR CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
     src/behavior_cursor_slow.c
     src/input_processor_cursor_slow.c
   )
+  target_sources_ifdef(CONFIG_ZMK_SPLIT_TRACKPAD_RELEASE app PRIVATE src/split_trackpad_release.c)
   target_sources_ifdef(CONFIG_ZMK_KEY_STREAM app PRIVATE src/key_stream.c)
   target_sources_ifdef(CONFIG_ZMK_KEY_STREAM_USB app PRIVATE src/key_stream_usb.c)
   target_sources_ifdef(CONFIG_ZMK_KEY_STREAM_BLE app PRIVATE src/key_stream_ble.c)

@@ -12,6 +12,7 @@
 #include <zephyr/init.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/atomic.h>
 #include <zephyr/usb/usb_device.h>
 #include <zephyr/usb/class/usb_hid.h>
 
@@ -32,12 +33,18 @@ BUILD_ASSERT(CONFIG_USB_HID_DEVICE_COUNT >= 2, "key stream over USB needs CONFIG
 static const struct device *hid_dev;
 
 /* USB は送り終わるまでこのバッファから直接読む（DMA）ので、スタックではなく静的に持つ。
- * 本体は送り終わるまで次を送らないので、同時に使われることはない */
+ * 送り終わるまで（tx_busy の間）は書き換えない。本体が送る先を Bluetooth に変えて戻ってきた場合など、
+ * 前の転送が終わっていなければ、次は受け付けない */
 static uint8_t tx_buf[KEY_STREAM_REPORT_SIZE];
+static atomic_t tx_busy;
+/* 送っている転送の番号（tx_busy の間だけ有効） */
+static uint32_t tx_id;
 
 static void in_ready_cb(const struct device *dev) {
     ARG_UNUSED(dev);
-    key_stream_sent();
+    const uint32_t id = tx_id;
+    atomic_clear(&tx_busy);
+    key_stream_sent(id);
 }
 
 static int set_report_cb(const struct device *dev, struct usb_setup_packet *setup, int32_t *len,
@@ -78,12 +85,19 @@ static const struct hid_ops ops = {
 #endif
 };
 
-int key_stream_usb_send(const uint8_t *report) {
+int key_stream_usb_send(const uint8_t *report, uint32_t id) {
     if (hid_dev == NULL || !zmk_usb_is_hid_ready()) {
         return -ENOTCONN;
     }
+    if (!atomic_cas(&tx_busy, 0, 1)) {
+        return -EAGAIN; // 前の転送がまだ終わっていない
+    }
+    tx_id = id;
     memcpy(tx_buf, report, sizeof(tx_buf));
     const int err = hid_int_ep_write(hid_dev, tx_buf, sizeof(tx_buf), NULL);
+    if (err != 0) {
+        atomic_clear(&tx_busy);
+    }
     if (err == -EAGAIN || err == -EBUSY) {
         return -EAGAIN;
     }
@@ -94,6 +108,8 @@ int key_stream_usb_send(const uint8_t *report) {
 static int key_stream_usb_listener(const zmk_event_t *eh) {
     const struct zmk_usb_conn_state_changed *ev = as_zmk_usb_conn_state_changed(eh);
     if (ev != NULL && ev->conn_state != ZMK_USB_CONN_HID) {
+        // 抜いたときは送っていた転送も取り消される（送り終わったの知らせは来ない）
+        atomic_clear(&tx_busy);
         key_stream_transport_lost(KEY_STREAM_TRANSPORT_USB, NULL);
     }
     return ZMK_EV_EVENT_BUBBLE;

@@ -36,15 +36,16 @@ struct bt_conn;
 void key_stream_received(enum key_stream_transport transport, struct bt_conn *conn,
                          const uint8_t *data, size_t len);
 
-/* 送ったレポートが送り終わった（次を送ってよい）。どのスレッドから呼んでもよい */
-void key_stream_sent(void);
+/* 送ったレポートが送り終わった（次を送ってよい）。id は送るときに渡された番号。どのスレッドから呼んでもよい */
+void key_stream_sent(uint32_t id);
 
 /* 送り道が切れた（USB を抜いた、Bluetooth が切れた）。どのスレッドから呼んでもよい */
 void key_stream_transport_lost(enum key_stream_transport transport, struct bt_conn *conn);
 
 /* ---- 本体 → 送り道 ---- */
 
-/* 32 バイトのレポートを1つ送り始める。送り終わったら key_stream_sent() を呼ぶ。
+/* 32 バイトのレポートを1つ送り始める。送り終わったら key_stream_sent(id) を呼ぶ。
+ * USB は、前に送ったものがまだ送り終わっていなければ、送らずに -EAGAIN を返す（バッファを書き換えないため）。
  * 戻り値: 0 = 送り始めた / -EAGAIN = 今は送れない（少し後でもう一度試す）/ そのほか = 送れない（送るのをやめる） */
-int key_stream_usb_send(const uint8_t *report);
-int key_stream_ble_send(struct bt_conn *conn, const uint8_t *report);
+int key_stream_usb_send(const uint8_t *report, uint32_t id);
+int key_stream_ble_send(struct bt_conn *conn, const uint8_t *report, uint32_t id);
