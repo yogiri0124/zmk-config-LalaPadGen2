@@ -109,6 +109,11 @@ static void lock_request_callback(struct input_event *evt) {
     bool changed = false;
     for (int i = 0; i < NUM_BUTTONS; i++) {
         if (evt->code == REQUEST_TOGGLE && (buttons & BIT(i))) {
+            // 接続先が切り替わる前の押しっぱなしが残っていれば（「全部離して」がまだ届いていない）、先に離す。
+            // このキーは、新しい接続先で押しっぱなしにする操作になる
+            if ((locked & BIT(i)) && locked_gen[i] != gen) {
+                set_locked(i, false);
+            }
             set_locked(i, !(locked & BIT(i)));
             locked_gen[i] = gen;
             changed = true;

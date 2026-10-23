@@ -249,6 +249,9 @@ static const struct behavior_driver_api behavior_kana_driver_api = {
 };
 
 #define KANA_INST(n)                                                                               \
+    KANA_CHECK_MS(n, tap_ms, 10000)                                                                \
+    KANA_CHECK_MS(n, wait_ms, 10000)                                                               \
+    KANA_CHECK_MS(n, ime_resync_ms, 60000)                                                         \
     static const struct behavior_kana_config behavior_kana_config_##n = {                         \
         .tap_ms = DT_INST_PROP(n, tap_ms),                                                         \
         .wait_ms = DT_INST_PROP(n, wait_ms),                                                       \

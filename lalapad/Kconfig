@@ -41,6 +41,14 @@ config LALAPAD_SPLIT_LINK
       親機（左）から見た右（子機）とのつながりを見て、変わったら zmk_lalapad_split_link_changed を出す
       （lalapad/src/split_link.c）。ZMK v0.3.0 の zmk_split_peripheral_status_changed は親機では出ないため。
 
+config ZMK_POSITION_RELAY
+    bool "Process position events raised outside the system work queue on the system work queue"
+    default y
+    depends on !ZMK_SPLIT || ZMK_SPLIT_ROLE_CENTRAL
+    help
+      トラックパッドのタップ・ジェスチャーなど、入力スレッドから出たキー位置の出来事を預かり、キーマップと
+      behavior の処理をシステムワークキューで行う（lalapad/src/position_relay.c）。
+
 config ZMK_SPLIT_TRACKPAD_RELEASE
     bool "Release right trackpad positions when the peripheral disconnects"
     default y
