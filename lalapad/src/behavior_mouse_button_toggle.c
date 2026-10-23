@@ -9,6 +9,9 @@
  * 押しっぱなしを解除する。ZMK v0.3.0 はマウスボタンの押下回数を数えているので、ここで解除しないと
  * クリックしてもボタンが押されたままになる。自分の押下は &mkp の入力としては現れないので、
  * &mkp の入力を監視すれば「ほかからのクリック」だけを確実に見分けられる。
+ * 入力イベントは1つの列に並んで順に処理されるので、押しっぱなしが「効いている」とみなすのは、自分の「押す」が
+ * その列から出てきた時点からにする（active）。押しっぱなしにする前に押したクリックが列で待っていても、
+ * それで新しい押しっぱなしを解除しないように。
  *
  * 接続先（USB・BLE プロファイル）が変わったときも、押しっぱなしを解除する。ZMK は接続先が変わると
  * キーボードの状態を消すが、押した数（ZMK のボタンごとの数）は残るので、ここで「離す」を送って数を合わせる
@@ -54,8 +57,10 @@ DEVICE_DT_INST_DEFINE(0, NULL, NULL, NULL, NULL, POST_KERNEL, CONFIG_KERNEL_INIT
 #define MKP_NODE DT_NODELABEL(mkp)
 #define NUM_BUTTONS ZMK_HID_MOUSE_NUM_BUTTONS
 
-/* bit i: ボタン i を押しっぱなしにしている */
+/* bit i: ボタン i を押しっぱなしにしている（behavior から切り替える） */
 static atomic_t locked;
+/* bit i: ボタン i の押しっぱなしが効いている（自分の「押す」が入力の列から出てきた。入力スレッドで切り替える） */
+static atomic_t active;
 /* 入力コールバックから依頼された解除（bit i）。システムワークキューで処理する */
 static atomic_t unlock_requests;
 
@@ -94,13 +99,24 @@ static void mkp_input_callback(struct input_event *evt) {
 
     const int button = evt->code - INPUT_BTN_0;
 
-    if (atomic_test_bit(&locked, button)) {
+    // 押しっぱなしが効いた後のクリックだけで解除する（効く前に押して列で待っていたクリックでは解除しない）
+    if (atomic_test_bit(&active, button)) {
         atomic_set_bit(&unlock_requests, button);
         k_work_submit(&unlock_work);
     }
 }
 
 INPUT_CALLBACK_DEFINE(DEVICE_DT_GET(MKP_NODE), mkp_input_callback);
+
+/* 自分の「押す」「離す」が入力の列から出てきた: 押しっぱなしが効いている／いないを切り替える（入力スレッド） */
+static void lock_input_callback(struct input_event *evt) {
+    if (evt->type != INPUT_EV_KEY || evt->code < INPUT_BTN_0 || evt->code >= INPUT_BTN_0 + NUM_BUTTONS) {
+        return;
+    }
+    atomic_set_bit_to(&active, evt->code - INPUT_BTN_0, evt->value != 0);
+}
+
+INPUT_CALLBACK_DEFINE(LOCK_INPUT_DEV, lock_input_callback);
 
 /* ---- behavior（zmk,behavior-mouse-button-toggle）---- */
 

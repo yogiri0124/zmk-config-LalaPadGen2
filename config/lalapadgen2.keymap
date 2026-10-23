@@ -24,6 +24,10 @@
 
 &lt { quick-tap-ms = <200>; };
 
+// オートマウスレイヤー（lalapadgen2.dtsi）: 数字・記号レイヤーの間は、トラックパッドを操作してもマウスレイヤーにしない
+// （トラックパッドのリスナーの lowspeedmode（layers = <2>,<3>）と同じレイヤー）
+&zip_auto_mouse_layer { excluded-layers = <SECONDARY_LAYER TERTIARY_LAYER>; };
+
 / {
     behaviors {
         zip_dyn_scale: zip_dyn_scale {
