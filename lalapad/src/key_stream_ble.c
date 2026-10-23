@@ -120,9 +120,8 @@ BT_GATT_SERVICE_DEFINE(
 #define INPUT_REPORT_ATTR (&key_stream_svc.attrs[5])
 
 static void notify_sent_cb(struct bt_conn *conn, void *user_data) {
-    ARG_UNUSED(conn);
     ARG_UNUSED(user_data);
-    key_stream_sent();
+    key_stream_sent(KEY_STREAM_TRANSPORT_BLE, conn);
 }
 
 int key_stream_ble_send(struct bt_conn *conn, const uint8_t *report) {

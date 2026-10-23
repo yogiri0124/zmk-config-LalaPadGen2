@@ -132,8 +132,11 @@ static uint16_t next_seq;
  * 送っている最中に頼まれ直しても、その分を落とさないよう回数で持つ */
 static uint8_t status_requested;
 static uint8_t status_sent;
-/* 送っている最中のレポートがある（送り終わるまで次を送らない） */
+/* 送っている最中のレポートがある（送り終わるまで次を送らない）。送った送り道と接続（参照を持つ）も覚えておき、
+ * その送り道の「送り終わった」か「切れた」で解く（送る先が別の送り道に変わった後でも、前の送り道を待ち続けないように） */
 static bool in_flight;
+static enum key_stream_transport in_flight_transport;
+static struct bt_conn *in_flight_conn;
 
 /* いま押されている位置（開始したときに、押されたままのキーを知らせるため） */
 static bool pressed[ZMK_KEYMAP_LEN];
@@ -208,6 +211,21 @@ static void release_conn(struct bt_conn *conn) {
 #endif
 }
 
+/* 送っている最中のレポートが、その送り道（Bluetooth ならその接続）のものか。lock の中で呼ぶ */
+static bool in_flight_on_locked(enum key_stream_transport transport, struct bt_conn *conn) {
+    return in_flight && in_flight_transport == transport &&
+           (transport != KEY_STREAM_TRANSPORT_BLE || in_flight_conn == conn);
+}
+
+/* 送っている最中の印を外す（lock の中で呼ぶ）。持っていた接続の参照は、戻り値で返して lock の外で手放す */
+static struct bt_conn *finish_in_flight_locked(void) {
+    struct bt_conn *conn = in_flight_conn;
+    in_flight = false;
+    in_flight_transport = KEY_STREAM_TRANSPORT_NONE;
+    in_flight_conn = NULL;
+    return conn;
+}
+
 static void stop(void) {
     k_spinlock_key_t key = k_spin_lock(&lock);
     struct bt_conn *conn = stop_locked();
@@ -273,12 +291,14 @@ static void send_work_handler(struct k_work *work) {
     const enum key_stream_transport transport = stream_transport;
     struct bt_conn *conn = NULL;
 #if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_BLE)
-    // 送っている間に接続が切れて本体の参照が手放されても使えるよう、自分の参照を持つ
+    // 送っている間に接続が切れて本体の参照が手放されても使えるよう、送り終わるまで自分の参照を持つ
     if (stream_conn != NULL) {
         conn = bt_conn_ref(stream_conn);
     }
 #endif
     in_flight = true;
+    in_flight_transport = transport;
+    in_flight_conn = conn;
     k_spin_unlock(&lock, key);
 
     int err = -ENOTSUP;
@@ -291,7 +311,6 @@ static void send_work_handler(struct k_work *work) {
         err = key_stream_ble_send(conn, report);
 #endif
     }
-    release_conn(conn);
 
     key = k_spin_lock(&lock);
     if (err == 0) {
@@ -307,8 +326,13 @@ static void send_work_handler(struct k_work *work) {
         k_spin_unlock(&lock, key);
         return;
     }
-    in_flight = false;
+    // 送れなかった: 送っている最中の印を外す（送っている間に送り道が切れて、もう外れていることもある）
+    struct bt_conn *done = NULL;
+    if (in_flight_on_locked(transport, conn)) {
+        done = finish_in_flight_locked();
+    }
     k_spin_unlock(&lock, key);
+    release_conn(done);
 
     if (err == -EAGAIN) {
         kick_send(K_MSEC(RETRY_MS));
@@ -318,11 +342,15 @@ static void send_work_handler(struct k_work *work) {
     }
 }
 
-void key_stream_sent(void) {
+void key_stream_sent(enum key_stream_transport transport, struct bt_conn *conn) {
     k_spinlock_key_t key = k_spin_lock(&lock);
-    in_flight = false;
+    const bool finished = in_flight_on_locked(transport, conn);
+    struct bt_conn *done = finished ? finish_in_flight_locked() : NULL;
     k_spin_unlock(&lock, key);
-    kick_send(K_NO_WAIT);
+    release_conn(done);
+    if (finished) {
+        kick_send(K_NO_WAIT);
+    }
 }
 
 /* ---- 命令（専用のワークキュー） ---- */
@@ -446,10 +474,17 @@ void key_stream_transport_lost(enum key_stream_transport transport, struct bt_co
                       (transport != KEY_STREAM_TRANSPORT_BLE || stream_conn == conn);
     if (same) {
         old_conn = stop_locked();
-        in_flight = false;
     }
+    // 切れた送り道で送っている最中だったら、その「送り終わった」はもう届かないので待つのをやめる
+    // （送る先がすでに別の送り道に変わっていれば、そちらで次を送れるようになる）
+    const bool was_in_flight = in_flight_on_locked(transport, conn);
+    struct bt_conn *done = was_in_flight ? finish_in_flight_locked() : NULL;
     k_spin_unlock(&lock, key);
     release_conn(old_conn);
+    release_conn(done);
+    if (was_in_flight) {
+        kick_send(K_NO_WAIT);
+    }
 }
 
 /* ---- キーの出来事・右のつながり（見るだけで、止めない） ---- */

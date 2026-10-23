@@ -71,6 +71,8 @@ const KEEPALIVE_MS = 2000;
 
 const $ = (id) => document.getElementById(id);
 let device = null, timer = null, nextSeq = null, received = 0, lost = 0;
+// キーの位置の数（この番号から先がトラックパッドのタップ・ジェスチャー。状態のレポートで受け取る）
+let keyPositions = 52;
 
 // キーの並び（README の位置番号の図と同じ。-1 はすき間）
 const ROWS = [
@@ -116,6 +118,14 @@ async function send(type, arg = 0) {
   catch (e) { log(`送れませんでした: ${e.message}`); }
 }
 
+// 届いた通し番号が、次に来るはずの番号から飛んでいれば、その分を取りこぼしとして数える
+function checkSeq(seq) {
+  if (nextSeq === null || seq === nextSeq) return;
+  const gap = (seq - nextSeq) & 0xFFFF;
+  lost += gap; $('lost').textContent = lost;
+  log(`取りこぼし: ${gap} 件`);
+}
+
 function onReport(event) {
   const d = event.data;
   if (d.getUint8(0) !== VERSION) { log(`形式の版が違います: ${d.getUint8(0)}`); return; }
@@ -124,18 +134,18 @@ function onReport(event) {
     const right = d.getUint8(2) === 1;
     $('right').textContent = right ? 'つながっている' : '切れている';
     $('right').className = right ? 'good' : 'bad';
-    nextSeq = d.getUint16(6, true);
-    log(`状態: 右=${right ? 'つながっている' : '切れている'} 種類=0x${d.getUint8(3).toString(16)} キーの位置=${d.getUint8(4)} 位置の数=${d.getUint8(5)} 次の通し番号=${nextSeq}`);
+    keyPositions = d.getUint8(4);
+    const seq = d.getUint16(6, true);
+    log(`状態: 右=${right ? 'つながっている' : '切れている'} 種類=0x${d.getUint8(3).toString(16)} キーの位置=${keyPositions} 位置の数=${d.getUint8(5)} 次の通し番号=${seq}`);
+    // 状態の「次の通し番号」も、前のキーから飛んでいれば、その間を取りこぼしている（あふれて捨てた分など）
+    checkSeq(seq);
+    nextSeq = seq;
     return;
   }
   if (type === MSG_KEYS) {
     let seq = d.getUint16(2, true);
     const n = d.getUint8(4);
-    if (nextSeq !== null && seq !== nextSeq) {
-      const gap = (seq - nextSeq) & 0xFFFF;
-      lost += gap; $('lost').textContent = lost;
-      log(`取りこぼし: ${gap} 件`);
-    }
+    checkSeq(seq);
     for (let i = 0; i < n; i++) {
       const o = 5 + 6 * i;
       const pos = d.getUint8(o), flags = d.getUint8(o + 1), t = d.getUint32(o + 2, true);
@@ -189,7 +199,13 @@ $('connect').addEventListener('click', async () => {
 });
 $('disconnect').addEventListener('click', () => close());
 $('clear').addEventListener('click', () => { $('log').replaceChildren(); received = 0; lost = 0; $('count').textContent = 0; $('lost').textContent = 0; });
-$('trackpad').addEventListener('change', () => send(CMD_START, mask()));
+$('trackpad').addEventListener('change', () => {
+  // 受け取るのをやめたトラックパッドの位置は、この後「離した」が届かないので、押している表示を消しておく
+  if (!$('trackpad').checked) {
+    for (const [pos, el] of Object.entries(keyEls)) if (Number(pos) >= keyPositions) el.classList.remove('on');
+  }
+  send(CMD_START, mask());
+});
 navigator.hid?.addEventListener('disconnect', (e) => { if (e.device === device) { log('機器が外れました'); close(true); } });
 window.addEventListener('pagehide', () => { if (device) send(CMD_STOP); });
 </script>

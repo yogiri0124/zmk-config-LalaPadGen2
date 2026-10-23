@@ -37,7 +37,7 @@ static uint8_t tx_buf[KEY_STREAM_REPORT_SIZE];
 
 static void in_ready_cb(const struct device *dev) {
     ARG_UNUSED(dev);
-    key_stream_sent();
+    key_stream_sent(KEY_STREAM_TRANSPORT_USB, NULL);
 }
 
 static int set_report_cb(const struct device *dev, struct usb_setup_packet *setup, int32_t *len,
