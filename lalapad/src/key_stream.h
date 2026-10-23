@@ -48,4 +48,6 @@ void key_stream_transport_lost(enum key_stream_transport transport, struct bt_co
  * USB は、前に送ったものがまだ送り終わっていなければ、送らずに -EAGAIN を返す（バッファを書き換えないため）。
  * 戻り値: 0 = 送り始めた / -EAGAIN = 今は送れない（少し後でもう一度試す）/ そのほか = 送れない（送るのをやめる） */
 int key_stream_usb_send(const uint8_t *report, uint32_t id);
+/* USB の転送が終わらないまま待つのをやめる（次の key_stream_usb_send を受け付けるようにする） */
+void key_stream_usb_abort(void);
 int key_stream_ble_send(struct bt_conn *conn, const uint8_t *report, uint32_t id);

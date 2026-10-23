@@ -24,8 +24,9 @@
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
-/* 預けておける出来事の数（トラックパッドのタップ・ジェスチャーの押した／離したが、続けて届く分） */
-#define RELAY_QUEUE_SIZE 32
+/* 預けておける出来事の数（トラックパッドのタップ・ジェスチャーの押した／離したが、続けて届く分）。
+ * システムワークキューが長く止まらない限り、満杯にはならない */
+#define RELAY_QUEUE_SIZE 64
 
 K_MSGQ_DEFINE(relay_queue, sizeof(struct zmk_position_state_changed_event), RELAY_QUEUE_SIZE, 4);
 
@@ -46,7 +47,8 @@ static int position_relay_listener(const zmk_event_t *eh) {
     }
     struct zmk_position_state_changed_event ev = copy_raised_zmk_position_state_changed(pos);
     if (k_msgq_put(&relay_queue, &ev, K_NO_WAIT) != 0) {
-        // 預けきれない（ふつうは起きない）: この場で処理する（押した／離したを落とさないことを優先する）
+        // 預けきれない（システムワークキューが長く止まったとき）: この場で処理する。押した／離したを落とすと
+        // 押されたままになるので、順番と処理するスレッドが崩れることより、落とさないことを優先する
         LOG_WRN("Position relay queue full, processing position %d in place", pos->position);
         return ZMK_EV_EVENT_BUBBLE;
     }

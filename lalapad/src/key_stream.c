@@ -81,6 +81,9 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define EVENT_QUEUE_SIZE 64
 /* 送り道が「今は送れない」と言ったときに、もう一度試すまでの時間 */
 #define RETRY_MS 5
+/* USB で「送り終わった」がこの時間届かなければ、待つのをやめる（USB がリセットされて転送が取り消されたのに、
+ * ZMK の状態の知らせがまとめられて「切れた」が届かなかったときなどに、送るのが止まり続けないように） */
+#define USB_SENT_TIMEOUT_MS 500
 
 /* ---- レポートの記述（ベンダー定義。入力・出力とも 32 バイト、レポート ID なし） ---- */
 
@@ -174,7 +177,9 @@ static struct k_work_q key_stream_q;
 static void send_work_handler(struct k_work *work);
 static void command_work_handler(struct k_work *work);
 static void timeout_work_handler(struct k_work *work);
+static void usb_sent_timeout_work_handler(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(send_work, send_work_handler);
+static K_WORK_DELAYABLE_DEFINE(usb_sent_timeout_work, usb_sent_timeout_work_handler);
 static K_WORK_DEFINE(command_work, command_work_handler);
 static K_WORK_DELAYABLE_DEFINE(timeout_work, timeout_work_handler);
 
@@ -370,6 +375,12 @@ static void send_work_handler(struct k_work *work) {
         }
         k_spin_unlock(&lock, key);
         release_conn(conn);
+#if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_USB)
+        if (transport == KEY_STREAM_TRANSPORT_USB) {
+            k_work_reschedule_for_queue(&key_stream_q, &usb_sent_timeout_work,
+                                        K_MSEC(USB_SENT_TIMEOUT_MS));
+        }
+#endif
         return;
     }
     // 送れなかった: 送っている最中の印を外す（送っている間に送り道が切れて、もう外れていることもある）
@@ -396,6 +407,22 @@ void key_stream_sent(uint32_t id) {
     k_spin_unlock(&lock, key);
     release_conn(done);
     if (finished) {
+        kick_send(K_NO_WAIT);
+    }
+}
+
+/* USB で「送り終わった」が届かないまま時間がたった: 待つのをやめて、次を送れるようにする */
+static void usb_sent_timeout_work_handler(struct k_work *work) {
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    const bool stuck = in_flight_on_locked(KEY_STREAM_TRANSPORT_USB, NULL);
+    struct bt_conn *done = stuck ? finish_in_flight_locked() : NULL;
+    k_spin_unlock(&lock, key);
+    release_conn(done);
+    if (stuck) {
+        LOG_WRN("Key stream: USB report not acknowledged, giving up waiting");
+#if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_USB)
+        key_stream_usb_abort();
+#endif
         kick_send(K_NO_WAIT);
     }
 }

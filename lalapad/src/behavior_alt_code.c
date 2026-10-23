@@ -38,6 +38,7 @@
  *     listener を通った入力と、預かって通し終えた入力から数えておく（held）。
  *   - 預かりきれない「押す」は捨てる（通すと Alt+キーになるため）。捨てた「押す」は覚えておき、
  *     同じキーの「離す」を同じ数だけ捨てる（対応しない「離す」で修飾キーの数が崩れないように）。
+ *     覚えておけない（記録があふれた）ときは、捨てずに通す（押した数と離した数を必ず合わせるため）。
  *     「離す」の分の空きは、預かった「押す」の数と、PC 側で押されているキー（held）の数だけ残しておく
  *     （どちらの「離す」も、同じキーが待っている間は預かるため）。
  *   - 預かった後に接続先（USB・BLE プロファイル）が切り替わったら、切り替え前に預かった「押す」は
@@ -340,11 +341,13 @@ static void release_captured(bool all, uint32_t mark) {
             // 捨てた「押す」の「離す」も捨てる
             drop = remove_key(dropped, MAX_DROPPED, &ev.data);
         } else if (captured_generation[captured_head] != atomic_get(&endpoint_generation)) {
-            // 切り替え前の接続先に向けて押したキー: 切り替え先には送らない
-            if (!add_key(dropped, MAX_DROPPED, &ev.data)) {
-                LOG_WRN("Too many dropped keys to track (0x%02X)", ev.data.keycode);
+            // 切り替え前の接続先に向けて押したキー: 切り替え先には送らない。
+            // ただし捨てたことを記録できなければ通す（「離す」だけが通って、押した数が合わなくなるのを防ぐ）
+            if (add_key(dropped, MAX_DROPPED, &ev.data)) {
+                drop = true;
+            } else {
+                LOG_WRN("Too many dropped keys to track, passing 0x%02X", ev.data.keycode);
             }
-            drop = true;
         }
         k_spin_unlock(&capture_lock, key);
 
@@ -686,11 +689,15 @@ static int alt_code_keycode_listener(const zmk_event_t *eh) {
             captured_open++;
             ret = ZMK_EV_EVENT_CAPTURED;
         } else {
-            // 待ち行列（128）と記録（32 種類）が両方あふれるほどの入力は、1回の送信の間には現実には
-            // 起きない。記録があふれた場合は、その「離す」はそのまま通る
-            add_key(dropped, MAX_DROPPED, ev);
-            was_dropped = true;
-            ret = ZMK_EV_EVENT_HANDLED;
+            // 待ち行列（128）と記録（32 種類）が両方あふれるほどの入力は、1回の送信の間には現実には起きない。
+            // 捨てたことを記録できなければ、捨てずに通す（「離す」だけが通って、押した数が合わなくなるのを防ぐ。
+            // Alt を押している間なら Alt+キーになるが、押されたままや数のずれよりはよい）
+            if (add_key(dropped, MAX_DROPPED, ev)) {
+                was_dropped = true;
+                ret = ZMK_EV_EVENT_HANDLED;
+            } else {
+                track_held(ev);
+            }
         }
     } else if (captured_count < MAX_CAPTURED) {
         // 同じキーのイベントが待っている（通している最中のものも含む）「離す」: 追い越さないよう後ろに並べる。

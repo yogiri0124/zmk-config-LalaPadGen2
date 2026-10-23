@@ -12,10 +12,11 @@
  * bindings の引数（&tp_to_pos の位置番号）から、ビルド時に取り出す。
  *
  * 順番を崩さないため、すべて入力スレッドの1つの列で処理する:
- * - 中継された右の入力は、入力イベントの列に並び、入力スレッドでキー位置の「押した／離した」になる。
- * - 右とつながった・切れたら、その場で（Bluetooth のスレッドから）同じ列の末尾に「つながった」「切れた」の
- *   合図を並べる。右の入力は、届いた接続の合図の後ろ、次の合図の前に並ぶので、列の順番で「どの接続の入力か」が
- *   分かる（合図を受け取るたびに数える。処理した時点の接続の回数では数えない）。
+ * - 中継された右の入力は、ZMK が受け取った順にシステムワークキューで入力イベントの列に並べ
+ *   （split/bluetooth/central.c の peripheral_event_work）、入力スレッドでキー位置の「押した／離した」になる。
+ * - 右とつながった・切れたら、合図も同じくシステムワークキューから同じ列の末尾に並べる（Bluetooth のスレッドから
+ *   直接並べると、ZMK がまだ列に並べていない右の入力を追い越してしまう）。右の入力は、届いた接続の合図の後ろ、
+ *   次の合図の前に並ぶので、列の順番で「どの接続の入力か」が分かる（合図を受け取るたびに数える）。
  * - 「切れた」の合図を受け取ったら、押されている右のトラックパッドの位置を離す。それより後に処理される、
  *   切れた接続の押下は捨てる（ほかに伝えない）。押していない位置の「離した」も捨てる（ZMK が数える押した数が
  *   合わなくならないように）。
@@ -144,11 +145,35 @@ INPUT_CALLBACK_DEFINE(SPLIT_RELEASE_INPUT_DEV, split_release_callback);
 /* 右とつながった回数（Bluetooth のスレッドで数える） */
 static atomic_t connect_count;
 
-/* 合図を列の末尾に並べる（Bluetooth のスレッド）。列が満杯のときは待つ（合図を落とすと、どの接続の入力か
- * 分からなくなるため。満杯でも入力スレッドが順に取り出すので、すぐに空く） */
+struct signal {
+    uint16_t code;
+    uint32_t connection;
+};
+
+/* 合図の待ち行列（Bluetooth のスレッドで並べ、システムワークキューで入力イベントの列へ移す） */
+K_MSGQ_DEFINE(signal_queue, sizeof(struct signal), 8, 4);
+
+static void signal_work_handler(struct k_work *work) {
+    struct signal sig;
+    while (k_msgq_get(&signal_queue, &sig, K_NO_WAIT) == 0) {
+        // 列が満杯のときは待つ（合図を落とすと、どの接続の入力か分からなくなるため。入力スレッドは
+        // この列の空きを待つことがないので、順に取り出されてすぐに空く）
+        input_report(SPLIT_RELEASE_INPUT_DEV, INPUT_EV_MSC, sig.code,
+                     (int32_t)(sig.connection & INT32_MAX), true, K_FOREVER);
+    }
+}
+
+static K_WORK_DEFINE(signal_work, signal_work_handler);
+
+/* 合図を並べる（Bluetooth のスレッド）。システムワークキューで、それより前に届いた右の入力の後ろに並ぶ */
 static void queue_signal(uint16_t code, uint32_t connection) {
-    input_report(SPLIT_RELEASE_INPUT_DEV, INPUT_EV_MSC, code, (int32_t)(connection & INT32_MAX), true,
-                 K_FOREVER);
+    const struct signal sig = {.code = code, .connection = connection};
+    if (k_msgq_put(&signal_queue, &sig, K_NO_WAIT) != 0) {
+        // つながる・切れるが 8 回続けて処理されないことはない（念のため記録を残す）
+        LOG_ERR("Split release signal queue full, dropped signal %d", code);
+        return;
+    }
+    k_work_submit(&signal_work);
 }
 
 static bool is_split_link(struct bt_conn *conn) {
