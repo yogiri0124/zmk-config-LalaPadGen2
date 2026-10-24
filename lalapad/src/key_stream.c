@@ -19,6 +19,7 @@
  *               通し番号は1件ごとに1つ進む。飛んでいたら、その分を取りこぼしている
  *   0x02 状態:  [2] 右がつながっている（1/0） [3] 送っている種類（開始で指定したもの）
  *               [4] キーの位置の数（この番号より前がキー） [5] 位置の数の合計 [6..7] 次の通し番号（u16 LE）
+ *               「開始」したとき、問い合わせに答えるとき、右とのつながりが変わったときに送る
  *   0x03 押されているキーの一覧:  [2..3] 通し番号（u16 LE。この番号より前のキーまでを反映した一覧）
  *               [4] 位置の数の合計  [5..] 押されている位置のビット（位置 p は [5 + p/8] の bit (p%8)。
  *               送っている種類の位置だけ。ほかは 0）
@@ -118,7 +119,8 @@ BUILD_ASSERT(5 + 6 * KEYS_PER_REPORT <= KEY_STREAM_REPORT_SIZE, "keys report too
 BUILD_ASSERT(ZMK_KEYMAP_LEN <= 255, "positions must fit in one byte");
 BUILD_ASSERT(5 + (ZMK_KEYMAP_LEN + 7) / 8 <= KEY_STREAM_REPORT_SIZE, "pressed list report too large");
 
-/* ---- 状態（lock で守る。キーの出来事はいろいろなスレッドから届くため） ---- */
+/* ---- 状態（lock で守る。キーの出来事・PC からの命令・送り終わりの知らせ・右とのつながりの変化は、
+ *      それぞれ別のスレッドから届くため） ---- */
 
 struct key_event {
     uint16_t seq;
@@ -190,8 +192,7 @@ static K_WORK_DELAYABLE_DEFINE(timeout_work, timeout_work_handler);
 static void kick_send(k_timeout_t delay) { k_work_reschedule_for_queue(&key_stream_q, &send_work, delay); }
 
 static bool position_wanted(uint8_t mask, uint32_t position) {
-    const uint8_t kind =
-        position < TRACKPAD_FIRST ? STREAM_KEYS : STREAM_TRACKPAD;
+    const uint8_t kind = position < TRACKPAD_FIRST ? STREAM_KEYS : STREAM_TRACKPAD;
     return (mask & kind) != 0;
 }
 
@@ -458,8 +459,7 @@ static void start(enum key_stream_transport transport, struct bt_conn *conn, uin
     }
 #endif
     release_conn(conn); // 生存確認だけのとき: 命令の参照は要らない
-    k_work_reschedule_for_queue(&key_stream_q, &timeout_work,
-                                K_MSEC(KEEPALIVE_TIMEOUT_MS));
+    k_work_reschedule_for_queue(&key_stream_q, &timeout_work, K_MSEC(KEEPALIVE_TIMEOUT_MS));
     if (fresh) {
         kick_send(K_NO_WAIT);
     }
@@ -490,13 +490,16 @@ static void command_work_handler(struct k_work *work) {
         }
         case CMD_STATUS: {
             k_spinlock_key_t key = k_spin_lock(&lock);
-            if (streaming && stream_transport == cmd.transport && stream_conn == cmd.conn) {
+            const bool same = streaming && stream_transport == cmd.transport && stream_conn == cmd.conn;
+            if (same) {
                 status_requested++;
                 pressed_list_requested++;
             }
             k_spin_unlock(&lock, key);
             release_conn(cmd.conn);
-            kick_send(K_NO_WAIT);
+            if (same) {
+                kick_send(K_NO_WAIT);
+            }
             break;
         }
         default:
@@ -509,8 +512,7 @@ static void command_work_handler(struct k_work *work) {
 static void timeout_work_handler(struct k_work *work) {
     k_spinlock_key_t key = k_spin_lock(&lock);
     const bool active = streaming;
-    const int64_t remaining =
-        last_keepalive + KEEPALIVE_TIMEOUT_MS - k_uptime_get();
+    const int64_t remaining = last_keepalive + KEEPALIVE_TIMEOUT_MS - k_uptime_get();
     k_spin_unlock(&lock, key);
     if (!active) {
         return;
