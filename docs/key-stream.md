@@ -25,7 +25,6 @@
 | レポート | 入力・出力とも **32 バイト**、レポート ID なし（WebHID では `reportId` 0） |
 
 VID/PID はほかの ZMK キーボードと同じなので、usage page と製品名も合わせて見分けてください。
-usage page と usage は `config/lalapadgen2_left.conf` の `CONFIG_ZMK_KEY_STREAM_USAGE_PAGE`・`CONFIG_ZMK_KEY_STREAM_USAGE` で変えられます。
 
 ## レポートの形
 
