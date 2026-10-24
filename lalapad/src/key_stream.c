@@ -19,6 +19,7 @@
  *               通し番号は1件ごとに1つ進む。飛んでいたら、その分を取りこぼしている
  *   0x02 状態:  [2] 右がつながっている（1/0） [3] 送っている種類（開始で指定したもの）
  *               [4] キーの位置の数（この番号より前がキー） [5] 位置の数の合計 [6..7] 次の通し番号（u16 LE）
+ *               「開始」したとき、問い合わせに答えるとき、右とのつながりが変わったときに送る
  *   0x03 押されているキーの一覧:  [2..3] 通し番号（u16 LE。この番号より前のキーまでを反映した一覧）
  *               [4] 位置の数の合計  [5..] 押されている位置のビット（位置 p は [5 + p/8] の bit (p%8)。
  *               送っている種類の位置だけ。ほかは 0）
@@ -39,6 +40,7 @@
 #include <string.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/atomic.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/usb/class/hid.h>
 
@@ -47,11 +49,10 @@
 #include <zmk/hid.h>
 #include <zmk/matrix.h>
 
-#if IS_ENABLED(CONFIG_LALAPAD_SPLIT_LINK)
-#include "split_link.h"
-#endif
+/* 右（子機）とのつながりを見るか（Bluetooth で分割している親機） */
+#define WATCH_SPLIT_LINK (IS_ENABLED(CONFIG_ZMK_SPLIT_BLE) && IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL))
 
-#if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_BLE)
+#if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_BLE) || WATCH_SPLIT_LINK
 #include <zephyr/bluetooth/conn.h>
 #endif
 
@@ -59,7 +60,15 @@
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
+/* PC のアプリとの取り決め（docs/key-stream.md） */
 #define KEY_STREAM_PROTOCOL_VERSION 1
+#define USAGE_PAGE 0xFF4C /* ベンダー定義 */
+#define USAGE 0x01
+/* この番号以降の位置は、トラックパッドのタップ・ジェスチャー（lalapadgen2.dtsi の POS_TP_*）。
+ * アプリが「開始」で指定したときだけ送る */
+#define TRACKPAD_FIRST 52
+/* 「開始」（生存確認。アプリは2秒ごとに送る）がこの時間届かなければ、送るのをやめる */
+#define KEEPALIVE_TIMEOUT_MS 6000
 
 #define MSG_KEYS 0x01
 #define MSG_STATUS 0x02
@@ -81,14 +90,17 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define EVENT_QUEUE_SIZE 64
 /* 送り道が「今は送れない」と言ったときに、もう一度試すまでの時間 */
 #define RETRY_MS 5
+/* 送る処理と命令の処理をする専用のワークキュー（スレッド） */
+#define THREAD_STACK_SIZE 1536
+#define THREAD_PRIORITY 6
 
 /* ---- レポートの記述（ベンダー定義。入力・出力とも 32 バイト、レポート ID なし） ---- */
 
 const uint8_t key_stream_report_desc[] = {
     HID_ITEM(HID_ITEM_TAG_USAGE_PAGE, HID_ITEM_TYPE_GLOBAL, 2),
-    CONFIG_ZMK_KEY_STREAM_USAGE_PAGE & 0xFF,
-    (CONFIG_ZMK_KEY_STREAM_USAGE_PAGE >> 8) & 0xFF,
-    HID_USAGE(CONFIG_ZMK_KEY_STREAM_USAGE),
+    USAGE_PAGE & 0xFF,
+    (USAGE_PAGE >> 8) & 0xFF,
+    HID_USAGE(USAGE),
     HID_COLLECTION(HID_COLLECTION_APPLICATION),
     HID_LOGICAL_MIN8(0x00),
     HID_LOGICAL_MAX16(0xFF, 0x00),
@@ -103,15 +115,12 @@ const uint8_t key_stream_report_desc[] = {
 
 const size_t key_stream_report_desc_size = sizeof(key_stream_report_desc);
 
-BUILD_ASSERT(CONFIG_ZMK_KEY_STREAM_USAGE_PAGE >= 0xFF00 && CONFIG_ZMK_KEY_STREAM_USAGE_PAGE <= 0xFFFF,
-             "usage page must be vendor defined (0xFF00-0xFFFF)");
-BUILD_ASSERT(CONFIG_ZMK_KEY_STREAM_USAGE >= 0x01 && CONFIG_ZMK_KEY_STREAM_USAGE <= 0x7F,
-             "usage must fit in one byte item");
 BUILD_ASSERT(5 + 6 * KEYS_PER_REPORT <= KEY_STREAM_REPORT_SIZE, "keys report too large");
 BUILD_ASSERT(ZMK_KEYMAP_LEN <= 255, "positions must fit in one byte");
 BUILD_ASSERT(5 + (ZMK_KEYMAP_LEN + 7) / 8 <= KEY_STREAM_REPORT_SIZE, "pressed list report too large");
 
-/* ---- 状態（lock で守る。キーの出来事はいろいろなスレッドから届くため） ---- */
+/* ---- 状態（lock で守る。キーの出来事・PC からの命令・送り終わりの知らせ・右とのつながりの変化は、
+ *      それぞれ別のスレッドから届くため） ---- */
 
 struct key_event {
     uint16_t seq;
@@ -154,6 +163,9 @@ static struct bt_conn *in_flight_conn;
 /* いま押されている位置（開始したときや、押されているキーの一覧で知らせるため） */
 static bool pressed[ZMK_KEYMAP_LEN];
 
+/* 右（子機）との接続の数（Bluetooth のスレッドで数える。分割していなければ 0 のまま） */
+static atomic_t split_links;
+
 /* ---- 命令（PC から届いたもの。写して、専用のワークキューで処理する） ---- */
 
 struct command {
@@ -167,7 +179,7 @@ K_MSGQ_DEFINE(command_queue, sizeof(struct command), 4, 4);
 
 /* ---- 専用のワークキュー ---- */
 
-K_THREAD_STACK_DEFINE(key_stream_stack, CONFIG_ZMK_KEY_STREAM_THREAD_STACK_SIZE);
+K_THREAD_STACK_DEFINE(key_stream_stack, THREAD_STACK_SIZE);
 static struct k_work_q key_stream_q;
 
 static void send_work_handler(struct k_work *work);
@@ -180,8 +192,7 @@ static K_WORK_DELAYABLE_DEFINE(timeout_work, timeout_work_handler);
 static void kick_send(k_timeout_t delay) { k_work_reschedule_for_queue(&key_stream_q, &send_work, delay); }
 
 static bool position_wanted(uint8_t mask, uint32_t position) {
-    const uint8_t kind =
-        position < CONFIG_ZMK_KEY_STREAM_TRACKPAD_FIRST ? STREAM_KEYS : STREAM_TRACKPAD;
+    const uint8_t kind = position < TRACKPAD_FIRST ? STREAM_KEYS : STREAM_TRACKPAD;
     return (mask & kind) != 0;
 }
 
@@ -253,11 +264,9 @@ static void stop(void) {
 
 static void build_status(uint8_t *report) {
     report[1] = MSG_STATUS;
-#if IS_ENABLED(CONFIG_LALAPAD_SPLIT_LINK)
-    report[2] = lalapad_split_link_connected() ? 1 : 0;
-#endif
+    report[2] = atomic_get(&split_links) > 0 ? 1 : 0;
     report[3] = stream_mask;
-    report[4] = MIN(CONFIG_ZMK_KEY_STREAM_TRACKPAD_FIRST, ZMK_KEYMAP_LEN);
+    report[4] = MIN(TRACKPAD_FIRST, ZMK_KEYMAP_LEN);
     report[5] = ZMK_KEYMAP_LEN;
     // 次に届くキーの通し番号（送り待ちがあれば、その先頭。状態は送り待ちのキーより先に送るため）
     sys_put_le16(events_count > 0 ? events[events_head].seq : next_seq, &report[6]);
@@ -450,8 +459,7 @@ static void start(enum key_stream_transport transport, struct bt_conn *conn, uin
     }
 #endif
     release_conn(conn); // 生存確認だけのとき: 命令の参照は要らない
-    k_work_reschedule_for_queue(&key_stream_q, &timeout_work,
-                                K_MSEC(CONFIG_ZMK_KEY_STREAM_KEEPALIVE_TIMEOUT_MS));
+    k_work_reschedule_for_queue(&key_stream_q, &timeout_work, K_MSEC(KEEPALIVE_TIMEOUT_MS));
     if (fresh) {
         kick_send(K_NO_WAIT);
     }
@@ -482,13 +490,16 @@ static void command_work_handler(struct k_work *work) {
         }
         case CMD_STATUS: {
             k_spinlock_key_t key = k_spin_lock(&lock);
-            if (streaming && stream_transport == cmd.transport && stream_conn == cmd.conn) {
+            const bool same = streaming && stream_transport == cmd.transport && stream_conn == cmd.conn;
+            if (same) {
                 status_requested++;
                 pressed_list_requested++;
             }
             k_spin_unlock(&lock, key);
             release_conn(cmd.conn);
-            kick_send(K_NO_WAIT);
+            if (same) {
+                kick_send(K_NO_WAIT);
+            }
             break;
         }
         default:
@@ -501,8 +512,7 @@ static void command_work_handler(struct k_work *work) {
 static void timeout_work_handler(struct k_work *work) {
     k_spinlock_key_t key = k_spin_lock(&lock);
     const bool active = streaming;
-    const int64_t remaining =
-        last_keepalive + CONFIG_ZMK_KEY_STREAM_KEEPALIVE_TIMEOUT_MS - k_uptime_get();
+    const int64_t remaining = last_keepalive + KEEPALIVE_TIMEOUT_MS - k_uptime_get();
     k_spin_unlock(&lock, key);
     if (!active) {
         return;
@@ -555,56 +565,78 @@ void key_stream_transport_lost(enum key_stream_transport transport, struct bt_co
     }
 }
 
-/* ---- キーの出来事・右のつながり（見るだけで、止めない） ---- */
+/* ---- キーの出来事（見るだけで、止めない） ---- */
 
 static int key_stream_listener(const zmk_event_t *eh) {
     const struct zmk_position_state_changed *pos = as_zmk_position_state_changed(eh);
-    if (pos != NULL) {
-        if (pos->position >= ZMK_KEYMAP_LEN) {
-            return ZMK_EV_EVENT_BUBBLE;
-        }
-        k_spinlock_key_t key = k_spin_lock(&lock);
-        pressed[pos->position] = pos->state;
-        const bool queued = streaming && position_wanted(stream_mask, pos->position);
-        if (queued) {
-            push_event((uint8_t)pos->position, pos->state ? FLAG_PRESSED : 0,
-                       (uint32_t)pos->timestamp);
-        }
-        k_spin_unlock(&lock, key);
-        if (queued) {
-            kick_send(K_NO_WAIT);
-        }
+    if (pos == NULL || pos->position >= ZMK_KEYMAP_LEN) {
         return ZMK_EV_EVENT_BUBBLE;
     }
-
-#if IS_ENABLED(CONFIG_LALAPAD_SPLIT_LINK)
-    // 右とのつながりが変わった: 状態を送り直す（値は送るときに調べる）
-    if (as_zmk_lalapad_split_link_changed(eh) != NULL) {
-        k_spinlock_key_t key = k_spin_lock(&lock);
-        const bool send = streaming;
-        if (send) {
-            status_requested++;
-        }
-        k_spin_unlock(&lock, key);
-        if (send) {
-            kick_send(K_NO_WAIT);
-        }
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    pressed[pos->position] = pos->state;
+    const bool queued = streaming && position_wanted(stream_mask, pos->position);
+    if (queued) {
+        push_event((uint8_t)pos->position, pos->state ? FLAG_PRESSED : 0, (uint32_t)pos->timestamp);
     }
-#endif
-
+    k_spin_unlock(&lock, key);
+    if (queued) {
+        kick_send(K_NO_WAIT);
+    }
     return ZMK_EV_EVENT_BUBBLE;
 }
 
 ZMK_LISTENER(key_stream, key_stream_listener);
 ZMK_SUBSCRIPTION(key_stream, zmk_position_state_changed);
-#if IS_ENABLED(CONFIG_LALAPAD_SPLIT_LINK)
-ZMK_SUBSCRIPTION(key_stream, zmk_lalapad_split_link_changed);
+
+/* ---- 右（子機）とのつながり ----
+ * 親機は、右とは自分が central 側（接続を始める側）、PC とは peripheral 側でつなぐので、接続の役割で
+ * 右との接続を見分けて数える。ZMK v0.3.0 の親機は、右とのつながりの変化を出来事として出さない
+ * （zmk_split_peripheral_status_changed は子機の側でだけ出る）ため、自分で見る */
+
+#if WATCH_SPLIT_LINK
+static bool is_split_link(struct bt_conn *conn) {
+    struct bt_conn_info info;
+    return bt_conn_get_info(conn, &info) == 0 && info.role == BT_CONN_ROLE_CENTRAL;
+}
+
+/* つながりが変わった: 送っている間なら状態を送り直す（値は送るときに調べる）。Bluetooth のスレッドから呼ばれる */
+static void split_link_changed(void) {
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    const bool send = streaming;
+    if (send) {
+        status_requested++;
+    }
+    k_spin_unlock(&lock, key);
+    if (send) {
+        kick_send(K_NO_WAIT);
+    }
+}
+
+static void split_connected(struct bt_conn *conn, uint8_t err) {
+    if (err == 0 && is_split_link(conn)) {
+        atomic_inc(&split_links);
+        split_link_changed();
+    }
+}
+
+static void split_disconnected(struct bt_conn *conn, uint8_t reason) {
+    ARG_UNUSED(reason);
+    if (is_split_link(conn)) {
+        atomic_dec(&split_links);
+        split_link_changed();
+    }
+}
+
+BT_CONN_CB_DEFINE(key_stream_split_callbacks) = {
+    .connected = split_connected,
+    .disconnected = split_disconnected,
+};
 #endif
 
 static int key_stream_init(void) {
     static const struct k_work_queue_config config = {.name = "key_stream"};
     k_work_queue_start(&key_stream_q, key_stream_stack, K_THREAD_STACK_SIZEOF(key_stream_stack),
-                       CONFIG_ZMK_KEY_STREAM_THREAD_PRIORITY, &config);
+                       THREAD_PRIORITY, &config);
     return 0;
 }
 

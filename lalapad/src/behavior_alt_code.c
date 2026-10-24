@@ -172,60 +172,29 @@ static bool assumed_off;
 static struct zmk_endpoint_instance assumed_endpoint;
 static int64_t assume_until;
 
+/* 押されて送信を待っている分（押した順。目印も押した順に並べるので、目印が処理されるのも押した順） */
 struct pending_press {
     const struct behavior_alt_code_config *cfg;
     struct zmk_endpoint_instance endpoint; /* 押したときの接続先 */
-    uint32_t id;             /* 目印の番号 */
-    bool ready;              /* 目印が処理された（それより前の送信が終わった） */
-    uint32_t mark;           /* 目印が処理されたときまでに預かった入力の数（これより前の分を先に通す） */
+    bool ready;    /* 目印が処理された（それより前の送信が終わった） */
+    uint32_t mark; /* 目印が処理されたときまでに預かった入力の数（これより前の分を先に通す） */
 };
 
 static struct pending_press pending[MAX_PENDING];
 static size_t pending_count;
-static uint32_t next_pending_id;
 
 static void alt_code_work_handler(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(alt_code_work, alt_code_work_handler);
 
-/* key_count の表で、そのキーの欄を探す。なければ NULL */
-static struct key_count *find_key(struct key_count *table, size_t len,
-                                  const struct zmk_keycode_state_changed *ev) {
-    for (size_t i = 0; i < len; i++) {
-        if (table[i].count > 0 && table[i].usage_page == ev->usage_page &&
-            table[i].keycode == ev->keycode) {
-            return &table[i];
+/* PC 側で押されているキーの欄を探す。なければ NULL。ロックを取った状態で呼ぶ */
+static struct key_count *find_held(const struct zmk_keycode_state_changed *ev) {
+    for (size_t i = 0; i < ARRAY_SIZE(held); i++) {
+        if (held[i].count > 0 && held[i].usage_page == ev->usage_page &&
+            held[i].keycode == ev->keycode) {
+            return &held[i];
         }
     }
     return NULL;
-}
-
-/* key_count の表で、そのキーの数を1増やす。表が満杯なら false */
-static bool add_key(struct key_count *table, size_t len, const struct zmk_keycode_state_changed *ev) {
-    struct key_count *k = find_key(table, len, ev);
-    if (k == NULL) {
-        for (size_t i = 0; i < len; i++) {
-            if (table[i].count == 0) {
-                k = &table[i];
-                k->usage_page = ev->usage_page;
-                k->keycode = ev->keycode;
-                break;
-            }
-        }
-    }
-    if (k == NULL || k->count == UINT8_MAX) {
-        return false;
-    }
-    k->count++;
-    return true;
-}
-
-/* key_count の表で、そのキーの数を1減らす（そのキーがなければ何もしない） */
-static void remove_key(struct key_count *table, size_t len,
-                       const struct zmk_keycode_state_changed *ev) {
-    struct key_count *k = find_key(table, len, ev);
-    if (k != NULL) {
-        k->count--;
-    }
 }
 
 /* 待ち行列に（通している最中の先頭も含めて）同じキーのイベントがあるか。ロックを取った状態で呼ぶ */
@@ -242,13 +211,25 @@ static bool same_key_queued(const struct zmk_keycode_state_changed *ev) {
 
 /* PC 側へ通した入力で、押されているキーの数を合わせる。ロックを取った状態で呼ぶ */
 static void track_held(const struct zmk_keycode_state_changed *ev) {
-    if (ev->state) {
-        if (!add_key(held, MAX_HELD, ev)) {
-            LOG_WRN("Too many held keys to track (0x%02X)", ev->keycode);
+    struct key_count *k = find_held(ev);
+    if (!ev->state) {
+        if (k != NULL) {
+            k->count--;
         }
-    } else {
-        remove_key(held, MAX_HELD, ev);
+        return;
     }
+    for (size_t i = 0; i < ARRAY_SIZE(held) && k == NULL; i++) {
+        if (held[i].count == 0) {
+            k = &held[i];
+            k->usage_page = ev->usage_page;
+            k->keycode = ev->keycode;
+        }
+    }
+    if (k == NULL || k->count == UINT8_MAX) {
+        LOG_WRN("Too many held keys to track (0x%02X)", ev->keycode);
+        return;
+    }
+    k->count++;
 }
 
 /* 自分の送るキー入力。預からずに PC へ通すよう印を付けて送る（押して離すので held には数えない） */
@@ -416,10 +397,11 @@ static void start_next(void) {
     release_captured(true, 0);
 }
 
-/* 目印が処理された（それより前に並んだ送信がすべて終わった）: その分の送信を始められる */
-static void alt_code_on_marker(uint32_t id) {
+/* 目印が処理された（それより前に並んだ送信がすべて終わった）: まだ目印が処理されていない最初の分
+ * （目印は押した順に処理されるので、この目印のもの）の送信を始められる */
+static void alt_code_on_marker(void) {
     for (size_t i = 0; i < pending_count; i++) {
-        if (pending[i].id == id && !pending[i].ready) {
+        if (!pending[i].ready) {
             k_spinlock_key_t key = k_spin_lock(&capture_lock);
             pending[i].mark = captured_pushed;
             k_spin_unlock(&capture_lock, key);
@@ -491,7 +473,7 @@ static int alt_code_keycode_listener(const zmk_event_t *eh) {
     k_spinlock_key_t key = k_spin_lock(&capture_lock);
     if (!capturing) {
         track_held(ev);
-    } else if (!ev->state && find_key(held, MAX_HELD, ev) != NULL && !same_key_queued(ev)) {
+    } else if (!ev->state && find_held(ev) != NULL && !same_key_queued(ev)) {
         // PC 側で押されているキーの「離す」で、同じキーのイベントが待ち行列にないもの: そのまま通す
         // （送信を始める前から押していたキーが、Alt と重なって押しっぱなしにならないように）。
         // 同じキーのイベントが待っていれば、それを追い越さないよう後ろに並べる（下）
@@ -524,24 +506,22 @@ static int on_alt_code_binding_pressed(struct zmk_behavior_binding *binding,
         LOG_WRN("Too many pending alt code presses, ignoring");
         return ZMK_BEHAVIOR_OPAQUE;
     }
-    const uint32_t id = next_pending_id++ & 0x7FFFFFFF;
     pending[pending_count++] = (struct pending_press){
         .cfg = cfg,
         .endpoint = zmk_endpoints_selected(),
-        .id = id,
     };
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_KANA)
     // behavior queue の末尾に目印を並べる。それより前の送信（かななど）が終わったら alt_code_on_marker が
     // 呼ばれる（キューが空なら、この中ですぐ呼ばれる）。並べられなければ、この押下は取り消す
     // （並べられないのは満杯か「離す」の再試行中で、すぐには処理されないので、この分は待ち行列の末尾に残っている）
     kana_output_set_marker_handler(alt_code_on_marker);
-    if (kana_output_add_marker(&event, id) < 0) {
+    if (kana_output_add_marker(&event) < 0) {
         pending_count--;
         LOG_WRN("Behavior queue busy/full, dropped alt code press");
     }
 #else
     // かな入力のモジュールがない: 待つ送信もないので、すぐに送り始めてよい
-    alt_code_on_marker(id);
+    alt_code_on_marker();
 #endif
     return ZMK_BEHAVIOR_OPAQUE;
 }

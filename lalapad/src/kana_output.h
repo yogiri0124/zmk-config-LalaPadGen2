@@ -63,16 +63,16 @@ void kana_mode_off(const struct zmk_behavior_binding_event *event,
                    const zmk_keymap_layer_id_t *sub_layers, size_t sub_layers_len, uint32_t tap_ms,
                    uint32_t wait_ms);
 
-/* 目印が処理されたときに呼ばれる関数（id は kana_output_add_marker に渡した番号） */
-typedef void (*kana_output_marker_cb_t)(uint32_t id);
+/* 目印が処理されたときに呼ばれる関数（目印は並べた順に処理される） */
+typedef void (*kana_output_marker_cb_t)(void);
 
 /* 目印が処理されたときに呼ぶ関数を登録する（1つだけ。Alt コードが使う） */
 void kana_output_set_marker_handler(kana_output_marker_cb_t cb);
 
 /* 送信キューの末尾に目印を並べる。それより前に並べた送信（かな・記号・マクロなど）がすべて実行されたとき、
- * 登録した関数が id（下位 31 ビット）を付けて呼ばれる。キューが空なら、この関数の中ですぐに呼ばれる。
+ * 登録した関数が呼ばれる。キューが空なら、この関数の中ですぐに呼ばれる。
  * 戻り値: 0 = 並べた / -EBUSY = 「離す」を再試行中なので並べていない / -ENOSPC = キューが満杯で並べていない */
-int kana_output_add_marker(const struct zmk_behavior_binding_event *event, uint32_t id);
+int kana_output_add_marker(const struct zmk_behavior_binding_event *event);
 
 /* 完了の合図 (&kana_sync) がキューで処理されたときに behavior_kana_sync.c から呼ばれる */
 void kana_output_on_sync(uint32_t token);

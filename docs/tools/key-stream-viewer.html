@@ -116,13 +116,13 @@ function mask() {
   return STREAM_KEYS | ($('trackpad').checked ? STREAM_TRACKPAD : 0);
 }
 
-// dev: 送る機器（省略すると今つないでいる機器）。送れたら true
+// dev: 送る機器（省略すると今つないでいる機器）
 async function send(type, arg = 0, dev = device) {
-  if (!dev) return false;
+  if (!dev) return;
   const data = new Uint8Array(REPORT_SIZE);
   data[0] = VERSION; data[1] = type; data[2] = arg;
-  try { await dev.sendReport(0, data); return true; }
-  catch (e) { log(`送れませんでした: ${e.message}`); return false; }
+  try { await dev.sendReport(0, data); }
+  catch (e) { log(`送れませんでした: ${e.message}`); }
 }
 
 // 届いた通し番号が、次に来るはずの番号から飛んでいれば、その分を取りこぼしとして数える

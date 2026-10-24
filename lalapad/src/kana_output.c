@@ -7,7 +7,7 @@
  *   合図がキューで実際に処理されたらレイヤー解除」の順で行う。時間の見積もりには頼らないので、
  *   処理が遅れても、解除前後の入力がローマ字のまま送られたり、残りのかなを追い越したりしない。
  * - 同じ合図の仕組みを、ほかのモジュール（Alt コード）にも「それより前に並べた送信がすべて終わったら
- *   知らせる」目印として貸す（kana_output_add_marker）。合図の番号の最上位ビットが立っていれば目印。
+ *   知らせる」目印として貸す（kana_output_add_marker）。合図の番号で、どちらの合図かを見分ける。
  *
  * behavior のコールバックと k_work はどちらもシステムワークキューで動くので、状態の排他は不要。
  */
@@ -35,10 +35,10 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define KP_BEHAVIOR_NAME DEVICE_DT_NAME(DT_NODELABEL(kp))
 #define SYNC_BEHAVIOR_NAME DEVICE_DT_NAME(DT_NODELABEL(kana_sync))
 #define RETRY_INTERVAL_MS 10
-/* 合図の番号のうち、目印（kana_output_add_marker）に使うもの。立っていない合図は、かなモードの解除の合図
- * （解除中は解除も入り直しも受け付けないので、解除の合図は同時に1つしかない。番号で見分ける必要はない） */
-#define SYNC_MARKER_BIT BIT(31)
+/* 合図の番号（&kana_sync の引数）。かなモードの解除の合図は同時に1つしかない（解除中は解除も入り直しも
+ * 受け付けない）。目印は並べた順に処理されるので、どの目印かは呼ぶ側が順番で分かる */
 #define SYNC_KANA_OFF 0
+#define SYNC_MARKER 1
 
 /* ---- 送信キュー ---- */
 
@@ -224,14 +224,14 @@ static kana_output_marker_cb_t marker_cb;
 
 void kana_output_set_marker_handler(kana_output_marker_cb_t cb) { marker_cb = cb; }
 
-int kana_output_add_marker(const struct zmk_behavior_binding_event *event, uint32_t id) {
+int kana_output_add_marker(const struct zmk_behavior_binding_event *event) {
     // 「離す」の再試行を待っている送信があれば、それより先に目印が処理されないよう登録しない
     if (release_pending()) {
         return -EBUSY;
     }
     struct zmk_behavior_binding sync = {
         .behavior_dev = SYNC_BEHAVIOR_NAME,
-        .param1 = SYNC_MARKER_BIT | (id & ~SYNC_MARKER_BIT),
+        .param1 = SYNC_MARKER,
     };
     // キューが空なら、この中で目印がすぐ処理されて marker_cb が呼ばれる
     if (zmk_behavior_queue_add(event, sync, true, 0) < 0) {
@@ -241,13 +241,13 @@ int kana_output_add_marker(const struct zmk_behavior_binding_event *event, uint3
 }
 
 void kana_output_on_sync(uint32_t token) {
-    if (token & SYNC_MARKER_BIT) {
+    if (token == SYNC_MARKER) {
         if (marker_cb != NULL) {
-            marker_cb(token & ~SYNC_MARKER_BIT);
+            marker_cb();
         }
         return;
     }
-    if (off_stage != KANA_OFF_WAIT_SYNC) {
+    if (token != SYNC_KANA_OFF || off_stage != KANA_OFF_WAIT_SYNC) {
         return;
     }
 
