@@ -255,9 +255,7 @@ void kana_output_on_sync(uint32_t token) {
     // 親指シフト面などを押したまま抜けた場合に備えて、それらも解除する
     // （後で親指を離したときの &mo の解除は、すでに解除済みなので何も起きない）
     for (size_t i = 0; i < off_sub_layers_len; i++) {
-        if (zmk_keymap_layer_active(off_sub_layers[i])) {
-            zmk_keymap_layer_deactivate(off_sub_layers[i]);
-        }
+        zmk_keymap_layer_deactivate(off_sub_layers[i]); // 有効でなければ何も起きない
     }
     zmk_keymap_layer_deactivate(kana_layer);
     kana_active = false;
