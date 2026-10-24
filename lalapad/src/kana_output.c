@@ -49,7 +49,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define PENDING_RELEASE_MAX (ZMK_KEYMAP_LEN + 2)
 
 struct pending_release {
-    struct zmk_behavior_binding binding;
+    uint32_t keycode;
     struct zmk_behavior_binding_event event;
     uint32_t wait;
 };
@@ -62,16 +62,23 @@ static K_WORK_DELAYABLE_DEFINE(retry_release_work, retry_release_work_handler);
 
 static bool release_pending(void) { return pending_count > 0; }
 
-static void add_pending_release(const struct zmk_behavior_binding_event *event,
-                                struct zmk_behavior_binding binding, uint32_t wait) {
+static struct zmk_behavior_binding kp_binding(uint32_t keycode) {
+    return (struct zmk_behavior_binding){
+        .behavior_dev = KP_BEHAVIOR_NAME,
+        .param1 = keycode,
+    };
+}
+
+static void add_pending_release(const struct zmk_behavior_binding_event *event, uint32_t keycode,
+                                uint32_t wait) {
     if (pending_count >= PENDING_RELEASE_MAX) {
         // 上の数え方では起きない（配列の範囲を守るための確認）。押しっぱなしにはせず、その場で離す
-        LOG_ERR("Too many pending releases, releasing 0x%08X immediately", binding.param1);
-        raise_zmk_keycode_state_changed_from_encoded(binding.param1, false, k_uptime_get());
+        LOG_ERR("Too many pending releases, releasing 0x%08X immediately", keycode);
+        raise_zmk_keycode_state_changed_from_encoded(keycode, false, k_uptime_get());
         return;
     }
     pending_releases[pending_count++] = (struct pending_release){
-        .binding = binding,
+        .keycode = keycode,
         .event = *event,
         .wait = wait,
     };
@@ -82,7 +89,7 @@ static void retry_release_work_handler(struct k_work *work) {
     // 先に失敗したものから順に登録する
     while (pending_count > 0) {
         struct pending_release *p = &pending_releases[0];
-        if (zmk_behavior_queue_add(&p->event, p->binding, false, p->wait) < 0) {
+        if (zmk_behavior_queue_add(&p->event, kp_binding(p->keycode), false, p->wait) < 0) {
             k_work_schedule(&retry_release_work, K_MSEC(RETRY_INTERVAL_MS));
             return;
         }
@@ -90,13 +97,6 @@ static void retry_release_work_handler(struct k_work *work) {
         memmove(&pending_releases[0], &pending_releases[1],
                 pending_count * sizeof(pending_releases[0]));
     }
-}
-
-static struct zmk_behavior_binding kp_binding(uint32_t keycode) {
-    return (struct zmk_behavior_binding){
-        .behavior_dev = KP_BEHAVIOR_NAME,
-        .param1 = keycode,
-    };
 }
 
 int kana_output_tap(const struct zmk_behavior_binding_event *event, uint32_t keycode,
@@ -112,7 +112,7 @@ int kana_output_tap(const struct zmk_behavior_binding_event *event, uint32_t key
     }
 
     if (zmk_behavior_queue_add(event, kp, false, wait_ms) < 0) {
-        add_pending_release(event, kp, wait_ms);
+        add_pending_release(event, keycode, wait_ms);
         return -EAGAIN;
     }
 
@@ -136,7 +136,7 @@ void kana_output_release(const struct zmk_behavior_binding_event *event, uint32_
 
     // 先に待っている「離す」があれば、順番を守るためその後ろに並べる
     if (release_pending() || zmk_behavior_queue_add(event, kp, false, wait_ms) < 0) {
-        add_pending_release(event, kp, wait_ms);
+        add_pending_release(event, keycode, wait_ms);
     }
 }
 

@@ -90,7 +90,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 /* 1つの値の最大桁数（uint32_t の10進数） */
 #define MAX_DIGITS 10
 /* 1回の送信で送る操作（押す／離す）の上限。設定がこれに収まるかはビルド時に確かめる */
-#define MAX_STEPS 128
+#define MAX_STEPS 64
 /* 1つの値で送る操作の最大数（Alt の押す・離すと、最大 MAX_DIGITS 桁のタップ） */
 #define MAX_STEPS_PER_CODE (2 + 2 * MAX_DIGITS)
 /* IME オフ・オンと Num Lock の前後のタップで送る操作の最大数 */
@@ -149,8 +149,7 @@ static uint32_t captured_pushed;
 /* PC 側で押されているキーの数（この listener を通した入力と、預かって通し終えた入力から数える） */
 static struct key_count held[MAX_HELD];
 
-/* 自分が送っているキー入力か（送っているスレッドで、送っている間だけ true） */
-static bool raising_own;
+/* 自分のキー入力を送っているスレッド（送っている間だけ。それ以外は NULL） */
 static k_tid_t raising_thread;
 
 /* ---- 送信の状態 ---- */
@@ -263,9 +262,8 @@ static void track_held(const struct zmk_keycode_state_changed *ev) {
 /* 自分の送るキー入力。預からずに PC へ通すよう印を付けて送る（押して離すので held には数えない） */
 static void raise_own(uint32_t keycode, bool pressed, int64_t timestamp) {
     raising_thread = k_current_get();
-    raising_own = true;
     raise_zmk_keycode_state_changed_from_encoded(keycode, pressed, timestamp);
-    raising_own = false;
+    raising_thread = NULL;
 }
 
 /* 送信を始める: ここからのほかのキー入力を預かる */
@@ -524,7 +522,7 @@ static int alt_code_keycode_listener(const zmk_event_t *eh) {
     if (ev == NULL) {
         return ZMK_EV_EVENT_BUBBLE;
     }
-    if (raising_own && raising_thread == k_current_get()) {
+    if (raising_thread == k_current_get()) {
         return ZMK_EV_EVENT_BUBBLE;
     }
 
