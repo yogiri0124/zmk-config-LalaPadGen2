@@ -89,8 +89,12 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 /* 1つの値の最大桁数（uint32_t の10進数） */
 #define MAX_DIGITS 10
-/* 1回の送信で送る操作（押す／離す）の上限 */
+/* 1回の送信で送る操作（押す／離す）の上限。設定がこれに収まるかはビルド時に確かめる */
 #define MAX_STEPS 128
+/* 1つの値で送る操作の最大数（Alt の押す・離すと、最大 MAX_DIGITS 桁のタップ） */
+#define MAX_STEPS_PER_CODE (2 + 2 * MAX_DIGITS)
+/* IME オフ・オンと Num Lock の前後のタップで送る操作の最大数 */
+#define MAX_STEPS_EXTRA 8
 /* 送信中に押された分を待たせておける数 */
 #define MAX_PENDING 4
 /* Num Lock を切り替えてから、PC の報告より自分の記録を優先する時間 */
@@ -339,32 +343,8 @@ static void add_tap(uint32_t keycode) {
     add_step(keycode, false);
 }
 
-static size_t count_digits(uint32_t code) {
-    size_t count = 1;
-    while (code >= 10) {
-        code /= 10;
-        count++;
-    }
-    return count;
-}
-
-/* 送る操作の一覧を作る。上限を超える設定なら何も作らずに false（途中まで送ることはしない） */
-static bool build_steps(const struct behavior_alt_code_config *cfg) {
-    // 途中で上限を超えたらその時点で打ち切る（大きな設定値でも計算があふれないように）
-    size_t needed = (num_lock_toggled ? 4 : 0) + (cfg->commit_ime ? 4 : 0);
-    bool too_long = cfg->cursor_left > MAX_STEPS / 2;
-    if (!too_long) {
-        needed += 2 * (size_t)cfg->cursor_left;
-    }
-    for (size_t i = 0; i < cfg->codes_len && !too_long; i++) {
-        needed += 2 + 2 * count_digits(cfg->codes[i]); // 1つあたり最大 22 なので、あふれない
-        too_long = needed > MAX_STEPS;
-    }
-    if (too_long || needed > MAX_STEPS) {
-        LOG_ERR("Alt code sequence too long (max %d steps)", MAX_STEPS);
-        return false;
-    }
-
+/* 送る操作の一覧を作る（MAX_STEPS に収まることはビルド時に確かめてある） */
+static void build_steps(const struct behavior_alt_code_config *cfg) {
     step_count = 0;
     if (cfg->commit_ime) {
         // 確定前の文字を確定させる（IME オフ）。IME の処理が済むのを少し待つ
@@ -399,7 +379,6 @@ static bool build_steps(const struct behavior_alt_code_config *cfg) {
         // 続きを日本語で打てるように IME オンに戻す
         add_tap(LANGUAGE_1);
     }
-    return true;
 }
 
 /* 待ち行列の先頭から次の送信を始める。先頭の目印がまだ処理されていなければ、処理されるまで待つ。
@@ -432,9 +411,7 @@ static void start_next(void) {
             continue;
         }
         num_lock_toggled = !current_num_lock(active_endpoint);
-        if (!build_steps(cfg)) {
-            continue;
-        }
+        build_steps(cfg);
         start_capturing();
         busy = true;
         active_cfg = cfg;
@@ -623,7 +600,11 @@ static const struct behavior_driver_api behavior_alt_code_driver_api = {
     ALT_CODE_CHECK_MS(n, tap_ms)                                                                   \
     ALT_CODE_CHECK_MS(n, wait_ms)                                                                  \
     ALT_CODE_CHECK_MS(n, ime_wait_ms)                                                              \
-    BUILD_ASSERT(DT_INST_PROP(n, cursor_left) >= 0, "alt code: cursor-left must not be negative"); \
+    BUILD_ASSERT(DT_INST_PROP(n, cursor_left) >= 0 &&                                              \
+                     DT_INST_PROP_LEN(n, codes) * MAX_STEPS_PER_CODE +                             \
+                             2 * DT_INST_PROP(n, cursor_left) + MAX_STEPS_EXTRA <=                 \
+                         MAX_STEPS,                                                                \
+                 "alt code: too many codes or cursor-left");                                       \
     static const uint32_t behavior_alt_code_codes_##n[] = DT_INST_PROP(n, codes);                  \
     static const struct behavior_alt_code_config behavior_alt_code_config_##n = {                 \
         .codes = behavior_alt_code_codes_##n,                                                      \

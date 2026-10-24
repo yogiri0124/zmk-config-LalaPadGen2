@@ -65,7 +65,7 @@ static bool release_pending(void) { return pending_count > 0; }
 static void add_pending_release(const struct zmk_behavior_binding_event *event,
                                 struct zmk_behavior_binding binding, uint32_t wait) {
     if (pending_count >= PENDING_RELEASE_MAX) {
-        // 上の数え方では起きない（念のため）。押しっぱなしを避けるため、順番より解放を優先してその場で離す
+        // 上の数え方では起きない（配列の範囲を守るための確認）。押しっぱなしにはせず、その場で離す
         LOG_ERR("Too many pending releases, releasing 0x%08X immediately", binding.param1);
         raise_zmk_keycode_state_changed_from_encoded(binding.param1, false, k_uptime_get());
         return;

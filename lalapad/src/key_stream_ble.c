@@ -9,7 +9,6 @@
  */
 
 #include <errno.h>
-#include <string.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
 #include <zephyr/bluetooth/gatt.h>
@@ -51,8 +50,6 @@ static const struct hids_info info = {
 static const struct hids_report input_ref = {.id = 0x00, .type = HIDS_INPUT};
 static const struct hids_report output_ref = {.id = 0x00, .type = HIDS_OUTPUT};
 
-static uint8_t ctrl_point;
-
 static ssize_t read_info(struct bt_conn *conn, const struct bt_gatt_attr *attr, void *buf,
                          uint16_t len, uint16_t offset) {
     return bt_gatt_attr_read(conn, attr, buf, len, offset, attr->user_data, sizeof(info));
@@ -86,12 +83,12 @@ static ssize_t write_output_report(struct bt_conn *conn, const struct bt_gatt_at
     return len;
 }
 
+/* Control Point（PC のサスペンドの知らせ）は受け取るだけで使わない（HID のサービスとして必要な属性） */
 static ssize_t write_ctrl_point(struct bt_conn *conn, const struct bt_gatt_attr *attr,
                                 const void *buf, uint16_t len, uint16_t offset, uint8_t flags) {
-    if (offset + len > sizeof(ctrl_point)) {
+    if (offset + len > 1) {
         return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
     }
-    memcpy(&ctrl_point + offset, buf, len);
     return len;
 }
 
@@ -116,7 +113,7 @@ BT_GATT_SERVICE_DEFINE(
     BT_GATT_DESCRIPTOR(BT_UUID_HIDS_REPORT_REF, BT_GATT_PERM_READ_ENCRYPT, read_report_ref, NULL,
                        (void *)&output_ref),
     BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_CTRL_POINT, BT_GATT_CHRC_WRITE_WITHOUT_RESP,
-                           BT_GATT_PERM_WRITE, NULL, write_ctrl_point, &ctrl_point));
+                           BT_GATT_PERM_WRITE, NULL, write_ctrl_point, NULL));
 
 #define INPUT_REPORT_ATTR (&key_stream_svc.attrs[5])
 
