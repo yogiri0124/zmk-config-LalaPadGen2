@@ -6,7 +6,7 @@
  * zmk,input-processor-scroll-snap-gate（input_processor_scroll_snap_gate.c）と、その先の
  * zmk,input-processor-scroll-snap（kot149/zmk-scroll-snap）。
  *
- * 状態は入力スレッド（入力処理）からも読むので atomic で持つ。
+ * 状態は入力スレッド（入力処理）からも読むので atomic で持つ（書き換えるのはシステムワークキューだけ）。
  */
 
 #define DT_DRV_COMPAT zmk_behavior_scroll_snap_hold
@@ -36,9 +36,8 @@ static int on_scroll_snap_hold_binding_pressed(struct zmk_behavior_binding *bind
 static int on_scroll_snap_hold_binding_released(struct zmk_behavior_binding *binding,
                                                 struct zmk_behavior_binding_event event) {
     // 押した分だけ戻す（0 より小さくはしない）
-    atomic_val_t count = atomic_get(&hold_count);
-    while (count > 0 && !atomic_cas(&hold_count, count, count - 1)) {
-        count = atomic_get(&hold_count);
+    if (atomic_get(&hold_count) > 0) {
+        atomic_dec(&hold_count);
     }
     return ZMK_BEHAVIOR_OPAQUE;
 }

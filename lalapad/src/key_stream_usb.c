@@ -57,15 +57,6 @@ static int set_report_cb(const struct device *dev, struct usb_setup_packet *setu
     return 0;
 }
 
-static int get_report_cb(const struct device *dev, struct usb_setup_packet *setup, int32_t *len,
-                         uint8_t **data) {
-    ARG_UNUSED(dev);
-    ARG_UNUSED(setup);
-    ARG_UNUSED(len);
-    ARG_UNUSED(data);
-    return -ENOTSUP;
-}
-
 #if IS_ENABLED(CONFIG_ENABLE_HID_INT_OUT_EP)
 static void out_ready_cb(const struct device *dev) {
     uint8_t buf[KEY_STREAM_REPORT_SIZE];
@@ -76,8 +67,8 @@ static void out_ready_cb(const struct device *dev) {
 }
 #endif
 
+/* GET_REPORT は受け付けない（登録しなければ Zephyr が -ENOTSUP で断る） */
 static const struct hid_ops ops = {
-    .get_report = get_report_cb,
     .set_report = set_report_cb,
     .int_in_ready = in_ready_cb,
 #if IS_ENABLED(CONFIG_ENABLE_HID_INT_OUT_EP)

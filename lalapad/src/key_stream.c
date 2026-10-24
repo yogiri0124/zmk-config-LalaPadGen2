@@ -139,8 +139,7 @@ static uint16_t next_seq;
  * 送っている最中に頼まれ直しても、その分を落とさないよう回数で持つ */
 static uint32_t status_requested;
 static uint32_t status_sent;
-/* 押されているキーの一覧も同じく回数で持つ（送り待ちのキーを送り終えてから送る）。
- * あふれて捨てるたびに増えるので、一周して「頼まれていない」に見えないよう 32 ビットにする */
+/* 押されているキーの一覧も同じく回数で持つ（送り待ちのキーを送り終えてから送る） */
 static uint32_t pressed_list_requested;
 static uint32_t pressed_list_sent;
 /* 送っている最中のレポートがある（送り終わるまで次を送らない）。送るたびに番号を付け、「送り終わった」は

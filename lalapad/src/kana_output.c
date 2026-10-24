@@ -7,7 +7,7 @@
  *   合図がキューで実際に処理されたらレイヤー解除」の順で行う。時間の見積もりには頼らないので、
  *   処理が遅れても、解除前後の入力がローマ字のまま送られたり、残りのかなを追い越したりしない。
  * - 同じ合図の仕組みを、ほかのモジュール（Alt コード）にも「それより前に並べた送信がすべて終わったら
- *   知らせる」目印として貸す（kana_output_add_marker）。合図の番号の最上位ビットで、どちらの合図かを区別する。
+ *   知らせる」目印として貸す（kana_output_add_marker）。合図の番号の最上位ビットが立っていれば目印。
  *
  * behavior のコールバックと k_work はどちらもシステムワークキューで動くので、状態の排他は不要。
  */
@@ -35,8 +35,10 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define KP_BEHAVIOR_NAME DEVICE_DT_NAME(DT_NODELABEL(kp))
 #define SYNC_BEHAVIOR_NAME DEVICE_DT_NAME(DT_NODELABEL(kana_sync))
 #define RETRY_INTERVAL_MS 10
-/* 合図の番号のうち、目印（kana_output_add_marker）に使うもの。それ以外はかなモードの解除に使う */
+/* 合図の番号のうち、目印（kana_output_add_marker）に使うもの。立っていない合図は、かなモードの解除の合図
+ * （解除中は解除も入り直しも受け付けないので、解除の合図は同時に1つしかない。番号で見分ける必要はない） */
 #define SYNC_MARKER_BIT BIT(31)
+#define SYNC_KANA_OFF 0
 
 /* ---- 送信キュー ---- */
 
@@ -47,7 +49,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define PENDING_RELEASE_MAX (ZMK_KEYMAP_LEN + 2)
 
 struct pending_release {
-    struct zmk_behavior_binding binding;
+    uint32_t keycode;
     struct zmk_behavior_binding_event event;
     uint32_t wait;
 };
@@ -60,16 +62,23 @@ static K_WORK_DELAYABLE_DEFINE(retry_release_work, retry_release_work_handler);
 
 static bool release_pending(void) { return pending_count > 0; }
 
-static void add_pending_release(const struct zmk_behavior_binding_event *event,
-                                struct zmk_behavior_binding binding, uint32_t wait) {
+static struct zmk_behavior_binding kp_binding(uint32_t keycode) {
+    return (struct zmk_behavior_binding){
+        .behavior_dev = KP_BEHAVIOR_NAME,
+        .param1 = keycode,
+    };
+}
+
+static void add_pending_release(const struct zmk_behavior_binding_event *event, uint32_t keycode,
+                                uint32_t wait) {
     if (pending_count >= PENDING_RELEASE_MAX) {
-        // 上の数え方では起きない（念のため）。押しっぱなしを避けるため、順番より解放を優先してその場で離す
-        LOG_ERR("Too many pending releases, releasing 0x%08X immediately", binding.param1);
-        raise_zmk_keycode_state_changed_from_encoded(binding.param1, false, k_uptime_get());
+        // 上の数え方では起きない（配列の範囲を守るための確認）。押しっぱなしにはせず、その場で離す
+        LOG_ERR("Too many pending releases, releasing 0x%08X immediately", keycode);
+        raise_zmk_keycode_state_changed_from_encoded(keycode, false, k_uptime_get());
         return;
     }
     pending_releases[pending_count++] = (struct pending_release){
-        .binding = binding,
+        .keycode = keycode,
         .event = *event,
         .wait = wait,
     };
@@ -80,7 +89,7 @@ static void retry_release_work_handler(struct k_work *work) {
     // 先に失敗したものから順に登録する
     while (pending_count > 0) {
         struct pending_release *p = &pending_releases[0];
-        if (zmk_behavior_queue_add(&p->event, p->binding, false, p->wait) < 0) {
+        if (zmk_behavior_queue_add(&p->event, kp_binding(p->keycode), false, p->wait) < 0) {
             k_work_schedule(&retry_release_work, K_MSEC(RETRY_INTERVAL_MS));
             return;
         }
@@ -88,13 +97,6 @@ static void retry_release_work_handler(struct k_work *work) {
         memmove(&pending_releases[0], &pending_releases[1],
                 pending_count * sizeof(pending_releases[0]));
     }
-}
-
-static struct zmk_behavior_binding kp_binding(uint32_t keycode) {
-    return (struct zmk_behavior_binding){
-        .behavior_dev = KP_BEHAVIOR_NAME,
-        .param1 = keycode,
-    };
 }
 
 int kana_output_tap(const struct zmk_behavior_binding_event *event, uint32_t keycode,
@@ -110,7 +112,7 @@ int kana_output_tap(const struct zmk_behavior_binding_event *event, uint32_t key
     }
 
     if (zmk_behavior_queue_add(event, kp, false, wait_ms) < 0) {
-        add_pending_release(event, kp, wait_ms);
+        add_pending_release(event, keycode, wait_ms);
         return -EAGAIN;
     }
 
@@ -134,7 +136,7 @@ void kana_output_release(const struct zmk_behavior_binding_event *event, uint32_
 
     // 先に待っている「離す」があれば、順番を守るためその後ろに並べる
     if (release_pending() || zmk_behavior_queue_add(event, kp, false, wait_ms) < 0) {
-        add_pending_release(event, kp, wait_ms);
+        add_pending_release(event, keycode, wait_ms);
     }
 }
 
@@ -182,7 +184,6 @@ static const zmk_keymap_layer_id_t *off_sub_layers;
 static size_t off_sub_layers_len;
 static uint32_t off_tap_ms;
 static uint32_t off_wait_ms;
-static uint32_t sync_token;
 
 static void kana_off_work_handler(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(kana_off_work, kana_off_work_handler);
@@ -203,11 +204,9 @@ static void kana_off_work_handler(struct k_work *work) {
             k_work_schedule(&kana_off_work, K_MSEC(RETRY_INTERVAL_MS));
             return;
         }
-        // かなモードの解除の合図は、最上位ビットを使わない番号にする（目印と区別するため）
-        sync_token = (sync_token + 1) & ~SYNC_MARKER_BIT;
         struct zmk_behavior_binding sync = {
             .behavior_dev = SYNC_BEHAVIOR_NAME,
-            .param1 = sync_token,
+            .param1 = SYNC_KANA_OFF,
         };
         // キューが空だと zmk_behavior_queue_add の中で合図がすぐ処理されるので、先に待ち状態にする
         off_stage = KANA_OFF_WAIT_SYNC;
@@ -248,7 +247,7 @@ void kana_output_on_sync(uint32_t token) {
         }
         return;
     }
-    if (off_stage != KANA_OFF_WAIT_SYNC || token != sync_token) {
+    if (off_stage != KANA_OFF_WAIT_SYNC) {
         return;
     }
 
@@ -256,9 +255,7 @@ void kana_output_on_sync(uint32_t token) {
     // 親指シフト面などを押したまま抜けた場合に備えて、それらも解除する
     // （後で親指を離したときの &mo の解除は、すでに解除済みなので何も起きない）
     for (size_t i = 0; i < off_sub_layers_len; i++) {
-        if (zmk_keymap_layer_active(off_sub_layers[i])) {
-            zmk_keymap_layer_deactivate(off_sub_layers[i]);
-        }
+        zmk_keymap_layer_deactivate(off_sub_layers[i]); // 有効でなければ何も起きない
     }
     zmk_keymap_layer_deactivate(kana_layer);
     kana_active = false;

@@ -202,11 +202,8 @@ async function open(dev) {
   log(`つなぎました: ${device.productName}`);
   await send(CMD_START, mask(), dev);
   // 開き直したときなど、キーボードがまだ前の「開始」で送り続けていると、今の「開始」は生存確認として扱われ、
-  // 状態と押されているキーが届かない。問い合わせて、今の状態を受け取る
-  // 送れなかったら、少し待って送り直す（届かないと、押されたままの表示が直らない）
-  for (let i = 0; i < 3 && device === dev && !(await send(CMD_STATUS, 0, dev)); i++) {
-    await new Promise((r) => setTimeout(r, 300));
-  }
+  // 状態と押されているキーが届かない。問い合わせて、今の状態を受け取る（送れなかったら「問い合わせる」で送り直せる）
+  await send(CMD_STATUS, 0, dev);
   // 送っている間に切れていたら（または別の機器につなぎ直していたら）、生存確認は始めない
   if (device !== dev) return;
   timer = setInterval(() => send(CMD_START, mask()), KEEPALIVE_MS);
