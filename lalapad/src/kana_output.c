@@ -7,7 +7,7 @@
  *   合図がキューで実際に処理されたらレイヤー解除」の順で行う。時間の見積もりには頼らないので、
  *   処理が遅れても、解除前後の入力がローマ字のまま送られたり、残りのかなを追い越したりしない。
  * - 同じ合図の仕組みを、ほかのモジュール（Alt コード）にも「それより前に並べた送信がすべて終わったら
- *   知らせる」目印として貸す（kana_output_add_marker）。合図の番号の最上位ビットで、どちらの合図かを区別する。
+ *   知らせる」目印として貸す（kana_output_add_marker）。合図の番号の最上位ビットが立っていれば目印。
  *
  * behavior のコールバックと k_work はどちらもシステムワークキューで動くので、状態の排他は不要。
  */
@@ -35,8 +35,10 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define KP_BEHAVIOR_NAME DEVICE_DT_NAME(DT_NODELABEL(kp))
 #define SYNC_BEHAVIOR_NAME DEVICE_DT_NAME(DT_NODELABEL(kana_sync))
 #define RETRY_INTERVAL_MS 10
-/* 合図の番号のうち、目印（kana_output_add_marker）に使うもの。それ以外はかなモードの解除に使う */
+/* 合図の番号のうち、目印（kana_output_add_marker）に使うもの。立っていない合図は、かなモードの解除の合図
+ * （解除中は解除も入り直しも受け付けないので、解除の合図は同時に1つしかない。番号で見分ける必要はない） */
 #define SYNC_MARKER_BIT BIT(31)
+#define SYNC_KANA_OFF 0
 
 /* ---- 送信キュー ---- */
 
@@ -182,7 +184,6 @@ static const zmk_keymap_layer_id_t *off_sub_layers;
 static size_t off_sub_layers_len;
 static uint32_t off_tap_ms;
 static uint32_t off_wait_ms;
-static uint32_t sync_token;
 
 static void kana_off_work_handler(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(kana_off_work, kana_off_work_handler);
@@ -203,11 +204,9 @@ static void kana_off_work_handler(struct k_work *work) {
             k_work_schedule(&kana_off_work, K_MSEC(RETRY_INTERVAL_MS));
             return;
         }
-        // かなモードの解除の合図は、最上位ビットを使わない番号にする（目印と区別するため）
-        sync_token = (sync_token + 1) & ~SYNC_MARKER_BIT;
         struct zmk_behavior_binding sync = {
             .behavior_dev = SYNC_BEHAVIOR_NAME,
-            .param1 = sync_token,
+            .param1 = SYNC_KANA_OFF,
         };
         // キューが空だと zmk_behavior_queue_add の中で合図がすぐ処理されるので、先に待ち状態にする
         off_stage = KANA_OFF_WAIT_SYNC;
@@ -248,7 +247,7 @@ void kana_output_on_sync(uint32_t token) {
         }
         return;
     }
-    if (off_stage != KANA_OFF_WAIT_SYNC || token != sync_token) {
+    if (off_stage != KANA_OFF_WAIT_SYNC) {
         return;
     }
 

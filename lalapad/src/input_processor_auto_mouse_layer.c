@@ -18,8 +18,7 @@
  *   「離れた」が届かなかったときに備え、そのデバイスから touch-stale-ms の間なにも届かなければ離れたとみなす。
  *   この場合は触れているか「分からない」状態として、次に入力が届いたら触れているとみなし直す
  *   （指を置いたまま止めていただけなら、動かせばまた使えるように）。
- *   右（子機）から中継しているデバイス（zmk,input-split）は、右が切れたら離れたとみなす
- *   （切れると「離れた」は届かないため）。
+ *   右が触れている間に切れた場合（「離れた」は届かない）も、この時間で離れたとみなす。
  * - 直前のキー入力から require-prior-idle-ms 以内のトラックパッド操作では有効にしない（打鍵中の誤動作防止）。
  * - excluded-layers のレイヤーが有効な間は、有効にしない（入力リスナーの layers の上書きで、その間は
  *   この処理を通さないようにしていても、上書きに切り替わる前に届いた操作で有効になることがあるため。
@@ -45,9 +44,6 @@
 #include <zmk/events/keycode_state_changed.h>
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/events/position_state_changed.h>
-#if IS_ENABLED(CONFIG_LALAPAD_SPLIT_LINK)
-#include "split_link.h"
-#endif
 #include <zmk/keymap.h>
 #include <zmk/matrix.h>
 
@@ -71,8 +67,6 @@ struct auto_mouse_config {
     uint32_t touch_stale_ms;
     const struct device *const *touch_devs;
     size_t num_touch_devs;
-    /* touch_devs のうち、右（子機）から中継しているデバイス（touch-devices の順番のビット） */
-    uint8_t split_touch_mask;
 };
 
 struct auto_mouse_data {
@@ -393,20 +387,6 @@ static void handle_layer_state(const struct device *dev) {
     k_mutex_unlock(&data->lock);
 }
 
-/* 右（子機）が切れた: 中継しているデバイスの「触れている」を外す（切れると「離れた」は届かない） */
-static void handle_split_disconnected(const struct device *dev) {
-    const struct auto_mouse_config *cfg = dev->config;
-    struct auto_mouse_data *data = dev->data;
-    if (cfg->split_touch_mask == 0) {
-        return;
-    }
-    k_mutex_lock(&data->lock, K_FOREVER);
-    data->touch_mask &= ~cfg->split_touch_mask;
-    data->touch_unknown_mask &= ~cfg->split_touch_mask;
-    restart_timeout(cfg, data);
-    k_mutex_unlock(&data->lock);
-}
-
 static void dispatch(const struct device *dev, const zmk_event_t *eh) {
     const struct zmk_position_state_changed *pos = as_zmk_position_state_changed(eh);
     if (pos != NULL) {
@@ -420,14 +400,7 @@ static void dispatch(const struct device *dev, const zmk_event_t *eh) {
     }
     if (as_zmk_layer_state_changed(eh) != NULL) {
         handle_layer_state(dev);
-        return;
     }
-#if IS_ENABLED(CONFIG_LALAPAD_SPLIT_LINK)
-    const struct zmk_lalapad_split_link_changed *split = as_zmk_lalapad_split_link_changed(eh);
-    if (split != NULL && !split->connected) {
-        handle_split_disconnected(dev);
-    }
-#endif
 }
 
 #define AUTO_MOUSE_DISPATCH(n) dispatch(DEVICE_DT_INST_GET(n), eh);
@@ -441,9 +414,6 @@ ZMK_LISTENER(auto_mouse_layer, auto_mouse_listener);
 ZMK_SUBSCRIPTION(auto_mouse_layer, zmk_position_state_changed);
 ZMK_SUBSCRIPTION(auto_mouse_layer, zmk_keycode_state_changed);
 ZMK_SUBSCRIPTION(auto_mouse_layer, zmk_layer_state_changed);
-#if IS_ENABLED(CONFIG_LALAPAD_SPLIT_LINK)
-ZMK_SUBSCRIPTION(auto_mouse_layer, zmk_lalapad_split_link_changed);
-#endif
 
 static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
     .handle_event = auto_mouse_handle_event,
@@ -457,10 +427,6 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
                           auto_mouse_touch_cb_##n##_##idx);
 
 #define AUTO_MOUSE_TOUCH_DEV(node_id, prop, idx) DEVICE_DT_GET(DT_PHANDLE_BY_IDX(node_id, prop, idx)),
-
-/* touch-devices のうち、右（子機）から中継しているデバイス（zmk,input-split）のビット */
-#define AUTO_MOUSE_SPLIT_BIT(node_id, prop, idx)                                                   \
-    (DT_NODE_HAS_COMPAT(DT_PHANDLE_BY_IDX(node_id, prop, idx), zmk_input_split) ? BIT(idx) : 0) |
 
 /* excluded-layers・excluded-positions の値が範囲内か（設定の誤りをビルドで見つける） */
 #define AUTO_MOUSE_CHECK_LAYER(node_id, prop, idx)                                                 \
@@ -498,10 +464,6 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
         .touch_devs = COND_CODE_1(DT_INST_NODE_HAS_PROP(n, touch_devices),                         \
                                   (auto_mouse_touch_devs_##n), (NULL)),                            \
         .num_touch_devs = DT_INST_PROP_LEN_OR(n, touch_devices, 0),                                \
-        .split_touch_mask = COND_CODE_1(DT_INST_NODE_HAS_PROP(n, touch_devices),                   \
-                                        (DT_INST_FOREACH_PROP_ELEM(n, touch_devices,               \
-                                                                   AUTO_MOUSE_SPLIT_BIT) 0),       \
-                                        (0)),                                                      \
     };                                                                                             \
     DEVICE_DT_INST_DEFINE(n, NULL, NULL, &auto_mouse_data_##n, &auto_mouse_config_##n,             \
                           POST_KERNEL, AUTO_MOUSE_INIT_PRIORITY, &auto_mouse_driver_api);          \
