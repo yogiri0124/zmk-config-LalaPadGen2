@@ -159,7 +159,7 @@
     // マウスレイヤーで &trans 以外のキー（&none を含む）と excluded-positions のキーは「マウス操作」として扱い、
     // 押しても解除せず、押している間は時間切れにしない（離してから数え直す）。&none の位置は、マウスレイヤーの間は
     // 何もしないキーになる。&trans の位置を押すと即解除し、そのキーは下のレイヤー（Default など）のキーとして入力される。
-    // トラックパッドに触れている間も時間切れにしない（離れてから 700ms で解除）。触れている合図は
+    // トラックパッドに触れている間も時間切れにしない（離れてから 500ms で解除）。触れている合図は
     // ドライバの INPUT_BTN_TOUCH（CONFIG_INPUT_IQS9151_REPORT_TOUCH）で、受け取るデバイスは親機の overlay の touch-devices で指定する。
     // excluded-positions: マウスレイヤーでは &trans だが、押しても解除したくない位置。
     // 修飾キー (LCTRL=30, LWIN=31, LALT=32。Ctrl+クリックなど)、35（Default の ENTER）、トラックパッド由来の位置 (52-67)。
@@ -187,7 +187,7 @@
                            <&zip_cursor_slow 1 3>,
                            <&zip_dynamic_scroll_scaler>,
                            <&zip_scroll_snap_gate_R>,
-                           <&zip_auto_mouse_layer 5 700>;
+                           <&zip_auto_mouse_layer 5 500>;
         lowspeedmode {
             layers = <2>,<3>;
             input-processors =  <&trackpad_key_behaviors_R>,
@@ -210,7 +210,7 @@
                            <&zip_cursor_slow 1 3>,
                            <&zip_dynamic_scroll_scaler>,
                            <&zip_scroll_snap_gate_L>,
-                           <&zip_auto_mouse_layer 5 700>;
+                           <&zip_auto_mouse_layer 5 500>;
         lowspeedmode {
             layers = <2>,<3>;
             input-processors =  <&trackpad_key_behaviors_L>,
@@ -283,7 +283,7 @@
 //                            <&zip_dynamic_xy_scaler>,
 //                            <&zip_dynamic_scroll_scaler>,
 //                            <&zip_scroll_snap_R>,
-//                            <&zip_auto_mouse_layer 5 700>;
+//                            <&zip_auto_mouse_layer 5 500>;
 //     };
 // 判定状態（サンプル・軸ロック）は左右のトラックパッドで独立させるため、インスタンスを分ける。
 // y-threshold <1 1>: |y| > |x| なら Y 軸。x-threshold <101 100>: |y| < 1.01|x| なら X 軸
