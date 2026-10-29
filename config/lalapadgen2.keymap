@@ -132,6 +132,64 @@
             keycode = <LGUI>;
         };
 
+        // --- mod_: 修飾キーを次の1キーだけにかける（ZMK 標準の &sk。押してから離し、次のキーを押すとそのキーと一緒に送られる。
+        // 押したまま別のキーを押せば、ふつうの修飾キーとして働く） ---
+        // &sk は引数でキーを受け取るので、名前付きのキーにするためマクロで包む（押したとき &sk を押し、離したとき離す）。
+        // display-name は bindings より後ろに書く（LaLapad-Gen2-Editor は、display-name の後に bindings がある定義を
+        // レイヤーと見なすため）
+        // Left Ctrl を次の1キーだけ
+        mod_once_ctrl: mod_once_ctrl {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            wait-ms = <0>;
+            tap-ms = <0>;
+            bindings
+                = <&macro_press &sk LCTRL>
+                , <&macro_pause_for_release>
+                , <&macro_release &sk LCTRL>
+                ;
+            display-name = "Ctrl Once";
+        };
+        // Left Shift を次の1キーだけ
+        mod_once_shift: mod_once_shift {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            wait-ms = <0>;
+            tap-ms = <0>;
+            bindings
+                = <&macro_press &sk LSHIFT>
+                , <&macro_pause_for_release>
+                , <&macro_release &sk LSHIFT>
+                ;
+            display-name = "Shft Once";
+        };
+        // Left Alt を次の1キーだけ
+        mod_once_alt: mod_once_alt {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            wait-ms = <0>;
+            tap-ms = <0>;
+            bindings
+                = <&macro_press &sk LALT>
+                , <&macro_pause_for_release>
+                , <&macro_release &sk LALT>
+                ;
+            display-name = "Alt Once";
+        };
+        // Left GUI（Win）を次の1キーだけ
+        mod_once_win: mod_once_win {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            wait-ms = <0>;
+            tap-ms = <0>;
+            bindings
+                = <&macro_press &sk LGUI>
+                , <&macro_pause_for_release>
+                , <&macro_release &sk LGUI>
+                ;
+            display-name = "Win Once";
+        };
+
         // --- scr_: スクロール ---
         // 押している間だけ、トラックパッドの2本指スクロールを縦か横のどちらかにそろえる（スクロールスナップ）。
         // レイヤーは使わない。実際の処理は lalapadgen2.dtsi の &zip_scroll_snap_gate_R / _L
