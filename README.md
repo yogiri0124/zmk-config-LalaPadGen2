@@ -359,6 +359,7 @@ Racket 配列は、親指に文字（R）を置く配列です。
 | `clk_` | `clk_lock_l` `clk_lock_m` `clk_lock_r` | 左・中・右クリックを押しっぱなしにする（もう一度押すか、同じボタンのクリック、接続先の切り替えで解除。接続先を切り替えたときは、切り替え前の PC でボタンが押されたままに見えることがあるが、その PC に戻ってクリックすれば直る） |
 | `cur_` | `cur_slow_hold` `cur_slow_toggle` `cur_slow_once` | カーソルを 1/3 の速さにする（押している間／押すたびに切り替え／次のキーまで） |
 | `mod_` | `mod_lock_alt` `mod_lock_ctrl` `mod_lock_shift` `mod_lock_win` | 修飾キーを押しっぱなしにする（もう一度押すか、接続先の切り替えで解除） |
+| | `mod_once_ctrl` `mod_once_shift` `mod_once_alt` `mod_once_win` | 修飾キーを次の 1 キーだけにかける（押して離してから次のキーを押すと、Ctrl＋そのキーなどになる。1 秒たつと取り消し。押したまま別のキーを押せば、ふつうの修飾キー） |
 | `scr_` | `scr_snap_hold` | 押している間だけ、スクロールを縦か横にそろえる |
 | `ks_` | `ks_touten` `ks_kuten` `ks_chouon` `ks_excl` `ks_ques` | 、 。 ー ！ ？ を入力する |
 | `pair_` | `pair_kagi` `pair_nijukagi` `pair_paren` `pair_cquote_ime` | 「」 『』 () “” を入力して、カーソルを中に入れる |
@@ -368,7 +369,7 @@ Racket 配列は、親指に文字（R）を置く配列です。
 | | `mt2` | 押すとキー、長押し（350ms）で別のキー。`&mt2 長押しのキー 押したときのキー` |
 
 - `ks_`・`pair_`・`sym_` のキーは、かなのレイヤーにも、ほかのレイヤーにも置けます。打つ前に IME をオンにします（`pair_paren` と Alt コード版を除く）。
-- まだどのレイヤーにも置いていないキーもあります（`clk_lock_m`・`clk_lock_r`、`cur_slow_*`、`mod_lock_*`、Alt コード版の 3 つ）。エディタで好きな位置に置けます。
+- まだどのレイヤーにも置いていないキーもあります（`clk_lock_m`・`clk_lock_r`、`cur_slow_*`、`mod_lock_*`、`mod_once_*`、Alt コード版の 3 つ）。エディタで好きな位置に置けます。
 
 ### 記号のキーを足す
 
