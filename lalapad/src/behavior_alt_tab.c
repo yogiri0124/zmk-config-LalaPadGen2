@@ -11,6 +11,9 @@
  * zmk-tri-state（urob）の swapper と同じ考え方で、順方向と逆方向のキーで Alt を共有する
  * （どちらから押し始めても、途中で入れ替えても、Alt は押したまま。離すのも1回だけ）。
  *
+ * 順方向と逆方向のキーを重ねて押したとき（4 を離す前に 3 を押した、など）は、押しているほうの Tab を先に離してから
+ * 次を押す（同じ Tab を離さずに押し重ねると、PC には2回目の押下として届かないため）。
+ *
  * 状態はシステムワークキューで触る（behavior のコールバック、listener、接続先の切り替えのワーク）。
  */
 
@@ -40,6 +43,8 @@ struct behavior_alt_tab_config {
 static bool active;
 /* 押し始めたときのレイヤー（このレイヤーが解除されたら Alt を離す） */
 static int active_layer;
+/* 今押している Tab（TAB または LS(TAB)。押していなければ 0） */
+static uint32_t held_tab;
 /* 自分の送っているキー入力（ほかのキーの入力と見分ける） */
 static bool raising;
 
@@ -71,13 +76,23 @@ static int on_alt_tab_binding_pressed(struct zmk_behavior_binding *binding,
         active_layer = event.layer;
         raise_key(LALT, true);
     }
-    raise_key(tab_keycode(binding), true);
+    // 別のキーの Tab を押したままなら、先に離す（離さずに押し重ねると、PC に押下として届かない）
+    if (held_tab != 0) {
+        raise_key(held_tab, false);
+    }
+    held_tab = tab_keycode(binding);
+    raise_key(held_tab, true);
     return ZMK_BEHAVIOR_OPAQUE;
 }
 
 static int on_alt_tab_binding_released(struct zmk_behavior_binding *binding,
                                        struct zmk_behavior_binding_event event) {
-    raise_key(tab_keycode(binding), false);
+    // 後から押した別のキーに Tab を引き継いでいたら、そちらの分は離さない
+    const uint32_t keycode = tab_keycode(binding);
+    if (held_tab == keycode) {
+        raise_key(keycode, false);
+        held_tab = 0;
+    }
     return ZMK_BEHAVIOR_OPAQUE;
 }
 
