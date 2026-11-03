@@ -53,7 +53,7 @@
         };
 
         // ===== カスタムキー（エディタで使いたいレイヤーに割り当てる） =====
-        // 名前の頭で種類を分けている（clk_: クリック、cur_: カーソル、mod_: 修飾キー、scr_: スクロール、ks_: かなと一緒に打つ記号、pair_: カッコ、sym_: 記号）。
+        // 名前の頭で種類を分けている（clk_: クリック、cur_: カーソル、mod_: 修飾キー、swap_: ウィンドウの切り替え、scr_: スクロール、ks_: かなと一緒に打つ記号、pair_: カッコ、sym_: 記号）。
         // display-name は ZMK Studio の一覧とキーの上に出る名前（キーの上は 9 文字まで）。
 
         // --- clk_: クリック押しっぱなし（もう一度押す、または同じボタンのクリックで解除） ---
@@ -188,6 +188,22 @@
                 , <&macro_release &sk LGUI>
                 ;
             display-name = "Win Once";
+        };
+
+        // --- swap_: ウィンドウの切り替え（Alt+Tab。自作モジュール lalapad/ の zmk,behavior-alt-tab） ---
+        // 最初に押したときに Alt を押したままにして、押すたびに Tab（swap_prev は Shift+Tab）を送る。
+        // 押し始めたときのレイヤーを離す（&mo のキーを離す）か、ほかのキーを押すと Alt を離して、選んだウィンドウに切り替わる。
+        // swap_next と swap_prev は Alt を共有するので、どちらから押し始めても、途中で入れ替えてもよい
+        swap_next: swap_next {
+            compatible = "zmk,behavior-alt-tab";
+            display-name = "Alt Tab";
+            #binding-cells = <0>;
+        };
+        swap_prev: swap_prev {
+            compatible = "zmk,behavior-alt-tab";
+            display-name = "AltShTab";
+            #binding-cells = <0>;
+            reverse;
         };
 
         // --- scr_: スクロール ---
@@ -388,7 +404,7 @@
             &kp F  &kp D  &kp L  &kp W  &kp J  &kp SEMI  &kp B  &kp O  &kp U  &kp COMMA
             &kp S  &kp T  &kp H  &kp C  &kp Y  &kp Q  &kp N  &kp A  &kp E  &kp I
             &mt2 LEFT_SHIFT X  &kp K  &kp M  &kp G  &kp V  &kp Z  &kp P  &kp SQT  &kp SLASH  &kp PERIOD
-            &kp LEFT_CONTROL  &kp LWIN  &kp LEFT_ALT  &mo SECONDARY_LAYER  &mt2 LEFT_SHIFT R  &kp ENTER  &kp BACKSPACE  &kp SPACE  &mo TERTIARY_LAYER  &kp LANGUAGE_2  &kp LANGUAGE_1  &kp BACKSLASH
+            &kp LEFT_CONTROL  &kp LWIN  &kp LANGUAGE_2  &mo SECONDARY_LAYER  &mt2 LEFT_SHIFT R  &kp ENTER  &kp BACKSPACE  &kp SPACE  &mo TERTIARY_LAYER  &kp LANGUAGE_1  &kp LEFT_ALT  &kp BACKSLASH
             &tog CONTROL_LAYER  &kp RIGHT  &kp DOWN  &kp LEFT  &kp UP  &kp UP  &kp LEFT  &kp DOWN  &kp RIGHT  &kana_sw KANA_SW_ON
             &mkp LCLK  &mkp RCLK  &mkp MCLK  &mkp LCLK  &mkp RCLK  &mkp MCLK
             &mkp MB4  &mkp MB5  &kp LG(TAB)  &kp LG(D)  &kp LEFT_CONTROL  &mkp MB4  &mkp MB5  &kp LG(TAB)  &kp LG(D)  &kp LEFT_CONTROL
@@ -414,8 +430,8 @@
             display-name = "secondary_layer";
             bindings = <
             &kp NUMBER_1  &kp NUMBER_2  &kp NUMBER_3  &kp NUMBER_4  &kp NUMBER_5  &none  &none  &sym_tilde_ime  &kp HASH  &none
-            &kp NUMBER_6  &kp NUMBER_7  &kp NUMBER_8  &kp NUMBER_9  &kp NUMBER_0  &none  &sym_ellipsis  &pair_kagi  &pair_nijukagi  &pair_paren
-            &none  &none  &none  &none  &none  &none  &kp PRCNT  &kp ASTRK  &kp GRAVE  &kp EQUAL
+            &kp NUMBER_6  &kp NUMBER_7  &kp NUMBER_8  &kp NUMBER_9  &kp NUMBER_0  &kp DLLR  &sym_ellipsis  &pair_kagi  &pair_nijukagi  &pair_paren
+            &none  &none  &none  &none  &none  &none  &none  &kp ASTRK  &kp GRAVE  &kp EQUAL
             &trans  &trans  &trans  &trans  &kp LEFT_SHIFT  &trans  &kp DELETE  &trans  &trans  &trans  &trans  &kp KP_NUMLOCK
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
@@ -426,9 +442,9 @@
         TERTIARY_LAYER {
             display-name = "tertiary_layer";
             bindings = <
-            &none  &kp AMPS  &pair_cquote_ime  &none  &none  &kp PAGE_UP  &kp HOME  &kp UP  &kp END  &kp PRINTSCREEN
+            &none  &kp AMPS  &pair_cquote_ime  &swap_prev  &swap_next  &kp PAGE_UP  &kp HOME  &kp UP  &kp END  &kp PRINTSCREEN
             &kp AT  &kp EXCL  &kp MINUS  &sym_hbar_ime  &none  &kp PAGE_DOWN  &kp LEFT  &kp DOWN  &kp RIGHT  &none
-            &kp BACKSLASH  &kp DLLR  &kp CARET  &none  &none  &none  &none  &none  &none  &none
+            &kp BACKSLASH  &kp PRCNT  &kp CARET  &none  &none  &none  &none  &none  &none  &none
             &trans  &trans  &trans  &trans  &kp LEFT_SHIFT  &kp LS(ENTER)  &trans  &trans  &trans  &trans  &trans  &kp CAPS
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
@@ -452,11 +468,11 @@
         MOUSE_LAYER {
             display-name = "mouse_layer";
             bindings = <
-            &none  &kp LC(W)  &kp LC(LS(T))  &clk_lock_l  &kp UP  &kp LC(LS(TAB))  &kp LC(TAB)  &none  &none  &none
-            &kp LC(A)  &mkp MCLK  &mkp RCLK  &mkp LCLK  &kp DOWN  &kp LEFT  &kp RIGHT  &none  &none  &none
-            &kp LC(Z)  &kp LC(X)  &kp LC(C)  &kp LC(V)  &none  &none  &none  &none  &none  &none
-            &trans  &trans  &trans  &trans  &scr_snap_hold  &trans  &trans  &trans  &trans  &none  &none  &none
-            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
+            &kp LC(A)  &kp LC(W)  &kp LC(LS(T))  &clk_lock_l  &kp UP  &kp LC(LS(TAB))  &kp LC(TAB)  &none  &none  &none
+            &none  &mkp MCLK  &mkp RCLK  &mkp LCLK  &none  &kp LEFT  &kp RIGHT  &none  &none  &none
+            &kp LC(Z)  &kp LC(X)  &kp LC(C)  &kp LC(V)  &kp DOWN  &none  &none  &none  &none  &none
+            &trans  &trans  &none  &trans  &scr_snap_hold  &cur_slow_toggle  &trans  &trans  &trans  &none  &trans  &none
+            &trans  &kp RS(RIGHT)  &trans  &kp LS(LEFT)  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             >;

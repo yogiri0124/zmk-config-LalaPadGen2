@@ -1,0 +1,14 @@
+# ウィンドウの切り替え behavior（引数なし）。最初に押したときに Alt を押したままにして Tab を送り、
+# 続けて押すたびに Tab を送る。押し始めたときのレイヤーが解除される、ほかのキーを押す、接続先が変わる、
+# のどれかで Alt を離す。reverse を付けると Shift+Tab を送る（Alt は順方向のキーと共有する）。
+
+description: Alt+Tab window switcher that keeps Alt held until the layer is released
+
+compatible: "zmk,behavior-alt-tab"
+
+include: zero_param.yaml
+
+properties:
+  reverse:
+    type: boolean
+    description: Tab の代わりに Shift+Tab を送る（逆方向）

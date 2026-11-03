@@ -23,6 +23,11 @@ config ZMK_AUTO_MOUSE_LAYER
     default y
     depends on DT_HAS_ZMK_INPUT_PROCESSOR_AUTO_MOUSE_LAYER_ENABLED && ZMK_POINTING
 
+config ZMK_BEHAVIOR_ALT_TAB
+    bool "Alt+Tab window switcher behavior (zmk,behavior-alt-tab)"
+    default y
+    depends on DT_HAS_ZMK_BEHAVIOR_ALT_TAB_ENABLED
+
 config ZMK_BEHAVIOR_ALT_CODE
     bool "Windows Alt code behavior (zmk,behavior-alt-code)"
     default y
