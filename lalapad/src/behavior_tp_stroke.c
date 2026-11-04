@@ -18,6 +18,8 @@
 
 #include "tp_keys.h"
 
+#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
+
 static const struct behavior_driver_api behavior_tp_stroke_driver_api = {
     .binding_pressed = tp_keys_binding_pressed,
     .binding_released = tp_keys_binding_released,
@@ -49,3 +51,5 @@ static const struct behavior_driver_api behavior_tp_stroke_driver_api = {
                             CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &behavior_tp_stroke_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(TP_STROKE_INST)
+
+#endif // DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)

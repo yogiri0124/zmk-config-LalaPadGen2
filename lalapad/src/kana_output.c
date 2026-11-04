@@ -12,8 +12,9 @@
  *   合図の番号で、どの合図（解除・目印・隠す・戻すの4種類）かを見分ける。
  * - かな・記号の打鍵の列は、前後に「修飾キーを隠す／戻す」合図を並べて送る（kana_output_send_keys）。
  *   合図はキューの中で打鍵と同じ順に処理されるので、押している Shift・Ctrl が、その列の打鍵にかからない。
- *   戻す合図を処理するときに、次の列の隠す合図がもう並んでいれば、戻さずに隠したままにする（続けて打った
- *   かなの間で、押したままの Shift・Ctrl が一瞬 PC に届かないように。その間に並んだほかの送信も隠れる）。
+ *   続けて打ったかなの間では、押したままの Shift・Ctrl が一瞬 PC に届く（戻してから次の列で隠し直すため。
+ *   次の列が並んでいるときに戻さずにおくと、その間に並んだ Space・Enter などにも Shift・Ctrl がかからなく
+ *   なるので、そうはしない）。
  *   隠すのは Shift・Ctrl だけ（KANA_MASKED_MODS）。Alt・Win は隠さない（押したままの Alt・Win を隠すと、
  *   PC には Alt・Win を単独で押して離したように見え、メニューバーやスタートメニューが開くため）。
  *   制約: 隠している間（その列を送り終えるまで）に、キューを通らないほかのキーを Shift・Ctrl といっしょに
@@ -383,23 +384,19 @@ void kana_output_on_sync(uint32_t token) {
         }
         return;
     case SYNC_MASK_ON:
+        if (mask_on_done == mask_on_queued) {
+            // 並べていない合図（キーマップに直接書いた &kana_sync など）: 数を合わせたまま、何もしない
+            return;
+        }
         mask_on_done++;
         if (mask_on_cancelled && mask_on_done == mask_on_cancel_seq) {
-            // 戻す合図を並べられなかった列（cancel_kana_mask）: 隠さない。前の列の戻す合図が、この合図が
-            // 並んでいたために戻さずにおいた（下の SYNC_MASK_OFF）かもしれないので、ここで戻す
+            // 戻す合図を並べられなかった列（cancel_kana_mask）: 隠さない
             mask_on_cancelled = false;
-            kana_output_mask_mods(KANA_MASK_KANA, 0);
             return;
         }
         kana_output_mask_mods(KANA_MASK_KANA, KANA_MASKED_MODS);
         return;
     case SYNC_MASK_OFF:
-        if (mask_on_done != mask_on_queued) {
-            // 次の列の「隠す」合図がもう並んでいる: 戻さずに隠したままにする（続けて送るかなの間で戻すと、
-            // 押したままの Shift・Ctrl が一瞬 PC に届く）。次の列の戻す合図で戻す。
-            // 代わりに、この2つの合図の間に並んだほかの送信（マクロ・IME オフなど）も隠したまま送られる
-            return;
-        }
         kana_output_mask_mods(KANA_MASK_KANA, 0);
         return;
     case SYNC_KANA_OFF:

@@ -154,7 +154,7 @@ static bool is_trans(const struct zmk_behavior_binding *b) {
 }
 
 static bool any_converted(const struct zmk_behavior_binding *b) {
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < TP_KEYS_DIRS; i++) {
         if (!is_trans(&b[i])) {
             return true;
         }
@@ -461,9 +461,9 @@ static bool convert_motion(struct axis_acc *acc, int32_t dx, int32_t dy, uint16_
 
     int32_t *v = acc->axis == AXIS_X ? &acc->x : &acc->y;
     const struct zmk_behavior_binding *b = &hm->mode->bindings[first];
-    // 上・下・左・右の順
-    const struct zmk_behavior_binding *neg = acc->axis == AXIS_X ? &b[2] : &b[0];
-    const struct zmk_behavior_binding *pos = acc->axis == AXIS_X ? &b[3] : &b[1];
+    const struct zmk_behavior_binding *neg = acc->axis == AXIS_X ? &b[TP_KEYS_LEFT] : &b[TP_KEYS_UP];
+    const struct zmk_behavior_binding *pos =
+        acc->axis == AXIS_X ? &b[TP_KEYS_RIGHT] : &b[TP_KEYS_DOWN];
     bool queued = false;
     for (int i = 0; i < MAX_STEPS_PER_EVENT && *v >= step; i++) {
         *v -= step;
@@ -651,6 +651,8 @@ static int tp_keys_handle_event(const struct device *dev, struct input_event *ev
     return ZMK_INPUT_PROC_STOP;
 }
 
+#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
+
 static struct zmk_input_processor_driver_api tp_keys_driver_api = {
     .handle_event = tp_keys_handle_event,
 };
@@ -660,3 +662,5 @@ static struct zmk_input_processor_driver_api tp_keys_driver_api = {
                           CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &tp_keys_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(TP_KEYS_IP_INST)
+
+#endif // DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)

@@ -500,8 +500,8 @@ static void start(enum key_stream_transport transport, struct bt_conn *conn, uin
     k_spinlock_key_t key = k_spin_lock(&lock);
     const bool fresh = !streaming || stream_transport != transport || stream_conn != conn ||
                        stream_mask != mask;
-    // 同じ送り道で、送る種類だけが変わったか
-    const bool same_route = streaming && stream_transport == transport && stream_conn == conn;
+    // 送っている最中のものが、この「開始」と同じ送り道のものか（止めた後に同じ送り道で始め直したときも含む）
+    const bool same_route = in_flight_on_locked(transport, conn);
     if (fresh) {
         old_conn = stop_locked();
         // 送り道が変わったら、送っている最中のものの「送り終わった」は待たない（前の送り道のものや、届かないものを

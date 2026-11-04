@@ -15,6 +15,12 @@
 #define TP_KEYS_BINDINGS_LEN 8
 #define TP_KEYS_CURSOR_FIRST 0
 #define TP_KEYS_SCROLL_FIRST 4
+/* 1 本指・2 本指それぞれの数（上・下・左・右の順） */
+#define TP_KEYS_DIRS 4
+#define TP_KEYS_UP 0
+#define TP_KEYS_DOWN 1
+#define TP_KEYS_LEFT 2
+#define TP_KEYS_RIGHT 3
 
 enum tp_keys_kind {
     /* zmk,behavior-tp-keys: 動かした量に応じて、その向きの binding を送る */
