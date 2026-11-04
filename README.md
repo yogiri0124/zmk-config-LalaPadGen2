@@ -464,11 +464,12 @@ Racket 配列は、親指に文字（R）を置く配列です。
 | `pair_` | `pair_kagi` `pair_nijukagi` `pair_paren` `pair_cquote_ime` | 「」 『』 () “” を入力して、カーソルを中に入れる |
 | `sym_` | `sym_ellipsis` `sym_hbar_ime` `sym_tilde_ime` | … ―― ～ を入力する（―― は 1 回押すと ― が 2 つ入る） |
 | | `sym_hbar` `sym_tilde` `pair_cquote` | ―― ～ “” を Windows の Alt コードで入力する予備（ローマ字テーブルを読み込んでいない PC 用。先に打ったかなを送り終えてから送り、送っている間に押したキーは、送り終えてから入力されます。Alt か Win を押している間は送りません。Shift・Ctrl を押していても、隠して送ります（Alt・Win は隠しません）。かなモードを抜けている途中は送りません） |
+| `kj_` | `kj_ji` `kj_hito` `kj_hi` | 時・人・日を Windows の Alt コードで入力する（ミニ漢直。確定した文字で入る。IME のオン・オフは変えない。押すと Num Word を終える） |
 | `kana_` | `kana_key` `kana_sw` | かなと Space・Enter・Backspace を送る／かなモードのオン・オフ |
 | | `mt2` | 押すとキー、長押し（350ms）で別のキー。`&mt2 長押しのキー 押したときのキー` |
 
 - `ks_`・`pair_`・`sym_` のキーは、かなのレイヤーにも、ほかのレイヤーにも置けます。打つ前に IME をオンにします（かなモードでないときは `pair_paren` と Alt コード版を除いて毎回。かなモード中は、しばらく打っていなかったときと、接続先の切り替えやトラックパッドのクリック・ジェスチャーの後だけ）。押している Shift・Ctrl は、これらのキーとかなには、かかりません（Alt・Win はそのままかかります。送っている短い間に、ほかのキーを Shift・Ctrl といっしょに押すと、そのキーにも Shift・Ctrl がかからないことがあります。Alt コード版を送っている間に打ったかなは、送り終えてから入力されるので、Shift・Ctrl がかかることがあります）。
-- まだどのレイヤーにも置いていないキーもあります（`clk_lock_m`・`clk_lock_r`、`cur_slow_hold`・`cur_slow_once`、`mod_lock_*`、`mod_once_*`、Alt コード版の 3 つ）。エディタで好きな位置に置けます。
+- まだどのレイヤーにも置いていないキーもあります（`clk_lock_m`・`clk_lock_r`、`cur_slow_hold`・`cur_slow_once`、`mod_lock_*`、`mod_once_*`、Alt コード版の 3 つ、`kj_*`）。エディタで好きな位置に置けます。
 
 ### 記号のキーを足す
 

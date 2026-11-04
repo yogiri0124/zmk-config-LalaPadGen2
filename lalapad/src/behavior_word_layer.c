@@ -6,6 +6,8 @@
  * urob/zmk-auto-layer（MIT。ZMK Contributors）の auto-layer と同じ動きに、次を足したもの:
  * - ほかの操作（&mo のキーを離した、&to など）でそのレイヤーが解除されたら、こちらも終わる
  *   （終わったことを知らないまま、次に押したときに「解除」として扱わないように）。
+ * - ほかのモジュールから終えられる（word_layer_finish_all。Alt コードのキーを押したときなど。Alt コードは
+ *   Alt とテンキーの数字を送るので、数字・修飾キーで続く設定だと、送っても終わらないため）。
  *
  * 状態はシステムワークキューで触る（behavior のコールバックと listener）。
  */
@@ -25,6 +27,8 @@
 #include <zmk/keymap.h>
 
 #include <dt-bindings/zmk/modifiers.h>
+
+#include "word_layer.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -68,6 +72,14 @@ static struct active_word_layer *find_active(zmk_keymap_layer_id_t layer) {
 static void finish(struct active_word_layer *w) {
     w->active = false;
     zmk_keymap_layer_deactivate(w->layer);
+}
+
+void word_layer_finish_all(void) {
+    for (int i = 0; i < MAX_ACTIVE; i++) {
+        if (actives[i].active) {
+            finish(&actives[i]);
+        }
+    }
 }
 
 static int on_word_layer_binding_pressed(struct zmk_behavior_binding *binding,

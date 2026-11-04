@@ -124,7 +124,7 @@
         };
 
         // ===== カスタムキー（エディタで使いたいレイヤーに割り当てる） =====
-        // 名前の頭で種類を分けている（clk_: クリック、cur_: カーソル、mod_: 修飾キー、swap_: ウィンドウの切り替え、scr_: スクロール、lyr_: レイヤー、num_: Num Word、link_: Chrome のリンク、tp_: トラックパッドでキー操作、ks_: かなと一緒に打つ記号、pair_: カッコ、sym_: 記号、kana_: かな）。
+        // 名前の頭で種類を分けている（clk_: クリック、cur_: カーソル、mod_: 修飾キー、swap_: ウィンドウの切り替え、scr_: スクロール、lyr_: レイヤー、num_: Num Word、link_: Chrome のリンク、tp_: トラックパッドでキー操作、ks_: かなと一緒に打つ記号、pair_: カッコ、sym_: 記号、kj_: 漢字 1 文字、kana_: かな）。
         // display-name は ZMK Studio の一覧とキーの上に出る名前（キーの上は 9 文字まで）。
 
         // --- clk_: クリック押しっぱなし（もう一度押す、または同じボタンのクリックで解除） ---
@@ -405,6 +405,29 @@
             #binding-cells = <0>;
             codes = <33120>;
             commit-ime;
+        };
+        // --- kj_: 漢字 1 文字（ミニ漢直。Windows の Alt コードで送る。ローマ字テーブル・IME の状態に関係なく、確定した文字で入る） ---
+        // 押すと Num Word を終える（「3時」のように打ったら、元のレイヤーに戻る）。まだどのレイヤーにも置いていない
+        // 時（Shift_JIS 0x8E9E）
+        kj_ji: kj_ji {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "時";
+            #binding-cells = <0>;
+            codes = <36510>;
+        };
+        // 人（Shift_JIS 0x906C）
+        kj_hito: kj_hito {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "人";
+            #binding-cells = <0>;
+            codes = <36972>;
+        };
+        // 日（Shift_JIS 0x93FA）
+        kj_hi: kj_hi {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "日";
+            #binding-cells = <0>;
+            codes = <37882>;
         };
         // “” を入力してカーソルを中に。Alt+33127 = “、Alt+33128 = ”（Shift_JIS 0x8167・0x8168）
         pair_cquote: pair_cquote {

@@ -95,6 +95,7 @@
 
 /* KANA_CHECK_MS は、かな入力のモジュールがないビルドでも使う（関数はかな入力のモジュールがあるときだけ呼ぶ） */
 #include "kana_output.h"
+#include "word_layer.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -606,6 +607,8 @@ static int on_alt_code_binding_pressed(struct zmk_behavior_binding *binding,
         LOG_WRN("Too many pending alt code presses, ignoring");
         return ZMK_BEHAVIOR_OPAQUE;
     }
+    // Num Word などを終える（送る Alt とテンキーの数字では終わらないため。「3時」のように打ったら、元のレイヤーに戻す）
+    word_layer_finish_all();
     pending[pending_count++] = (struct pending_press){
         .cfg = cfg,
         .endpoint = zmk_endpoints_selected(),
