@@ -1,0 +1,9 @@
+# レイヤーを固定する behavior（引数なし。QMK の Layer Lock）。押すと、このキーを置いたレイヤーを固定する
+# （&mo のキーを離しても、オートマウスレイヤーの時間切れでも切れない）。もう一度押すと固定をやめて解除する
+# （オートマウスレイヤーなら、ふだんどおり時間を数え直す）。
+
+description: Lock the layer this key is on (like QMK Layer Lock)
+
+compatible: "zmk,behavior-layer-lock"
+
+include: zero_param.yaml

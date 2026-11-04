@@ -9,6 +9,7 @@
 #include <behaviors/mouse_button_toggle.dtsi>
 #include <dt-bindings/lalapad/cursor_slow.h>
 #include <dt-bindings/lalapad/tp_keys.h>
+#include <behaviors/num_word.dtsi>
 
 #define DEFAULT_LAYER   0
 #define CONTROL_LAYER   1
@@ -26,8 +27,11 @@
 &lt { quick-tap-ms = <200>; };
 
 // オートマウスレイヤー（lalapadgen2.dtsi）: 数字・記号レイヤーの間は、トラックパッドを操作してもマウスレイヤーにしない
-// （トラックパッドのリスナーの lowspeedmode（layers = <2>,<3>）と同じレイヤー）
 &zip_auto_mouse_layer { excluded-layers = <SECONDARY_LAYER TERTIARY_LAYER>; };
+
+// Num Word（urob/zmk-auto-layer の num_word）: 数字レイヤーを、数字と continue-list のキー（Backspace・Delete・. , + - * / =）を
+// 押している間だけ続け、ほかのキーを押すと自動で戻す。Shift などの修飾キーでは戻さない（ignore-modifiers）
+&num_word { ignore-modifiers; };
 
 / {
     behaviors {
@@ -39,6 +43,17 @@
         zip_dyn_scale_set: zip_dyn_scale_set {
             compatible = "zmk,behavior-zip-dynamic-scale-set";
             #binding-cells = <2>;
+        };
+
+        // 33: タップで Num Word（数字レイヤーを、数字を打っている間だけ続ける）、長押しで今までどおり押している間だけ
+        // 数字レイヤー。長押しの間にほかのキーを押したら、すぐに長押しとして扱う（hold-preferred）。
+        // 使い方: &num_mo SECONDARY_LAYER SECONDARY_LAYER
+        num_mo: num_mo {
+            compatible = "zmk,behavior-hold-tap";
+            #binding-cells = <2>;
+            flavor = "hold-preferred";
+            tapping-term-ms = <200>;
+            bindings = <&mo>, <&num_word>;
         };
 
         mt2: mod_tap2 {
@@ -54,7 +69,7 @@
         };
 
         // ===== カスタムキー（エディタで使いたいレイヤーに割り当てる） =====
-        // 名前の頭で種類を分けている（clk_: クリック、cur_: カーソル、mod_: 修飾キー、swap_: ウィンドウの切り替え、scr_: スクロール、lyr_: レイヤー、link_: Chrome のリンク、tp_: トラックパッドでキー操作、ks_: かなと一緒に打つ記号、pair_: カッコ、sym_: 記号、kana_: かな）。
+        // 名前の頭で種類を分けている（clk_: クリック、cur_: カーソル、mod_: 修飾キー、swap_: ウィンドウの切り替え、scr_: スクロール、lyr_: レイヤー、num_: Num Word、link_: Chrome のリンク、tp_: トラックパッドでキー操作、ks_: かなと一緒に打つ記号、pair_: カッコ、sym_: 記号、kana_: かな）。
         // display-name は ZMK Studio の一覧とキーの上に出る名前（キーの上は 9 文字まで）。
 
         // --- clk_: クリック押しっぱなし（もう一度押す、または同じボタンのクリックで解除） ---
@@ -218,11 +233,12 @@
         };
 
         // --- lyr_: レイヤー ---
-        // オートマウスレイヤーを固定する（自作モジュール lalapad/ の zmk,behavior-auto-mouse-lock）。押すたびに固定・固定をやめるを
-        // 切り替える。固定している間は、時間切れでも、マウスレイヤーで &trans のキーなどを押しても切れない（&trans のキーは
-        // 下のレイヤーのキーとして入力される）。マウスレイヤーに置く
-        lyr_lock_mouse: lyr_lock_mouse {
-            compatible = "zmk,behavior-auto-mouse-lock";
+        // レイヤーを固定する（Layer Lock。自作モジュール lalapad/ の zmk,behavior-layer-lock）。押すと、このキーを置いたレイヤーを
+        // 固定する（&mo のキーを離しても、オートマウスレイヤーの時間切れでも切れない。マウスレイヤーでは、&trans のキーを
+        // 押しても切れず、そのキーは下のレイヤーのキーとして入力される）。もう一度押すと固定をやめて、そのレイヤーを解除する
+        // （オートマウスレイヤーなら、ふだんどおり手を離してから時間を数え直す）。どのレイヤーにも置ける（Default 以外）
+        lyr_lock: lyr_lock {
+            compatible = "zmk,behavior-layer-lock";
             display-name = "Lyr Lock";
             #binding-cells = <0>;
         };
@@ -490,6 +506,17 @@
             key-positions = <10 11>;
             layers = <DEFAULT_LAYER CONTROL_LAYER SECONDARY_LAYER TERTIARY_LAYER SYSTEM_LAYER MOUSE_LAYER KANA_LAYER>;
         };
+        // Default レイヤーだけ: 12＋13 で IME オン、16＋17 で IME オフ
+        COMBO_IME_ON {
+            bindings = <&kp LANGUAGE_1>;
+            key-positions = <12 13>;
+            layers = <DEFAULT_LAYER>;
+        };
+        COMBO_IME_OFF {
+            bindings = <&kp LANGUAGE_2>;
+            key-positions = <16 17>;
+            layers = <DEFAULT_LAYER>;
+        };
     };
 
     keymap {
@@ -501,7 +528,7 @@
             &kp F  &kp D  &kp L  &kp W  &kp J  &kp SEMI  &kp B  &kp O  &kp U  &kp COMMA
             &kp S  &kp T  &kp H  &kp C  &kp Y  &kp Q  &kp N  &kp A  &kp E  &kp I
             &mt2 LEFT_SHIFT X  &kp K  &kp M  &kp G  &kp V  &kp Z  &kp P  &kp SQT  &kp SLASH  &kp PERIOD
-            &kp LEFT_CONTROL  &kp LWIN  &kp LANGUAGE_2  &mo SECONDARY_LAYER  &mt2 LEFT_SHIFT R  &kp ENTER  &kp BACKSPACE  &kp SPACE  &mo TERTIARY_LAYER  &kp LANGUAGE_1  &kp LEFT_ALT  &kp BACKSLASH
+            &kp LEFT_CONTROL  &kp LWIN  &kp LEFT_ALT  &num_mo SECONDARY_LAYER SECONDARY_LAYER  &mt2 LEFT_SHIFT R  &kp ENTER  &kp BACKSPACE  &mt2 RIGHT_CONTROL SPACE  &mo TERTIARY_LAYER  &none  &none  &none
             &tog CONTROL_LAYER  &kp RIGHT  &kp DOWN  &kp LEFT  &kp UP  &kp UP  &kp LEFT  &kp DOWN  &kp RIGHT  &kana_sw KANA_SW_ON
             &mkp LCLK  &mkp RCLK  &mkp MCLK  &mkp LCLK  &mkp RCLK  &mkp MCLK
             &mkp MB4  &mkp MB5  &kp LG(TAB)  &kp LG(D)  &kp LEFT_CONTROL  &mkp MB4  &mkp MB5  &kp LG(TAB)  &kp LG(D)  &kp LEFT_CONTROL
@@ -526,10 +553,10 @@
         SECONDARY_LAYER {
             display-name = "secondary_layer";
             bindings = <
-            &kp NUMBER_1  &kp NUMBER_2  &kp NUMBER_3  &kp NUMBER_4  &kp NUMBER_5  &none  &none  &sym_tilde_ime  &kp HASH  &none
+            &kp NUMBER_1  &kp NUMBER_2  &kp NUMBER_3  &kp NUMBER_4  &kp NUMBER_5  &none  &kp DELETE  &sym_tilde_ime  &kp HASH  &none
             &kp NUMBER_6  &kp NUMBER_7  &kp NUMBER_8  &kp NUMBER_9  &kp NUMBER_0  &kp DLLR  &sym_ellipsis  &pair_kagi  &pair_nijukagi  &pair_paren
-            &none  &none  &none  &none  &none  &none  &none  &kp ASTRK  &kp GRAVE  &kp EQUAL
-            &trans  &trans  &trans  &trans  &kp LEFT_SHIFT  &trans  &kp DELETE  &trans  &trans  &trans  &trans  &kp KP_NUMLOCK
+            &none  &kp COMMA  &kp PERIOD  &kp COLON  &none  &none  &kp BACKSLASH  &kp ASTRK  &kp GRAVE  &kp EQUAL
+            &trans  &trans  &trans  &trans  &kp LEFT_SHIFT  &trans  &trans  &trans  &trans  &trans  &trans  &kp KP_NUMLOCK
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
             &kp LC(LG(LEFT))  &kp LC(LG(RIGHT))  &trans  &trans  &trans  &kp LC(LG(LEFT))  &kp LC(LG(RIGHT))  &trans  &trans  &trans
@@ -565,7 +592,7 @@
         MOUSE_LAYER {
             display-name = "mouse_layer";
             bindings = <
-            &tp_arrow  &kp LC(W)  &kp LC(LS(T))  &kp LC(A)  &none  &kp LC(LS(TAB))  &kp LC(TAB)  &none  &none  &lyr_lock_mouse
+            &tp_arrow  &kp LC(W)  &kp LC(LS(T))  &kp LC(A)  &none  &kp LC(LS(TAB))  &kp LC(TAB)  &none  &none  &lyr_lock
             &none  &mkp MCLK  &mkp RCLK  &mkp LCLK  &clk_lock_l  &kp RIGHT_CONTROL  &kp RIGHT_SHIFT  &link_incognito  &tp_draw  &tp_dial
             &kp LC(Z)  &kp LC(X)  &kp LC(C)  &kp LC(V)  &none  &none  &none  &kp RIGHT_ALT  &none  &none
             &none  &none  &none  &trans  &scr_snap_hold  &cur_slow_toggle  &trans  &trans  &trans  &none  &none  &none

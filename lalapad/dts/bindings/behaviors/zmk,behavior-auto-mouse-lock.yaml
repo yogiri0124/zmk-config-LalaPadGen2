@@ -1,8 +1,0 @@
-# オートマウスレイヤーを固定する behavior（引数なし）。押すたびに固定・固定をやめるを切り替える。
-# 固定している間は、時間切れでも、マウスレイヤーで &trans のキーなどを押しても解除しない。
-
-description: Toggle a lock that keeps the auto mouse layer active
-
-compatible: "zmk,behavior-auto-mouse-lock"
-
-include: zero_param.yaml

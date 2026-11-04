@@ -183,8 +183,8 @@
 
     // 左右のトラックパッドのリスナー（親機の overlay で status = "okay" にする）。
     // カーソル低速: &zip_cursor_slow は keymap の cur_slow_hold / cur_slow_toggle / cur_slow_once で低速がオンの間だけカーソルを 1/3 にする。
-    // lowspeedmode: 数字・記号レイヤー（keymap の SECONDARY_LAYER = 2・TERTIARY_LAYER = 3）の間はカーソルとスクロールを遅くする。
-    // この間はオートマウスレイヤーを入れていないので、トラックパッドを操作してもマウスレイヤーは新しくオンにならない。
+    // レイヤーによって速さは変えない（以前は数字・記号レイヤーの間を遅くしていた）。数字・記号レイヤーの間に
+    // マウスレイヤーを新しくオンにしないのは、keymap の &zip_auto_mouse_layer の excluded-layers で行う。
     // トラックパッドをキー操作に変える: &zip_tp_keys は keymap の zmk,behavior-tp-keys・zmk,behavior-tp-stroke のキーを
     // 押している間だけ、動きをキーの入力に変え、タップ・ジェスチャーを捨てる（自作: lalapad/src/tp_keys.c）。
     // タップ・ジェスチャーを捨てるため trackpad_key_behaviors より前に、動きの量を生の値で数えるため scaler より前に、
@@ -204,17 +204,6 @@
                            <&zip_dynamic_scroll_scaler>,
                            <&zip_scroll_snap_gate_R>,
                            <&zip_auto_mouse_layer 5 300>;
-        lowspeedmode {
-            layers = <2>,<3>;
-            input-processors =  <&zip_tp_keys>,
-                                <&trackpad_key_behaviors_R>,
-                                <&zip_xy_scaler 1 15>,
-                                <&zip_scroll_scaler 1 40>,
-                                <&zip_dynamic_xy_scaler>,
-                                <&zip_cursor_slow 1 3>,
-                                <&zip_dynamic_scroll_scaler>,
-                                <&zip_scroll_snap_gate_R>;
-        };
     };
     trackpad_listener_L: trackpad_listener_L {
         compatible = "zmk,input-listener";
@@ -229,17 +218,6 @@
                            <&zip_dynamic_scroll_scaler>,
                            <&zip_scroll_snap_gate_L>,
                            <&zip_auto_mouse_layer 5 300>;
-        lowspeedmode {
-            layers = <2>,<3>;
-            input-processors =  <&zip_tp_keys>,
-                                <&trackpad_key_behaviors_L>,
-                                <&zip_xy_scaler 1 15>,
-                                <&zip_scroll_scaler 1 40>,
-                                <&zip_dynamic_xy_scaler>,
-                                <&zip_cursor_slow 1 3>,
-                                <&zip_dynamic_scroll_scaler>,
-                                <&zip_scroll_snap_gate_L>;
-        };
     };
 
     aliases {
@@ -292,8 +270,8 @@
 // ふだんは使わない（斜めスクロールできるように）。keymap の &scr_snap_hold のキーを押している間だけ、
 // 各リスナー（trackpad_listener_R / _L）に入れた &zip_scroll_snap_gate_R / _L がここへイベントを渡す
 // （レイヤーは使わない。自作: lalapad/src/input_processor_scroll_snap_gate.c）。
-// 特定のレイヤーで常に有効にしたいときは、次のような子ノードを lowspeedmode より前に追加する
-// （先に書いた子ノードが優先される。<N> はレイヤー番号、_R / _L は左右で合わせる）:
+// 特定のレイヤーで常に有効にしたいときは、各リスナーに次のような子ノードを追加する
+// （<N> はレイヤー番号、_R / _L は左右で合わせる）:
 //     snapmode {
 //         layers = <N>;
 //         input-processors = <&zip_tp_keys>,
