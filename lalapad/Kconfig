@@ -23,7 +23,7 @@ config ZMK_BEHAVIOR_KEY_LOCK
     depends on LALAPAD_CENTRAL && (DT_HAS_ZMK_BEHAVIOR_KEY_LOCK_ENABLED)
 
 config ZMK_AUTO_MOUSE_LAYER
-    bool "Auto mouse layer input processor (zmk,input-processor-auto-mouse-layer)"
+    bool "Auto mouse layer (zmk,input-processor-auto-mouse-layer, zmk,behavior-auto-mouse-lock)"
     default y
     depends on LALAPAD_CENTRAL && (DT_HAS_ZMK_INPUT_PROCESSOR_AUTO_MOUSE_LAYER_ENABLED && ZMK_POINTING)
 
