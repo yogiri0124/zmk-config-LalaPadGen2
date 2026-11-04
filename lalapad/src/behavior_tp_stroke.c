@@ -18,23 +18,9 @@
 
 #include "tp_keys.h"
 
-static int on_tp_stroke_binding_pressed(struct zmk_behavior_binding *binding,
-                                        struct zmk_behavior_binding_event event) {
-    const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
-    tp_keys_mode_pressed(dev->config, &event);
-    return ZMK_BEHAVIOR_OPAQUE;
-}
-
-static int on_tp_stroke_binding_released(struct zmk_behavior_binding *binding,
-                                         struct zmk_behavior_binding_event event) {
-    const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
-    tp_keys_mode_released(dev->config, &event);
-    return ZMK_BEHAVIOR_OPAQUE;
-}
-
 static const struct behavior_driver_api behavior_tp_stroke_driver_api = {
-    .binding_pressed = on_tp_stroke_binding_pressed,
-    .binding_released = on_tp_stroke_binding_released,
+    .binding_pressed = tp_keys_binding_pressed,
+    .binding_released = tp_keys_binding_released,
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
     // 引数なしの behavior として ZMK Studio から割り当てられるようにする
     .get_parameter_metadata = zmk_behavior_get_empty_param_metadata,

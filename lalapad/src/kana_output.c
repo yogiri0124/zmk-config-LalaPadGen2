@@ -8,9 +8,12 @@
  *   合図がキューで実際に処理されたらレイヤー解除」の順で行う。時間の見積もりには頼らないので、
  *   処理が遅れても、解除前後の入力がローマ字のまま送られたり、残りのかなを追い越したりしない。
  * - 同じ合図の仕組みを、ほかのモジュール（Alt コード）にも「それより前に並べた送信がすべて終わったら
- *   知らせる」目印として貸す（kana_output_add_marker）。合図の番号で、どちらの合図かを見分ける。
+ *   知らせる」目印として貸す（kana_output_add_marker）。下の「修飾キーを隠す／戻す」合図も同じ仕組み。
+ *   合図の番号で、どの合図（解除・目印・隠す・戻すの4種類）かを見分ける。
  * - かな・記号の打鍵の列は、前後に「修飾キーを隠す／戻す」合図を並べて送る（kana_output_send_keys）。
  *   合図はキューの中で打鍵と同じ順に処理されるので、押している Shift・Ctrl が、その列の打鍵にかからない。
+ *   戻す合図を処理するときに、次の列の隠す合図がもう並んでいれば、戻さずに隠したままにする（続けて打った
+ *   かなの間で、押したままの Shift・Ctrl が一瞬 PC に届かないように。その間に並んだほかの送信も隠れる）。
  *   隠すのは Shift・Ctrl だけ（KANA_MASKED_MODS）。Alt・Win は隠さない（押したままの Alt・Win を隠すと、
  *   PC には Alt・Win を単独で押して離したように見え、メニューバーやスタートメニューが開くため）。
  *   制約: 隠している間（その列を送り終えるまで）に、キューを通らないほかのキーを Shift・Ctrl といっしょに
@@ -56,7 +59,8 @@ BUILD_ASSERT(DT_NODE_EXISTS(DT_NODELABEL(kana_sync)),
 /* 合図の番号（&kana_sync の引数）。かなモードの解除の合図は同時に1つしかない（解除中は解除も入り直しも
  * 受け付けない）。目印は並べた順に処理されるので、どの目印かは呼ぶ側が順番で分かる。
  * 修飾キーを隠す／戻す合図は、打鍵の列ごとに必ず対で並ぶ（戻す合図の再試行中は次の列を並べない）。
- * 0 は使わない（&kana_sync は ZMK Studio の一覧にも出るので、引数 0 のまま割り当てて押されても何もしない） */
+ * 0 は使わない（キーマップに &kana_sync 0 と直接書いて押されても何もしない。&kana_sync は ZMK Studio の
+ * 一覧には出るが、引数の情報を持たないので Studio からは割り当てられない） */
 #define SYNC_KANA_OFF 1
 #define SYNC_MARKER 2
 #define SYNC_MASK_ON 3
@@ -113,7 +117,8 @@ static void cancel_kana_mask(void);
 static void add_pending_release(const struct zmk_behavior_binding_event *event,
                                 struct zmk_behavior_binding binding, bool press, uint32_t wait) {
     if (pending_count >= PENDING_RELEASE_MAX) {
-        // 上の数え方では起きない（配列の範囲を守るための確認）
+        // 上の数え方では起きない（配列の範囲を守るための確認。下の後始末は、起きたときに押しっぱなし・
+        // 隠したままにしないための最低限のもので、順番や隠す範囲は守れない）
         if (strcmp(binding.behavior_dev, SYNC_BEHAVIOR_NAME) == 0 &&
             binding.param1 == SYNC_MASK_OFF) {
             // 修飾キーを戻す合図: その場で実行すると、同じ列の「隠す」合図がまだキューにあれば、後から
@@ -212,17 +217,14 @@ static uint32_t mask_on_cancel_seq;
 void kana_output_mask_mods(enum kana_mask_owner owner, uint8_t mods) {
     mask_mods[owner] = mods;
 
-    uint8_t combined = 0xFF;
-    bool any = false;
+    // どれかの使い手が隠したいものはすべて隠す（和集合）
+    uint8_t combined = 0;
     for (size_t i = 0; i < ARRAY_SIZE(mask_mods); i++) {
-        if (mask_mods[i] != 0) {
-            combined &= mask_mods[i];
-            any = true;
-        }
+        combined |= mask_mods[i];
     }
 
     const int changed =
-        any ? zmk_hid_masked_modifiers_set(combined) : zmk_hid_masked_modifiers_clear();
+        combined != 0 ? zmk_hid_masked_modifiers_set(combined) : zmk_hid_masked_modifiers_clear();
     if (changed > 0) {
         // PC へ送る修飾キーが変わった: 次のキーを待たずに知らせる
         // （隠すのをやめたとき、押したままの Shift などを PC 側でも押したままに戻す）
@@ -239,7 +241,9 @@ static void cancel_kana_mask(void) {
         mask_on_cancel_seq = mask_on_queued;
         return;
     }
-    // その列の「隠す」合図は処理済み（いま隠しているのはその列の分）: すぐ戻す
+    // その列の「隠す」合図は処理済み（いま隠しているのはその列の分）: すぐ戻す。
+    // 注意: その列の打鍵がまだキューに残っていれば、それらは隠さずに送られる（押したままの Shift・Ctrl が
+    // かかる）。隠したままになるよりはよいとして、起きないはずのこの場合には備えない
     kana_output_mask_mods(KANA_MASK_KANA, 0);
 }
 
@@ -324,7 +328,11 @@ static K_WORK_DELAYABLE_DEFINE(kana_off_work, kana_off_work_handler);
 
 static void kana_off_work_handler(struct k_work *work) {
     if (off_stage == KANA_OFF_SEND_IME_OFF) {
-        const int ret = kana_output_tap(&off_event, LANGUAGE_2, off_tap_ms, off_wait_ms);
+        // かなと同じく、押している Shift・Ctrl を隠して送る（Shift+無変換などにならないように）。
+        // -ENOSPC のときに隠す／戻す合図の対だけが並ぶことがあるが、何も送らないので害はない
+        static const uint32_t ime_off_key = LANGUAGE_2;
+        const int ret =
+            kana_output_send_keys(&off_event, &ime_off_key, 1, off_tap_ms, off_wait_ms, false, 0);
         if (ret == -EBUSY || ret == -ENOSPC) {
             k_work_schedule(&kana_off_work, K_MSEC(RETRY_INTERVAL_MS));
             return;
@@ -377,19 +385,27 @@ void kana_output_on_sync(uint32_t token) {
     case SYNC_MASK_ON:
         mask_on_done++;
         if (mask_on_cancelled && mask_on_done == mask_on_cancel_seq) {
-            // 戻す合図を並べられなかった列（cancel_kana_mask）: 隠さない
+            // 戻す合図を並べられなかった列（cancel_kana_mask）: 隠さない。前の列の戻す合図が、この合図が
+            // 並んでいたために戻さずにおいた（下の SYNC_MASK_OFF）かもしれないので、ここで戻す
             mask_on_cancelled = false;
+            kana_output_mask_mods(KANA_MASK_KANA, 0);
             return;
         }
         kana_output_mask_mods(KANA_MASK_KANA, KANA_MASKED_MODS);
         return;
     case SYNC_MASK_OFF:
+        if (mask_on_done != mask_on_queued) {
+            // 次の列の「隠す」合図がもう並んでいる: 戻さずに隠したままにする（続けて送るかなの間で戻すと、
+            // 押したままの Shift・Ctrl が一瞬 PC に届く）。次の列の戻す合図で戻す。
+            // 代わりに、この2つの合図の間に並んだほかの送信（マクロ・IME オフなど）も隠したまま送られる
+            return;
+        }
         kana_output_mask_mods(KANA_MASK_KANA, 0);
         return;
     case SYNC_KANA_OFF:
         break;
     default:
-        // 0（ZMK Studio などで割り当てられた &kana_sync）や未知の番号: 何もしない
+        // 0（キーマップに直接書いた &kana_sync 0 など）や未知の番号: 何もしない
         return;
     }
     if (off_stage != KANA_OFF_WAIT_SYNC) {
@@ -452,8 +468,11 @@ void kana_mode_on(const struct zmk_behavior_binding_event *event, zmk_keymap_lay
 
     // IME オンを先に並べるので、この後に押したかなは必ず IME オンの後に送られる。
     // 並べられなかったら（キューが満杯、または「離す」の再試行中）、かな配列モードには入らない（もう一度押す）。
-    // -EAGAIN は「押す」は並んでいる（「離す」は自動で再試行される）ので、そのまま入る
-    const int ret = kana_output_tap(event, LANGUAGE_1, tap_ms, wait_ms);
+    // -EAGAIN は「押す」は並んでいる（「離す」は自動で再試行される）ので、そのまま入る。
+    // かなと同じく、押している Shift・Ctrl を隠して送る（Shift+変換などにならないように）。
+    // -ENOSPC のときに隠す／戻す合図の対だけが並ぶことがあるが、何も送らないので害はない
+    static const uint32_t ime_on_key = LANGUAGE_1;
+    const int ret = kana_output_send_keys(event, &ime_on_key, 1, tap_ms, wait_ms, false, 0);
     if (ret == -EBUSY || ret == -ENOSPC) {
         LOG_WRN("Could not queue IME on (err %d), kana mode not entered", ret);
         return;

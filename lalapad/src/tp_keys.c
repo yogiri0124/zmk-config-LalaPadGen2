@@ -332,8 +332,8 @@ static K_WORK_DEFINE(kick_work, kick_work_cb);
 
 /* ---- モードのキー（システムワークキュー） ---- */
 
-void tp_keys_mode_pressed(const struct tp_keys_mode *mode,
-                          const struct zmk_behavior_binding_event *event) {
+static void mode_pressed(const struct tp_keys_mode *mode,
+                         const struct zmk_behavior_binding_event *event) {
     bool full = false;
     k_spinlock_key_t key = k_spin_lock(&lock);
     if (held_len < MAX_HELD_MODES) {
@@ -359,8 +359,8 @@ void tp_keys_mode_pressed(const struct tp_keys_mode *mode,
     }
 }
 
-void tp_keys_mode_released(const struct tp_keys_mode *mode,
-                           const struct zmk_behavior_binding_event *event) {
+static void mode_released(const struct tp_keys_mode *mode,
+                          const struct zmk_behavior_binding_event *event) {
     bool queued = false;
     k_spinlock_key_t key = k_spin_lock(&lock);
     for (size_t i = held_len; i > 0; i--) {
@@ -381,6 +381,20 @@ void tp_keys_mode_released(const struct tp_keys_mode *mode,
     if (queued) {
         k_work_submit(&kick_work);
     }
+}
+
+int tp_keys_binding_pressed(struct zmk_behavior_binding *binding,
+                            struct zmk_behavior_binding_event event) {
+    const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
+    mode_pressed(dev->config, &event);
+    return ZMK_BEHAVIOR_OPAQUE;
+}
+
+int tp_keys_binding_released(struct zmk_behavior_binding *binding,
+                             struct zmk_behavior_binding_event event) {
+    const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
+    mode_released(dev->config, &event);
+    return ZMK_BEHAVIOR_OPAQUE;
 }
 
 /* レイヤーが解除されたら、そのレイヤーで押したモードを終える（描きかけの一筆書きは捨てる。システムワークキュー） */
@@ -564,6 +578,9 @@ static bool handle_key(struct slot *s, const struct input_event *event, bool *qu
     if (event->code == INPUT_BTN_TOUCH) {
         s->touch_known = true;
         s->touching = event->value != 0;
+        // 動きの組の途中で続きが届かなかったときに、前の組の扱いを持ち越さないように
+        s->in_frame = false;
+        s->frame_dropped = false;
         // 触れ始め・離れたときに、たまった量と縦横の決定を捨てる。離れたら一筆書きを決める
         reset_motion(s);
         if (s->touching) {

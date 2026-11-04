@@ -38,8 +38,9 @@ struct tp_keys_mode {
     uint16_t tap_ms;
 };
 
-/* モードのキーを押した／離した（システムワークキューから呼ぶ）。最後に押したキーのモードが有効になる */
-void tp_keys_mode_pressed(const struct tp_keys_mode *mode,
-                          const struct zmk_behavior_binding_event *event);
-void tp_keys_mode_released(const struct tp_keys_mode *mode,
-                           const struct zmk_behavior_binding_event *event);
+/* zmk,behavior-tp-keys・zmk,behavior-tp-stroke の押した／離した（behavior の config が struct tp_keys_mode）。
+ * 最後に押したキーのモードが有効になる */
+int tp_keys_binding_pressed(struct zmk_behavior_binding *binding,
+                            struct zmk_behavior_binding_event event);
+int tp_keys_binding_released(struct zmk_behavior_binding *binding,
+                             struct zmk_behavior_binding_event event);

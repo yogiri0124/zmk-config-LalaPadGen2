@@ -227,6 +227,9 @@ static void restart_timeout(const struct auto_mouse_config *cfg, struct auto_mou
     } else if (data->timeout_ms > 0) {
         data->deadline = k_uptime_get() + data->timeout_ms;
         k_work_reschedule(&data->disable_work, K_MSEC(data->timeout_ms));
+    } else {
+        // 時間では解除しない（触れている間の確かめの予約が残っていたら取り消す）
+        k_work_cancel_delayable(&data->disable_work);
     }
 }
 

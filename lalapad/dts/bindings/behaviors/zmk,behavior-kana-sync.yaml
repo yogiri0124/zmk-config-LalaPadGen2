@@ -1,5 +1,6 @@
 # かな入力モジュール内部用の behavior。behavior queue の処理完了の合図に使う（keymap には書かない）。
-# 引数は kana_output.c が使う合図の番号（1 から）。0 は何もしない（ZMK Studio の一覧にも出るため）。
+# 引数は kana_output.c が使う合図の番号（1 から）。0 は何もしない（keymap に &kana_sync 0 と直接書いて
+# 押されたときのため。ZMK Studio の一覧には出るが、引数の情報を持たないので Studio からは割り当てられない）。
 
 description: Kana input internal queue sync marker
 

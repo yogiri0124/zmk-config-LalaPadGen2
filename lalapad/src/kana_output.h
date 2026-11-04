@@ -31,7 +31,7 @@
 
 /* keycode を1回タップする操作（押す→離す）を behavior queue に並べる。
  * 戻り値: 0 = 登録できた
- *         -EBUSY  = 前のキーの「離す」を再試行中なので何も登録していない
+ *         -EBUSY  = 前のキーの「離す」か、修飾キーを戻す合図を再試行中なので何も登録していない
  *         -ENOSPC = キューが満杯で何も登録していない
  *         -EAGAIN = 「押す」だけ登録できた。「離す」は登録できるまで自動で再試行する
  *                   （呼び出し側は、同じ文字の残りのキーを送らずに打ち切ること） */
@@ -39,7 +39,8 @@ int kana_output_tap(const struct zmk_behavior_binding_event *event, uint32_t key
                     uint32_t tap_ms, uint32_t wait_ms);
 
 /* keycode の「押す」だけをキューに並べる（押しっぱなしにするキー用）。
- * 戻り値: 0 = 登録できた / -EBUSY = 「離す」を再試行中なので登録していない / -ENOSPC = キューが満杯 */
+ * 戻り値: 0 = 登録できた / -EBUSY = 「離す」か修飾キーを戻す合図を再試行中なので登録していない /
+ *         -ENOSPC = キューが満杯 */
 int kana_output_press(const struct zmk_behavior_binding_event *event, uint32_t keycode,
                       uint32_t tap_ms);
 
@@ -79,14 +80,16 @@ bool kana_input_enabled(void);
 /* かな配列モードの解除処理中（受付停止からレイヤー解除まで）なら true。この間の入力は捨てる */
 bool kana_mode_exiting(void);
 
-/* かな配列モードをオンにする: IME オン (LANGUAGE_1) をキューに並べ、かなレイヤーを即座に有効化する
+/* かな配列モードをオンにする: IME オン (LANGUAGE_1) をキューに並べ（kana_output_send_keys と同じく
+ * Shift・Ctrl を隠して送る）、かなレイヤーを即座に有効化する
  * （IME オンを並べられなかったときは、オンにしない）。
  * layer は keymap の宣言順の番号（&mo などと同じくレイヤー ID として扱う） */
 void kana_mode_on(const struct zmk_behavior_binding_event *event, zmk_keymap_layer_id_t layer,
                   uint32_t tap_ms, uint32_t wait_ms);
 
 /* かな配列モードをオフにする: 即座に &kana_key の受付を止め、IME オフ (LANGUAGE_2) と完了の合図を
- * キューに並べ、合図が処理された（それより前の送信がすべて実行された）時点でかなレイヤーを解除する。
+ * キューに並べ、合図が処理された（それより前の送信がすべて実行された）時点でかなレイヤーを解除する
+ * （IME オフは kana_output_send_keys と同じく Shift・Ctrl を隠して送る）。
  * sub_layers（親指シフト面など）も同じ時点で解除する（親指を押したまま抜けてもシフト面を残さない）。
  * かな配列モードでないときは、layer と sub_layers の解除だけをすぐに行う（Studio の &tog などで
  * かなのレイヤーだけが有効になったときに抜けられるように）。layer は kana_mode_on と同じレイヤー ID */
@@ -103,7 +106,8 @@ void kana_output_set_marker_handler(kana_output_marker_cb_t cb);
 /* 送信キューの末尾に目印を並べる。それより前に並べた送信（かな・記号・マクロなど）がすべて実行されたとき、
  * 登録した関数が呼ばれる。キューの処理が待ち時間で止まっていなければ（それより前の送信がすべて済んで
  * いれば）、この関数の中ですぐに呼ばれる。
- * 戻り値: 0 = 並べた / -EBUSY = 「離す」を再試行中なので並べていない / -ENOSPC = キューが満杯で並べていない */
+ * 戻り値: 0 = 並べた / -EBUSY = 「離す」か修飾キーを戻す合図を再試行中なので並べていない /
+ *         -ENOSPC = キューが満杯で並べていない */
 int kana_output_add_marker(const struct zmk_behavior_binding_event *event);
 
 /* 修飾キーを隠す（PC へ送るレポートから外す）仕組みの使い手 */
@@ -114,7 +118,7 @@ enum kana_mask_owner {
 };
 
 /* owner が隠したい修飾キー（MOD_LSFT などの組み合わせ。0 = 隠すのをやめる）を設定する。
- * 実際に隠すのは、隠している使い手すべてが隠したいもの（共通部分）。PC へ送る修飾キーが変わったら
+ * 実際に隠すのは、どれかの使い手が隠したいものすべて（和集合）。PC へ送る修飾キーが変わったら
  * キーボードのレポートをすぐ送る（隠すのをやめたとき、押したままの修飾キーを PC に戻すため） */
 void kana_output_mask_mods(enum kana_mask_owner owner, uint8_t mods);
 

@@ -190,7 +190,7 @@ static int64_t flight_deadline;
 /* いま押されている位置（開始したときや、押されているキーの一覧で知らせるため） */
 static bool pressed[ZMK_KEYMAP_LEN];
 
-/* 右（子機）との接続の数（Bluetooth のスレッドで数える。分割していなければ 0 のまま） */
+/* 右（子機）との接続の数（Bluetooth の接続・切断の通知で数える。分割していなければ 0 のまま） */
 static atomic_t split_links;
 
 /* ---- 命令（PC から届いたもの。写して、専用のワークキューで処理する） ---- */
@@ -500,12 +500,15 @@ static void start(enum key_stream_transport transport, struct bt_conn *conn, uin
     k_spinlock_key_t key = k_spin_lock(&lock);
     const bool fresh = !streaming || stream_transport != transport || stream_conn != conn ||
                        stream_mask != mask;
+    // 同じ送り道で、送る種類だけが変わったか
+    const bool same_route = streaming && stream_transport == transport && stream_conn == conn;
     if (fresh) {
         old_conn = stop_locked();
-        // 送っている最中のものがあれば、その「送り終わった」は待たない（前の送り道のものや、届かないものを
+        // 送り道が変わったら、送っている最中のものの「送り終わった」は待たない（前の送り道のものや、届かないものを
         // 待ち続けないように。後から届いても、番号が違うので無視される。USB は、終わっていない転送のバッファを
-        // 書き換えずに次を送る）
-        if (in_flight) {
+        // 書き換えずに次を送る）。同じ送り道なら、ふつうに送り終わりを待つ（終わっていない転送に重ねて送ろうと
+        // しないように。届かなければ送り終わりの見張りが打ち切る）
+        if (in_flight && !same_route) {
             finish_in_flight_locked();
         }
         streaming = true;
@@ -680,7 +683,8 @@ static bool is_split_link(struct bt_conn *conn) {
  * 右が切れても ZMK はこれらの「離した」を出さない（右からは入力の出来事として届き、親機で位置に変えるため） */
 static const uint8_t right_trackpad_positions[] = {55, 56, 57, 63, 64, 65, 66, 67};
 
-/* つながりが変わった: 送っている間なら状態を送り直す（値は送るときに調べる）。Bluetooth のスレッドから呼ばれる。
+/* つながりが変わった: 送っている間なら状態を送り直す（値は送るときに調べる）。Bluetooth の接続・切断の通知
+ * （つながったときは Bluetooth の受信のスレッド、切れたときはシステムワークキュー）から呼ばれる。
  * 切れたときは、右のトラックパッドの位置で押されたままのものを離した扱いにし、送っている間なら「離した」を送る */
 static void split_link_changed(bool lost) {
     const uint32_t now = (uint32_t)k_uptime_get();

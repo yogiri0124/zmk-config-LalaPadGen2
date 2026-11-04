@@ -10,7 +10,8 @@
         //                        sub-layers = <親指シフト面などの番号>; };
 
         // 内部用（keymap には書かない）: 送信キューの処理完了の合図。C から参照するので omit しない。
-        // ZMK Studio の一覧にも出るので、割り当てないよう表示名で示す（割り当てて押しても何もしない）
+        // ZMK Studio の一覧には出るので、内部用であることを表示名で示す（引数の情報を持たないので Studio からは
+        // 割り当てられない。keymap に &kana_sync 0 と直接書いて押しても何もしない）
         kana_sync: kana_sync {
             compatible = "zmk,behavior-kana-sync";
             display-name = "内部用（割り当てない）";
