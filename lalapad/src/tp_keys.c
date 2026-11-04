@@ -422,6 +422,9 @@ static int tp_keys_layer_listener(const zmk_event_t *eh) {
 ZMK_LISTENER(tp_keys, tp_keys_layer_listener);
 ZMK_SUBSCRIPTION(tp_keys, zmk_layer_state_changed);
 
+// 入力処理は、zmk,input-processor-tp-keys のノードがあるときだけ（behavior だけのときに未使用の警告を出さない）
+#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
+
 /* ---- 入力処理（入力スレッド。以下もロックを取った状態で呼ぶ） ---- */
 
 static struct slot *find_slot(const struct device *dev) {
@@ -650,8 +653,6 @@ static int tp_keys_handle_event(const struct device *dev, struct input_event *ev
     }
     return ZMK_INPUT_PROC_STOP;
 }
-
-#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
 
 static struct zmk_input_processor_driver_api tp_keys_driver_api = {
     .handle_event = tp_keys_handle_event,
