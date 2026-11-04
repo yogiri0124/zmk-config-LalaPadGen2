@@ -36,6 +36,11 @@
  *   1つのインスタンスで扱うレイヤーは1つだけ。別のレイヤーを使うリスナーには別のインスタンスを入れること
  *   （有効中に違う param1 が来ても、有効にしたレイヤーのまま扱う）。
  *
+ * - 固定（zmk,behavior-auto-mouse-lock のキー。auto_mouse_layer_toggle_lock）: 固定している間は、時間切れでも、
+ *   「マウス操作」でないキーを押しても解除しない（&trans のキーは、レイヤーを残したまま下のレイヤーのキーとして
+ *   入力される）。もう一度押すと固定をやめ、ふだんどおり時間を数え直す。ほかの操作（&tog・&to など）で
+ *   レイヤーが解除されたときも、固定をやめる。
+ *
  * 入力処理は入力スレッドで呼ばれるので、レイヤーの切り替えはワーク（システムワークキュー）で行う。
  */
 
@@ -55,6 +60,8 @@
 #include <zmk/events/position_state_changed.h>
 #include <zmk/keymap.h>
 #include <zmk/matrix.h>
+
+#include "auto_mouse_layer.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -92,6 +99,8 @@ struct auto_mouse_data {
 
     /* レイヤーの状態 */
     bool active;
+    /* 固定している（時間切れ・マウス操作でないキーで解除しない） */
+    bool locked;
     /* 有効にしたレイヤーの ID（keymap の宣言順の番号。&mo などと同じく ID として扱うので、
      * ZMK Studio でレイヤーの順番を入れ替えても同じレイヤーを指す） */
     zmk_keymap_layer_id_t layer;
@@ -193,6 +202,7 @@ static void deactivate(struct auto_mouse_data *data) {
         return;
     }
     data->active = false;
+    data->locked = false;
     k_work_cancel_delayable(&data->disable_work);
     zmk_keymap_layer_deactivate(data->layer);
     LOG_DBG("Auto mouse layer %d deactivated", data->layer);
@@ -231,6 +241,11 @@ static void expire_stale_touches(const struct auto_mouse_config *cfg,
 /* 押しているマウス操作のキーがなく、トラックパッドにも触れていなければ、時間切れを数え直す */
 static void restart_timeout(const struct auto_mouse_config *cfg, struct auto_mouse_data *data) {
     if (!data->active) {
+        return;
+    }
+    if (data->locked) {
+        // 固定している間は時間では解除しない
+        k_work_cancel_delayable(&data->disable_work);
         return;
     }
     if (data->held_count > 0) {
@@ -297,7 +312,9 @@ static void disable_work_cb(struct k_work *work) {
     const struct auto_mouse_config *cfg = data->dev->config;
 
     k_mutex_lock(&data->lock, K_FOREVER);
-    if (data->active && data->held_count == 0 && data->touch_mask != 0) {
+    if (data->locked) {
+        // 固定している（固定の前に予約されていた解除ワークが遅れて動いた）
+    } else if (data->active && data->held_count == 0 && data->touch_mask != 0) {
         // 触れている間は解除しない。古くなった「触れている」を外し、残りの状態で時間切れを数え直す
         expire_stale_touches(cfg, data);
         restart_timeout(cfg, data);
@@ -409,7 +426,7 @@ static void handle_position(const struct device *dev,
                     data->held_count++;
                 }
                 restart_timeout(dev->config, data);
-            } else if (!is_passive_key(dev, ev->position)) {
+            } else if (!data->locked && !is_passive_key(dev, ev->position)) {
                 deactivate(data);
             }
         }
@@ -437,9 +454,38 @@ static void handle_layer_state(const struct device *dev) {
     // ほかの操作（&tog や &to など）でレイヤーが解除されたら、こちらの状態も合わせる
     if (data->active && !zmk_keymap_layer_active(data->layer)) {
         data->active = false;
+        data->locked = false;
         k_work_cancel_delayable(&data->disable_work);
     }
     k_mutex_unlock(&data->lock);
+}
+
+/* 固定を切り替える。固定するときに有効でなければ、layer を有効にしてから固定する（システムワークキュー） */
+static void toggle_lock(const struct device *dev, zmk_keymap_layer_id_t layer) {
+    struct auto_mouse_data *data = dev->data;
+    k_mutex_lock(&data->lock, K_FOREVER);
+    if (data->locked) {
+        data->locked = false;
+        restart_timeout(dev->config, data);
+        LOG_DBG("Auto mouse layer %d unlocked", data->layer);
+    } else {
+        if (!data->active) {
+            data->layer = layer;
+            data->active = true;
+            recount_held(dev, data);
+            zmk_keymap_layer_activate(layer);
+        }
+        data->locked = true;
+        k_work_cancel_delayable(&data->disable_work);
+        LOG_DBG("Auto mouse layer %d locked", data->layer);
+    }
+    k_mutex_unlock(&data->lock);
+}
+
+#define AUTO_MOUSE_TOGGLE_LOCK(n) toggle_lock(DEVICE_DT_INST_GET(n), layer);
+
+void auto_mouse_layer_toggle_lock(zmk_keymap_layer_id_t layer) {
+    DT_INST_FOREACH_STATUS_OKAY(AUTO_MOUSE_TOGGLE_LOCK)
 }
 
 static void dispatch(const struct device *dev, const zmk_event_t *eh) {

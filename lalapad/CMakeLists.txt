@@ -32,6 +32,7 @@ target_sources_ifdef(CONFIG_ZMK_BEHAVIOR_ALT_TAB app PRIVATE
 )
 target_sources_ifdef(CONFIG_ZMK_AUTO_MOUSE_LAYER app PRIVATE
   src/input_processor_auto_mouse_layer.c
+  src/behavior_auto_mouse_lock.c
 )
 target_sources_ifdef(CONFIG_ZMK_SCROLL_SNAP_GATE app PRIVATE
   src/behavior_scroll_snap_hold.c
