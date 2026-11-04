@@ -504,8 +504,8 @@
             display-name = "Control";
             bindings = <
             &kp F11  &kp NUMBER_6  &kp UP  &kp NUMBER_9  &kp PAGE_UP  &kp PAGE_UP  &kp NUMBER_9  &kp UP  &kp NUMBER_6  &kp F11
-            &trans  &kp LEFT  &kp DOWN  &kp RIGHT  &kp PAGE_DOWN  &kp PAGE_DOWN  &kp LEFT  &kp DOWN  &kp RIGHT  &trans
-            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
+            &none  &kp LEFT  &kp DOWN  &kp RIGHT  &kp PAGE_DOWN  &kp PAGE_DOWN  &kp LEFT  &kp DOWN  &kp RIGHT  &none
+            &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &tog CONTROL_LAYER  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
@@ -555,10 +555,10 @@
         MOUSE_LAYER {
             display-name = "mouse_layer";
             bindings = <
-            &tp_arrow  &kp LC(W)  &kp LC(LS(T))  &clk_lock_l  &kp UP  &kp LC(LS(TAB))  &kp LC(TAB)  &none  &none  &none
-            &none  &mkp MCLK  &mkp RCLK  &mkp LCLK  &kp LC(A)  &kp LEFT  &kp RIGHT  &link_incognito  &tp_draw  &tp_dial
-            &kp LC(Z)  &kp LC(X)  &kp LC(C)  &kp LC(V)  &kp DOWN  &none  &none  &none  &none  &none
-            &trans  &trans  &none  &trans  &scr_snap_hold  &cur_slow_toggle  &trans  &trans  &trans  &none  &trans  &none
+            &tp_arrow  &kp LC(W)  &kp LC(LS(T))  &kp LC(A)  &none  &kp LC(LS(TAB))  &kp LC(TAB)  &none  &none  &none
+            &none  &mkp MCLK  &mkp RCLK  &mkp LCLK  &clk_lock_l  &kp RIGHT_CONTROL  &kp RIGHT_SHIFT  &link_incognito  &tp_draw  &tp_dial
+            &kp LC(Z)  &kp LC(X)  &kp LC(C)  &kp LC(V)  &none  &none  &none  &kp RIGHT_ALT  &none  &none
+            &none  &none  &none  &trans  &scr_snap_hold  &cur_slow_toggle  &trans  &trans  &trans  &none  &none  &none
             &trans  &kp RS(RIGHT)  &trans  &kp LS(LEFT)  &kp LC(LS(C))  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
