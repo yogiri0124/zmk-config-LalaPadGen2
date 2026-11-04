@@ -43,7 +43,6 @@
 | --- | --- |
 | [yogiri0124/zmk-driver-iqs9151](https://github.com/yogiri0124/zmk-driver-iqs9151) `v1.0.0-lalapad-touch.1` | トラックパッドのドライバ。ShiniNet 版 v1.0.0 に「指が触れている／離れた」の通知を足した複製 |
 | [kot149/zmk-scroll-snap](https://github.com/kot149/zmk-scroll-snap) | スクロールを縦か横にそろえる |
-| [urob/zmk-auto-layer](https://github.com/urob/zmk-auto-layer) `v0.3.0` | Num Word（数字を打っている間だけ数字レイヤーを続ける） |
 | [caksoylar/zmk-rgbled-widget](https://github.com/caksoylar/zmk-rgbled-widget)、[ShiniNet/zmk-easy-charge-indicator](https://github.com/ShiniNet/zmk-easy-charge-indicator) | LED の表示（元と同じ） |
 | `lalapad/`（このリポジトリの自作） | かな入力、オートマウスレイヤー、記号キーなど |
 
@@ -444,7 +443,7 @@ Racket 配列は、親指に文字（R）を置く配列です。
 | `swap_` | `swap_next` `swap_prev` | ウィンドウの切り替え（Alt+Tab ／ Alt+Shift+Tab）。最初に押したときから Alt を押したままにし、押し始めたレイヤーを離すか、ほかのキー（文字・記号・修飾キーなど。クリックやレイヤーのキーでは離さない）を押すと Alt を離す（2 つで Alt を共有するので、途中で入れ替えてもよい。接続先の切り替えでも離す） |
 | `scr_` | `scr_snap_hold` | 押している間だけ、スクロールを縦か横にそろえる |
 | `lyr_` | `lyr_lock` | 置いたレイヤーを固定する／固定をやめる（Layer Lock。固定している間は、&mo のキーを離しても、オートマウスレイヤーの時間切れでも切れない。Default とシステムレイヤー以外のどのレイヤーにも置ける） |
-| `num_` | `num_mo` | タップで Num Word、押している間はレイヤー（`&num_mo 数字レイヤー 数字レイヤー`） |
+| `num_` | `num_word` `num_mo` | Num Word（数字を打っている間だけ数字レイヤーを続ける）／タップで Num Word、押している間は数字レイヤー（`&num_mo 数字レイヤー 数字レイヤー`） |
 | `tp_` | `tp_arrow` `tp_dial` `tp_draw` | 押している間だけ、トラックパッドを矢印キー／ダイヤル／一筆書きに変える（[トラックパッドでキー操作](#トラックパッドでキー操作)） |
 | `link_` | `link_incognito` | カーソルを合わせたリンクを、Chrome のシークレットウィンドウで開く（右クリックしてメニューのアクセスキー G を押す） |
 | `ks_` | `ks_touten` `ks_kuten` `ks_chouon` `ks_excl` `ks_ques` | 、 。 ー ！ ？ を入力する |
@@ -497,7 +496,7 @@ ks_touten: ks_touten {
 | --- | --- |
 | `config/lalapadgen2.keymap` | キーマップ（レイヤーと、カスタムキーの定義） |
 | `config/*.conf`、`config/boards/shields/lalapadgen2/` | ファームウェアとトラックパッドの設定、シールドの定義 |
-| `lalapad/` | 自作モジュール（かな入力、記号キー、オートマウスレイヤー、レイヤーの固定、カーソル低速、クリック・修飾キーの押しっぱなし、ウィンドウの切り替え、スクロールスナップの切り替え、トラックパッドでキー操作、Alt コード入力、キー位置の送信、トラックパッドのキー位置の出来事の中継） |
+| `lalapad/` | 自作モジュール（かな入力、記号キー、オートマウスレイヤー、レイヤーの固定、Num Word、カーソル低速、クリック・修飾キーの押しっぱなし、ウィンドウの切り替え、スクロールスナップの切り替え、トラックパッドでキー操作、Alt コード入力、キー位置の送信、トラックパッドのキー位置の出来事の中継） |
 | `docs/google-ime/` | Google 日本語入力のローマ字テーブルと、読み込みの手順 |
 | `docs/key-stream.md`、`docs/key-stream-layout.json`、`docs/tools/` | キー位置の送信の決まりごと、キーの実際の配置、確認用のページ |
 | `docs/reference/` | キーコードや設定項目の資料 |

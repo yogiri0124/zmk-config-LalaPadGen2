@@ -36,6 +36,9 @@ target_sources_ifdef(CONFIG_ZMK_AUTO_MOUSE_LAYER app PRIVATE
 target_sources_ifdef(CONFIG_ZMK_BEHAVIOR_LAYER_LOCK app PRIVATE
   src/behavior_layer_lock.c
 )
+target_sources_ifdef(CONFIG_ZMK_BEHAVIOR_WORD_LAYER app PRIVATE
+  src/behavior_word_layer.c
+)
 target_sources_ifdef(CONFIG_ZMK_SCROLL_SNAP_GATE app PRIVATE
   src/behavior_scroll_snap_hold.c
   src/input_processor_scroll_snap_gate.c

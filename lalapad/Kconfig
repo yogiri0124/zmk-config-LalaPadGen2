@@ -32,6 +32,11 @@ config ZMK_BEHAVIOR_LAYER_LOCK
     default y
     depends on LALAPAD_CENTRAL && DT_HAS_ZMK_BEHAVIOR_LAYER_LOCK_ENABLED
 
+config ZMK_BEHAVIOR_WORD_LAYER
+    bool "Word layer behavior (zmk,behavior-word-layer)"
+    default y
+    depends on LALAPAD_CENTRAL && DT_HAS_ZMK_BEHAVIOR_WORD_LAYER_ENABLED
+
 config ZMK_BEHAVIOR_ALT_TAB
     bool "Alt+Tab window switcher behavior (zmk,behavior-alt-tab)"
     default y

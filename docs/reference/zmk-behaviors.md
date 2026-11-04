@@ -184,6 +184,7 @@
 | `zmk,behavior-key-lock` | `mod_lock_…` | 0 | `keycode`（必須） | キーの押しっぱなし切り替え（押しっぱなしかどうかは自分で覚える。ほかのキーで同じキーを押していても独立して切り替わる。接続先の切り替えで解除） |
 | `zmk,behavior-cursor-slow` | `cur_slow_hold` `_toggle` `_once` | 0 | `mode`（必須。`CURSOR_SLOW_HOLD` など） | カーソル低速のオン・オフ |
 | `zmk,behavior-scroll-snap-hold` | `scr_snap_hold` | 0 | — | 押している間だけスクロールを縦か横にそろえる |
+| `zmk,behavior-word-layer` | `num_word` | 1（レイヤー番号） | `continue-list`（必須）、`ignore-numbers`、`ignore-alphas`、`ignore-modifiers` | 打っている間だけ続くレイヤー（Num Word）。continue-list と ignore のキー以外のキー（キーコード）を押したら解除する。有効な間にもう一度押すと解除。ほかの操作でレイヤーが解除されたら終わる（urob/zmk-auto-layer の auto-layer と同じプロパティ）。keymap の hold-tap `num_mo`（タップで `&num_word`、長押しで `&mo`）から使う |
 | `zmk,behavior-layer-lock` | `lyr_lock` | 0 | — | 置いたレイヤーを固定する／固定をやめる（Layer Lock。固定している間は、そのレイヤーが解除されてもすぐ有効にし直す。固定をやめるとそのレイヤーを解除する。オートマウスレイヤーなら解除せず時間を数え直す。Default と conditional_layers の then-layer は固定しない） |
 | `zmk,behavior-alt-tab` | `swap_next` `swap_prev` | 0 | `reverse`（Shift+Tab を送る） | ウィンドウの切り替え。最初に押したときに Alt を押したままにして Tab を送り、押すたびに Tab を送る。押し始めたレイヤーの解除、ほかのキー（キーコードを送るもの）の押下、接続先の切り替えで Alt を離す（順方向・逆方向で Alt を共有） |
 | `zmk,behavior-tp-keys` | `tp_arrow` `tp_dial` | 0 | `bindings`（必須。8 つ: 1 本指を上・下・左・右、2 本指を上・下・左・右へ動かしたとき）、`cursor-step` `scroll-step`（既定 150。トラックパッドの生の値）、`tap-ms`（既定 10） | 押している間だけ、トラックパッドを動かした量ごとに、その向きの binding を送る（4 つとも `&trans` の側はカーソル・スクロールのまま）。押している間のタップ・ジェスチャーは捨てる |
@@ -192,14 +193,6 @@
 | `zmk,input-processor-cursor-slow` | `zip_cursor_slow`（`behaviors/cursor_slow.dtsi`） | 2（倍率の分子、分母） | — | カーソル低速の間、カーソル移動を遅くする |
 | `zmk,input-processor-scroll-snap-gate` | `zip_scroll_snap_gate_R` `_L`（dtsi） | 0 | `processor`（必須） | `scr_snap_hold` を押している間だけ、スクロールスナップにイベントを渡す |
 | `zmk,input-processor-tp-keys` | `zip_tp_keys`（`behaviors/tp_keys.dtsi`） | 0 | — | `tp_` のキーを押している間、トラックパッドの動きをキーに変える。リスナーの入力処理の並びの先頭に入れる |
-
-### 公開モジュール `urob/zmk-auto-layer`（v0.3.0）
-
-| compatible | keymap での名前 | 引数 | 主なプロパティ | 働き |
-| --- | --- | --- | --- | --- |
-| `zmk,behavior-auto-layer` | `num_word`（`behaviors/num_word.dtsi`） | 1（レイヤー番号） | `continue-list`（既定は Backspace・Delete・`.` `,` `+` `-` `*` `/` `=`）、`ignore-numbers`（既定で有効）、`ignore-alphas`、`ignore-modifiers` | レイヤーを有効にし、continue-list と ignore のキー以外のキー（キーコード）を押したら解除する。有効な間にもう一度押すと解除する |
-
-- このリポジトリでは `&num_word { ignore-modifiers; };` とし、keymap の hold-tap `num_mo`（タップで `&num_word`、長押しで `&mo`）から使う。
 
 - 引数なし（0）の behavior は、ZMK Studio から選べるよう `zmk_behavior_get_empty_param_metadata` を返す。
 - `kana_sync`（`behaviors/kana.dtsi`）は送信キューの処理完了の合図に使う内部用で、keymap には書かない（ZMK Studio の一覧には出るが、割り当てられない）。

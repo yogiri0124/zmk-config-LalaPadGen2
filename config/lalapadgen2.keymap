@@ -9,7 +9,6 @@
 #include <behaviors/mouse_button_toggle.dtsi>
 #include <dt-bindings/lalapad/cursor_slow.h>
 #include <dt-bindings/lalapad/tp_keys.h>
-#include <behaviors/num_word.dtsi>
 
 #define DEFAULT_LAYER   0
 #define CONTROL_LAYER   1
@@ -29,9 +28,6 @@
 // オートマウスレイヤー（lalapadgen2.dtsi）: 数字・記号レイヤーの間は、トラックパッドを操作してもマウスレイヤーにしない
 &zip_auto_mouse_layer { excluded-layers = <SECONDARY_LAYER TERTIARY_LAYER>; };
 
-// Num Word（urob/zmk-auto-layer の num_word）: 数字レイヤーを、数字と continue-list のキー（Backspace・Delete・. , + - * / =）を
-// 押している間だけ続け、ほかのキーを押すと自動で戻す。Shift などの修飾キーでは戻さない（ignore-modifiers）
-&num_word { ignore-modifiers; };
 
 / {
     behaviors {
@@ -43,6 +39,18 @@
         zip_dyn_scale_set: zip_dyn_scale_set {
             compatible = "zmk,behavior-zip-dynamic-scale-set";
             #binding-cells = <2>;
+        };
+
+        // Num Word（自作モジュール lalapad/ の zmk,behavior-word-layer）: 数字レイヤーを、数字と continue-list のキー
+        // （Backspace・Delete・. , + - * / =）を押している間だけ続け、ほかのキーを押すと自動で戻す。Shift などの修飾キーでは
+        // 戻さない（ignore-modifiers）。ほかの操作（33 の長押しを離したなど）で数字レイヤーが解除されたら、こちらも終わる。
+        // 使い方: &num_word SECONDARY_LAYER
+        num_word: num_word {
+            compatible = "zmk,behavior-word-layer";
+            #binding-cells = <1>;
+            continue-list = <BACKSPACE DELETE DOT COMMA PLUS MINUS STAR FSLH EQUAL>;
+            ignore-numbers;
+            ignore-modifiers;
         };
 
         // 33: タップで Num Word（数字レイヤーを、数字を打っている間だけ続ける）、長押しで今までどおり押している間だけ

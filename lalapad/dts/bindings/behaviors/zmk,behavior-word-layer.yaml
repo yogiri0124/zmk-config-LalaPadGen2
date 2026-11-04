@@ -1,0 +1,25 @@
+# 打っている間だけ続くレイヤー（引数 1 つ: レイヤー番号。Num Word に使う）。押すとレイヤーを有効にし、
+# continue-list のキー（と ignore-* の種類のキー）を押している間は続け、それ以外のキーを押したら解除する。
+# 有効な間にもう一度押すと解除する。ほかの操作でレイヤーが解除されたら、こちらも終わる。
+# urob/zmk-auto-layer の auto-layer と同じプロパティ。
+
+description: Layer that stays active while continue-list keys are typed (Num Word)
+
+compatible: "zmk,behavior-word-layer"
+
+include: one_param.yaml
+
+properties:
+  continue-list:
+    type: array
+    required: true
+    description: 押してもレイヤーを解除しないキー（dt-bindings/zmk/keys.h の名前）
+  ignore-alphas:
+    type: boolean
+    description: 英字（A〜Z）でも解除しない
+  ignore-numbers:
+    type: boolean
+    description: 数字（1〜0、テンキーの数字。Shift 付きの # $ などを含む）でも解除しない
+  ignore-modifiers:
+    type: boolean
+    description: 修飾キー（Shift・Ctrl・Alt・Win）でも解除しない

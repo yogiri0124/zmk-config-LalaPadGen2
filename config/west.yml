@@ -10,8 +10,6 @@ manifest:
       url-base: https://github.com/kot149
     - name: yogiri0124
       url-base: https://github.com/yogiri0124
-    - name: urob
-      url-base: https://github.com/urob
   projects:
     - name: zmk
       remote: zmkfirmware
@@ -30,9 +28,5 @@ manifest:
       remote: kot149
       # v1 はタグではなく更新され続けるブランチなので、ビルドが変わらないようコミットで固定する（2026-10-22 時点の v1）
       revision: 2feeb988f5b5a3c2b5e09ba6472e86e6902463a2
-    - name: zmk-auto-layer
-      remote: urob
-      # Num Word（num_word）。ZMK v0.3.0 に合わせた版で固定する
-      revision: v0.3.0
   self:
     path: config
