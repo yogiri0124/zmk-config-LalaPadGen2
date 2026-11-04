@@ -22,6 +22,7 @@
 #define KANA_SYM_LAYER  9
 #define LEFT_HAND_LAYER  10
 #define LEFT_HAND2_LAYER 11
+#define LEFT_HAND3_LAYER 12
 
 &mt { quick-tap-ms = <200>; };
 
@@ -68,7 +69,8 @@
 
         // 42: 左手用レイヤー（LEFT_HAND_LAYER・LEFT_HAND2_LAYER）に入る／戻る。3 秒以上押して、離したときに切り替わる
         // （長押しが決まった時点では変えず、マクロで離すのを待ってから &to する）。3 秒より短く押したときは、
-        // タップのほうの binding（Default では Control レイヤーの切り替え、左手用レイヤーでは 2 枚目との行き来）。
+        // タップのほうの binding（Default では Control レイヤーの切り替え、左手用レイヤーでは次の左手用レイヤーへ。
+        // left_hand → left_hand_2 → left_hand_3 → left_hand の順に回る）。
         lh_enter: lh_enter {
             compatible = "zmk,behavior-macro";
             #binding-cells = <0>;
@@ -99,13 +101,14 @@
             tapping-term-ms = <3000>;
             bindings = <&lh_enter>, <&tog>;
         };
-        // 左手用レイヤーの 42: 3 秒以上押して離すと Default に戻る。短く押すと &tog（使い方: &lh_out 0 LEFT_HAND2_LAYER）
+        // 左手用レイヤーの 42: 3 秒以上押して離すと Default に戻る。短く押すと次の左手用レイヤーへ &to
+        // （使い方: &lh_out 0 次のレイヤー）
         lh_out: lh_out {
             compatible = "zmk,behavior-hold-tap";
             #binding-cells = <2>;
             flavor = "tap-preferred";
             tapping-term-ms = <3000>;
-            bindings = <&lh_exit>, <&tog>;
+            bindings = <&lh_exit>, <&to>;
         };
 
         mt2: mod_tap2 {
@@ -625,7 +628,7 @@
             &trans  &trans  &trans  &trans  &kp LEFT_SHIFT  &kp LS(ENTER)  &trans  &trans  &trans  &trans  &trans  &kp CAPS
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
-            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
+            &kp LG(RIGHT)  &kp LG(LEFT)  &trans  &trans  &trans  &kp LG(RIGHT)  &kp LG(LEFT)  &trans  &trans  &trans
             >;
         };
 
@@ -728,7 +731,20 @@
             &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
             &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
             &none  &none  &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
-            &lh_out 0 LEFT_HAND2_LAYER  &none  &none  &none  &none  &none  &none  &none  &none  &none
+            &lh_out 0 LEFT_HAND3_LAYER  &none  &none  &none  &none  &none  &none  &none  &none  &none
+            &trans  &trans  &trans  &trans  &trans  &trans
+            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
+            >;
+        };
+
+        LEFT_HAND3_LAYER {
+            display-name = "left_hand_3";
+            bindings = <
+            &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
+            &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
+            &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
+            &none  &none  &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
+            &lh_out 0 LEFT_HAND_LAYER  &none  &none  &none  &none  &none  &none  &none  &none  &none
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             >;
