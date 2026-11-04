@@ -54,7 +54,7 @@
         };
 
         // ===== カスタムキー（エディタで使いたいレイヤーに割り当てる） =====
-        // 名前の頭で種類を分けている（clk_: クリック、cur_: カーソル、mod_: 修飾キー、swap_: ウィンドウの切り替え、scr_: スクロール、link_: Chrome のリンク、tp_: トラックパッドでキー操作、ks_: かなと一緒に打つ記号、pair_: カッコ、sym_: 記号、kana_: かな）。
+        // 名前の頭で種類を分けている（clk_: クリック、cur_: カーソル、mod_: 修飾キー、swap_: ウィンドウの切り替え、scr_: スクロール、lyr_: レイヤー、link_: Chrome のリンク、tp_: トラックパッドでキー操作、ks_: かなと一緒に打つ記号、pair_: カッコ、sym_: 記号、kana_: かな）。
         // display-name は ZMK Studio の一覧とキーの上に出る名前（キーの上は 9 文字まで）。
 
         // --- clk_: クリック押しっぱなし（もう一度押す、または同じボタンのクリックで解除） ---
@@ -214,6 +214,16 @@
         scr_snap_hold: scr_snap_hold {
             compatible = "zmk,behavior-scroll-snap-hold";
             display-name = "Snap Hold";
+            #binding-cells = <0>;
+        };
+
+        // --- lyr_: レイヤー ---
+        // オートマウスレイヤーを固定する（自作モジュール lalapad/ の zmk,behavior-auto-mouse-lock）。押すたびに固定・固定をやめるを
+        // 切り替える。固定している間は、時間切れでも、マウスレイヤーで &trans のキーなどを押しても切れない（&trans のキーは
+        // 下のレイヤーのキーとして入力される）。マウスレイヤーに置く
+        lyr_lock_mouse: lyr_lock_mouse {
+            compatible = "zmk,behavior-auto-mouse-lock";
+            display-name = "Lyr Lock";
             #binding-cells = <0>;
         };
 
@@ -555,7 +565,7 @@
         MOUSE_LAYER {
             display-name = "mouse_layer";
             bindings = <
-            &tp_arrow  &kp LC(W)  &kp LC(LS(T))  &kp LC(A)  &none  &kp LC(LS(TAB))  &kp LC(TAB)  &none  &none  &none
+            &tp_arrow  &kp LC(W)  &kp LC(LS(T))  &kp LC(A)  &none  &kp LC(LS(TAB))  &kp LC(TAB)  &none  &none  &lyr_lock_mouse
             &none  &mkp MCLK  &mkp RCLK  &mkp LCLK  &clk_lock_l  &kp RIGHT_CONTROL  &kp RIGHT_SHIFT  &link_incognito  &tp_draw  &tp_dial
             &kp LC(Z)  &kp LC(X)  &kp LC(C)  &kp LC(V)  &none  &none  &none  &kp RIGHT_ALT  &none  &none
             &none  &none  &none  &trans  &scr_snap_hold  &cur_slow_toggle  &trans  &trans  &trans  &none  &none  &none
