@@ -32,7 +32,8 @@ struct bt_conn;
 /* ---- 送り道 → 本体 ---- */
 
 /* PC から届いたレポート（命令）。conn は Bluetooth のときの接続（USB では NULL）。
- * どのスレッドから呼んでもよい（中身を写して、本体の処理用のスレッドで処理する） */
+ * どのスレッドから呼んでもよい（中身を写して、本体の処理用のスレッドで処理する）。
+ * 送り道はどの PC からの命令でも渡してよい（「開始」が ZMK の入力先からのものかは、本体が確かめる） */
 void key_stream_received(enum key_stream_transport transport, struct bt_conn *conn,
                          const uint8_t *data, size_t len);
 
