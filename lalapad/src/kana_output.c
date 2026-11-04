@@ -3,13 +3,19 @@
  *
  * - 送信はすべて ZMK の behavior queue（マクロと同じ仕組み）に &kp として並べ、順番を保つ。
  * - キューが満杯で「離す」を登録できなかったときは、登録できるまで再試行する（押しっぱなし防止）。
+ *   修飾キーを戻す合図（下）も同じく、登録できるまで再試行する。
  * - かな配列モードのオフは「受付停止 → IME オフを並べる → 完了の合図 (&kana_sync) を並べる →
  *   合図がキューで実際に処理されたらレイヤー解除」の順で行う。時間の見積もりには頼らないので、
  *   処理が遅れても、解除前後の入力がローマ字のまま送られたり、残りのかなを追い越したりしない。
  * - 同じ合図の仕組みを、ほかのモジュール（Alt コード）にも「それより前に並べた送信がすべて終わったら
  *   知らせる」目印として貸す（kana_output_add_marker）。合図の番号で、どちらの合図かを見分ける。
+ * - かな・記号の打鍵の列は、前後に「修飾キーを隠す／戻す」合図を並べて送る（kana_output_send_keys）。
+ *   合図はキューの中で打鍵と同じ順に処理されるので、押している Shift などが、その列の打鍵にだけかからない。
+ *   隠すのは ZMK の masked modifiers（mod-morph と同じ仕組み）。キーマップで mod-morph を使うと、
+ *   互いに隠す設定を上書きし合うので、併用しない（このキーマップでは使っていない）。
  *
- * behavior のコールバックと k_work はどちらもシステムワークキューで動くので、状態の排他は不要。
+ * behavior のコールバックと k_work はどちらもシステムワークキューで動くので、状態の排他は不要
+ * （接続先の切り替えの知らせはほかのスレッドから届くことがあるが、bool を1つ書くだけ）。
  */
 
 #include <errno.h>
@@ -20,36 +26,58 @@
 
 #include <zmk/behavior.h>
 #include <zmk/behavior_queue.h>
+#include <zmk/endpoints.h>
+#include <zmk/hid.h>
 #include <zmk/keymap.h>
 #include <zmk/matrix.h>
 #include <zmk/event_manager.h>
+#include <zmk/events/endpoint_changed.h>
 #include <zmk/events/keycode_state_changed.h>
 #include <zmk/events/layer_state_changed.h>
+#include <zmk/events/position_state_changed.h>
 
+#include <dt-bindings/zmk/hid_usage_pages.h>
 #include <dt-bindings/zmk/keys.h>
 
 #include "kana_output.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
+/* 合図の behavior（&kana_sync）は lalapad/dts/behaviors/kana.dtsi で定義している */
+BUILD_ASSERT(DT_NODE_EXISTS(DT_NODELABEL(kana_sync)),
+             "kana: the kana_sync node is missing (include <behaviors/kana.dtsi> in the keymap)");
+
 #define KP_BEHAVIOR_NAME DEVICE_DT_NAME(DT_NODELABEL(kp))
 #define SYNC_BEHAVIOR_NAME DEVICE_DT_NAME(DT_NODELABEL(kana_sync))
 #define RETRY_INTERVAL_MS 10
 /* 合図の番号（&kana_sync の引数）。かなモードの解除の合図は同時に1つしかない（解除中は解除も入り直しも
- * 受け付けない）。目印は並べた順に処理されるので、どの目印かは呼ぶ側が順番で分かる */
+ * 受け付けない）。目印は並べた順に処理されるので、どの目印かは呼ぶ側が順番で分かる。
+ * 修飾キーを隠す／戻す合図は、打鍵の列ごとに必ず対で並ぶ（戻す合図の再試行中は次の列を並べない） */
 #define SYNC_KANA_OFF 0
 #define SYNC_MARKER 1
+#define SYNC_MASK_ON 2
+#define SYNC_MASK_OFF 3
+
+/* トラックパッドのクリック・ジェスチャーのキー位置（config/boards/shields/lalapadgen2/lalapadgen2.dtsi の
+ * POS_TP_*。52〜57 がクリック、58〜67 がジェスチャー）。押した後は、ほかのウィンドウや入力欄に移って
+ * IME がオフになっているかもしれないので、次のかな・記号の前に IME オンを送り直す */
+#define TP_POS_FIRST 52
+#define TP_POS_LAST 67
+BUILD_ASSERT(TP_POS_LAST < ZMK_KEYMAP_LEN, "kana: trackpad positions are out of range");
 
 /* ---- 送信キュー ---- */
 
-/* 「押す」は登録済みで、キューが満杯のため「離す」をまだ登録できていないキー（登録できるまで順に再試行する）。
- * 押しっぱなしのキー（スペースなど）の「離す」はキー位置ごとに1つまで、タップの「離す」は再試行中に次の
- * タップを受け付けない（-EBUSY）ので1つまで。全キー位置に押しっぱなしのキーを置いても足りる数にする
- * （足りないと、下の「その場で離す」が、まだキューにある「押す」より先に実行されてしまう） */
+/* キューが満杯のため、まだ登録できていない「必ず送る」もの（キーの「離す」と、修飾キーを戻す合図）。
+ * 登録できるまで順に再試行する。
+ * 押しっぱなしのキー（スペースなど）の「離す」はキー位置ごとに1つまで。タップの「離す」と修飾キーを戻す
+ * 合図は、再試行中に次のタップや列を受け付けない（-EBUSY）ので、1つの列の分（それぞれ1つ）まで。
+ * 全キー位置に押しっぱなしのキーを置いても足りる数にする
+ * （足りないと、下の「その場で実行」が、まだキューにある「押す」より先に実行されてしまう） */
 #define PENDING_RELEASE_MAX (ZMK_KEYMAP_LEN + 2)
 
 struct pending_release {
-    uint32_t keycode;
+    struct zmk_behavior_binding binding;
+    bool press;
     struct zmk_behavior_binding_event event;
     uint32_t wait;
 };
@@ -69,27 +97,46 @@ static struct zmk_behavior_binding kp_binding(uint32_t keycode) {
     };
 }
 
-static void add_pending_release(const struct zmk_behavior_binding_event *event, uint32_t keycode,
-                                uint32_t wait) {
+static struct zmk_behavior_binding sync_binding(uint32_t token) {
+    return (struct zmk_behavior_binding){
+        .behavior_dev = SYNC_BEHAVIOR_NAME,
+        .param1 = token,
+    };
+}
+
+static void add_pending_release(const struct zmk_behavior_binding_event *event,
+                                struct zmk_behavior_binding binding, bool press, uint32_t wait) {
     if (pending_count >= PENDING_RELEASE_MAX) {
-        // 上の数え方では起きない（配列の範囲を守るための確認）。押しっぱなしにはせず、その場で離す
-        LOG_ERR("Too many pending releases, releasing 0x%08X immediately", keycode);
-        raise_zmk_keycode_state_changed_from_encoded(keycode, false, k_uptime_get());
+        // 上の数え方では起きない（配列の範囲を守るための確認）。押しっぱなしや隠したままにはせず、その場で実行する
+        LOG_ERR("Too many pending releases, invoking 0x%08X immediately", binding.param1);
+        struct zmk_behavior_binding_event now = *event;
+        now.timestamp = k_uptime_get();
+        zmk_behavior_invoke_binding(&binding, now, press);
         return;
     }
     pending_releases[pending_count++] = (struct pending_release){
-        .keycode = keycode,
+        .binding = binding,
+        .press = press,
         .event = *event,
         .wait = wait,
     };
     k_work_schedule(&retry_release_work, K_MSEC(RETRY_INTERVAL_MS));
 }
 
+/* 必ず送るもの（キーの「離す」、修飾キーを戻す合図）を並べる。先に待っているものがあれば、順番を守るため
+ * その後ろに並べる。満杯なら登録できるまで自動で再試行する */
+static void queue_must(const struct zmk_behavior_binding_event *event,
+                       struct zmk_behavior_binding binding, bool press, uint32_t wait) {
+    if (release_pending() || zmk_behavior_queue_add(event, binding, press, wait) < 0) {
+        add_pending_release(event, binding, press, wait);
+    }
+}
+
 static void retry_release_work_handler(struct k_work *work) {
     // 先に失敗したものから順に登録する
     while (pending_count > 0) {
         struct pending_release *p = &pending_releases[0];
-        if (zmk_behavior_queue_add(&p->event, kp_binding(p->keycode), false, p->wait) < 0) {
+        if (zmk_behavior_queue_add(&p->event, p->binding, p->press, p->wait) < 0) {
             k_work_schedule(&retry_release_work, K_MSEC(RETRY_INTERVAL_MS));
             return;
         }
@@ -112,7 +159,7 @@ int kana_output_tap(const struct zmk_behavior_binding_event *event, uint32_t key
     }
 
     if (zmk_behavior_queue_add(event, kp, false, wait_ms) < 0) {
-        add_pending_release(event, keycode, wait_ms);
+        add_pending_release(event, kp, false, wait_ms);
         return -EAGAIN;
     }
 
@@ -132,18 +179,41 @@ int kana_output_press(const struct zmk_behavior_binding_event *event, uint32_t k
 
 void kana_output_release(const struct zmk_behavior_binding_event *event, uint32_t keycode,
                          uint32_t wait_ms) {
-    const struct zmk_behavior_binding kp = kp_binding(keycode);
+    queue_must(event, kp_binding(keycode), false, wait_ms);
+}
 
-    // 先に待っている「離す」があれば、順番を守るためその後ろに並べる
-    if (release_pending() || zmk_behavior_queue_add(event, kp, false, wait_ms) < 0) {
-        add_pending_release(event, keycode, wait_ms);
+/* ---- 修飾キーを隠す ---- */
+
+/* 使い手ごとの隠したい修飾キー（0 = 隠していない） */
+static uint8_t mask_mods[KANA_MASK_OWNER_COUNT];
+
+void kana_output_mask_mods(enum kana_mask_owner owner, uint8_t mods) {
+    mask_mods[owner] = mods;
+
+    uint8_t combined = 0xFF;
+    bool any = false;
+    for (size_t i = 0; i < ARRAY_SIZE(mask_mods); i++) {
+        if (mask_mods[i] != 0) {
+            combined &= mask_mods[i];
+            any = true;
+        }
+    }
+
+    const int changed =
+        any ? zmk_hid_masked_modifiers_set(combined) : zmk_hid_masked_modifiers_clear();
+    if (changed > 0) {
+        // PC へ送る修飾キーが変わった: 次のキーを待たずに知らせる
+        // （隠すのをやめたとき、押したままの Shift などを PC 側でも押したままに戻す）
+        zmk_endpoints_send_report(HID_USAGE_KEY);
     }
 }
 
 /* ---- IME オンの送り直し ---- */
 
-/* 最後にかな・記号を送った（kana_output_ime_on を呼んだ）時刻 */
+/* 最後にかな・記号を送った（kana_output_ime_on を呼んだ、またはかな配列モードに入って IME オンを送った）時刻 */
 static int64_t last_char_ms;
+/* last_char_ms が有効か（false なら、次の kana_output_ime_on で必ず送る）。接続先の切り替えと、
+ * トラックパッドのクリック・ジェスチャーで false に戻す */
 static bool char_sent;
 
 int kana_output_ime_on(const struct zmk_behavior_binding_event *event, uint32_t tap_ms,
@@ -162,6 +232,32 @@ int kana_output_ime_on(const struct zmk_behavior_binding_event *event, uint32_t 
     }
     last_char_ms = now;
     char_sent = true;
+    return ret;
+}
+
+int kana_output_send_keys(const struct zmk_behavior_binding_event *event, const uint32_t *keys,
+                          size_t keys_len, uint32_t tap_ms, uint32_t wait_ms, bool ime_on,
+                          uint32_t resync_ms) {
+    if (release_pending()) {
+        return -EBUSY;
+    }
+    // 修飾キーを隠す合図。キューの処理が待ち時間で止まっていなければ、この中ですぐ処理される
+    if (zmk_behavior_queue_add(event, sync_binding(SYNC_MASK_ON), true, 0) < 0) {
+        return -ENOSPC;
+    }
+
+    int ret = 0;
+    if (ime_on) {
+        ret = kana_output_ime_on(event, tap_ms, wait_ms, resync_ms);
+    }
+    for (size_t i = 0; ret == 0 && i < keys_len; i++) {
+        // -EBUSY / -ENOSPC: 何も登録していない。-EAGAIN: 「離す」は自動で再試行される。
+        // いずれも残りは送らない（順番が崩れないように）
+        ret = kana_output_tap(event, keys[i], tap_ms, wait_ms);
+    }
+
+    // 隠す合図を並べたので、途中で打ち切っても、戻す合図は必ず並べる（「離す」の再試行中なら、その後ろ）
+    queue_must(event, sync_binding(SYNC_MASK_OFF), true, 0);
     return ret;
 }
 
@@ -204,13 +300,10 @@ static void kana_off_work_handler(struct k_work *work) {
             k_work_schedule(&kana_off_work, K_MSEC(RETRY_INTERVAL_MS));
             return;
         }
-        struct zmk_behavior_binding sync = {
-            .behavior_dev = SYNC_BEHAVIOR_NAME,
-            .param1 = SYNC_KANA_OFF,
-        };
-        // キューが空だと zmk_behavior_queue_add の中で合図がすぐ処理されるので、先に待ち状態にする
+        // キューの処理が待ち時間で止まっていなければ zmk_behavior_queue_add の中で合図がすぐ処理されるので、
+        // 先に待ち状態にする
         off_stage = KANA_OFF_WAIT_SYNC;
-        if (zmk_behavior_queue_add(&off_event, sync, true, 0) < 0) {
+        if (zmk_behavior_queue_add(&off_event, sync_binding(SYNC_KANA_OFF), true, 0) < 0) {
             off_stage = KANA_OFF_SEND_SYNC;
             k_work_schedule(&kana_off_work, K_MSEC(RETRY_INTERVAL_MS));
             return;
@@ -225,29 +318,36 @@ static kana_output_marker_cb_t marker_cb;
 void kana_output_set_marker_handler(kana_output_marker_cb_t cb) { marker_cb = cb; }
 
 int kana_output_add_marker(const struct zmk_behavior_binding_event *event) {
-    // 「離す」の再試行を待っている送信があれば、それより先に目印が処理されないよう登録しない
+    // 「離す」などの再試行を待っている送信があれば、それより先に目印が処理されないよう登録しない
     if (release_pending()) {
         return -EBUSY;
     }
-    struct zmk_behavior_binding sync = {
-        .behavior_dev = SYNC_BEHAVIOR_NAME,
-        .param1 = SYNC_MARKER,
-    };
-    // キューが空なら、この中で目印がすぐ処理されて marker_cb が呼ばれる
-    if (zmk_behavior_queue_add(event, sync, true, 0) < 0) {
+    // キューの処理が待ち時間で止まっていなければ、この中で目印がすぐ処理されて marker_cb が呼ばれる
+    if (zmk_behavior_queue_add(event, sync_binding(SYNC_MARKER), true, 0) < 0) {
         return -ENOSPC;
     }
     return 0;
 }
 
 void kana_output_on_sync(uint32_t token) {
-    if (token == SYNC_MARKER) {
+    switch (token) {
+    case SYNC_MARKER:
         if (marker_cb != NULL) {
             marker_cb();
         }
         return;
+    case SYNC_MASK_ON:
+        kana_output_mask_mods(KANA_MASK_KANA, 0xFF);
+        return;
+    case SYNC_MASK_OFF:
+        kana_output_mask_mods(KANA_MASK_KANA, 0);
+        return;
+    case SYNC_KANA_OFF:
+        break;
+    default:
+        return;
     }
-    if (token != SYNC_KANA_OFF || off_stage != KANA_OFF_WAIT_SYNC) {
+    if (off_stage != KANA_OFF_WAIT_SYNC) {
         return;
     }
 
@@ -269,17 +369,35 @@ bool kana_mode_exiting(void) { return off_stage != KANA_OFF_NONE; }
 
 /* かなのレイヤーがほかの操作（Studio で割り当てた &to や &tog など）で解除されたら、かな配列モードも抜けたことにする。
  * そうしないと「かな配列モード中」のまま残り、次の KANA_SW_ON で入り直せなくなる。
- * IME はオンのまま残る（かな配列モードの解除の手順を通らないため）。解除処理中は、合図の処理に任せる */
-static int kana_layer_listener(const zmk_event_t *eh) {
-    if (kana_active && off_stage == KANA_OFF_NONE && !zmk_keymap_layer_active(kana_layer)) {
-        kana_active = false;
-        LOG_DBG("Kana layer deactivated elsewhere, kana mode off");
+ * IME はオンのまま残る（かな配列モードの解除の手順を通らないため）。解除処理中は、合図の処理に任せる。
+ * 接続先が変わったときと、トラックパッドのクリック・ジェスチャーの後は、次のかな・記号の前に IME オンを送り直す
+ * （ほかの PC・ウィンドウ・入力欄に移って、IME がオフになっているかもしれないため） */
+static int kana_output_listener(const zmk_event_t *eh) {
+    if (as_zmk_layer_state_changed(eh) != NULL) {
+        if (kana_active && off_stage == KANA_OFF_NONE && !zmk_keymap_layer_active(kana_layer)) {
+            kana_active = false;
+            LOG_DBG("Kana layer deactivated elsewhere, kana mode off");
+        }
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+
+    if (as_zmk_endpoint_changed(eh) != NULL) {
+        char_sent = false;
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+
+    const struct zmk_position_state_changed *pos = as_zmk_position_state_changed(eh);
+    if (pos != NULL && pos->state && pos->position >= TP_POS_FIRST &&
+        pos->position <= TP_POS_LAST) {
+        char_sent = false;
     }
     return ZMK_EV_EVENT_BUBBLE;
 }
 
-ZMK_LISTENER(kana_output, kana_layer_listener);
+ZMK_LISTENER(kana_output, kana_output_listener);
 ZMK_SUBSCRIPTION(kana_output, zmk_layer_state_changed);
+ZMK_SUBSCRIPTION(kana_output, zmk_endpoint_changed);
+ZMK_SUBSCRIPTION(kana_output, zmk_position_state_changed);
 
 void kana_mode_on(const struct zmk_behavior_binding_event *event, zmk_keymap_layer_id_t layer,
                   uint32_t tap_ms, uint32_t wait_ms) {
@@ -295,6 +413,9 @@ void kana_mode_on(const struct zmk_behavior_binding_event *event, zmk_keymap_lay
         LOG_WRN("Could not queue IME on (err %d), kana mode not entered", ret);
         return;
     }
+    // いま IME オンを送ったので、すぐ後のかなの前には送り直さない
+    last_char_ms = k_uptime_get();
+    char_sent = true;
 
     kana_layer = layer;
     kana_active = true;
@@ -302,10 +423,20 @@ void kana_mode_on(const struct zmk_behavior_binding_event *event, zmk_keymap_lay
     LOG_DBG("Kana mode on (layer %d)", kana_layer);
 }
 
-void kana_mode_off(const struct zmk_behavior_binding_event *event,
+void kana_mode_off(const struct zmk_behavior_binding_event *event, zmk_keymap_layer_id_t layer,
                    const zmk_keymap_layer_id_t *sub_layers, size_t sub_layers_len, uint32_t tap_ms,
                    uint32_t wait_ms) {
-    if (!kana_active || off_stage != KANA_OFF_NONE) {
+    if (off_stage != KANA_OFF_NONE) {
+        return;
+    }
+
+    if (!kana_active) {
+        // かな配列モードではないのに、かなのレイヤーが（Studio で割り当てた &tog などで）有効になっている:
+        // &kana_key は何も送らないので、レイヤーだけ解除して抜けられるようにする（有効でなければ何も起きない）
+        for (size_t i = 0; i < sub_layers_len; i++) {
+            zmk_keymap_layer_deactivate(sub_layers[i]);
+        }
+        zmk_keymap_layer_deactivate(layer);
         return;
     }
 

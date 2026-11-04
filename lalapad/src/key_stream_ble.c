@@ -66,8 +66,8 @@ static ssize_t read_report_map(struct bt_conn *conn, const struct bt_gatt_attr *
                              key_stream_report_desc_size);
 }
 
-/* 入力レポートを読まれたとき（通知で送るので、中身は空で返す） */
-static ssize_t read_input_report(struct bt_conn *conn, const struct bt_gatt_attr *attr, void *buf,
+/* 入力・出力レポートを読まれたとき（入力は通知で送り、出力は命令を受け取るだけなので、中身は空で返す） */
+static ssize_t read_empty_report(struct bt_conn *conn, const struct bt_gatt_attr *attr, void *buf,
                                  uint16_t len, uint16_t offset) {
     static const uint8_t empty[KEY_STREAM_REPORT_SIZE];
     return bt_gatt_attr_read(conn, attr, buf, len, offset, empty, sizeof(empty));
@@ -85,8 +85,11 @@ static ssize_t write_output_report(struct bt_conn *conn, const struct bt_gatt_at
 /* Control Point（PC のサスペンドの知らせ）は受け取るだけで使わない（HID のサービスとして必要な属性） */
 static ssize_t write_ctrl_point(struct bt_conn *conn, const struct bt_gatt_attr *attr,
                                 const void *buf, uint16_t len, uint16_t offset, uint8_t flags) {
-    if (offset + len > 1) {
+    if (offset != 0) {
         return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
+    }
+    if (len != 1) {
+        return BT_GATT_ERR(BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);
     }
     return len;
 }
@@ -101,20 +104,21 @@ BT_GATT_SERVICE_DEFINE(
     BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_REPORT_MAP, BT_GATT_CHRC_READ, BT_GATT_PERM_READ_ENCRYPT,
                            read_report_map, NULL, NULL),
     BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_REPORT, BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
-                           BT_GATT_PERM_READ_ENCRYPT, read_input_report, NULL, NULL),
+                           BT_GATT_PERM_READ_ENCRYPT, read_empty_report, NULL, NULL),
     BT_GATT_CCC(NULL, BT_GATT_PERM_READ_ENCRYPT | BT_GATT_PERM_WRITE_ENCRYPT),
     BT_GATT_DESCRIPTOR(BT_UUID_HIDS_REPORT_REF, BT_GATT_PERM_READ_ENCRYPT, read_report_ref, NULL,
                        (void *)&input_ref),
     BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_REPORT,
                            BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE | BT_GATT_CHRC_WRITE_WITHOUT_RESP,
-                           BT_GATT_PERM_READ_ENCRYPT | BT_GATT_PERM_WRITE_ENCRYPT, read_input_report,
+                           BT_GATT_PERM_READ_ENCRYPT | BT_GATT_PERM_WRITE_ENCRYPT, read_empty_report,
                            write_output_report, NULL),
     BT_GATT_DESCRIPTOR(BT_UUID_HIDS_REPORT_REF, BT_GATT_PERM_READ_ENCRYPT, read_report_ref, NULL,
                        (void *)&output_ref),
     BT_GATT_CHARACTERISTIC(BT_UUID_HIDS_CTRL_POINT, BT_GATT_CHRC_WRITE_WITHOUT_RESP,
                            BT_GATT_PERM_WRITE, NULL, write_ctrl_point, NULL));
 
-#define INPUT_REPORT_ATTR (&key_stream_svc.attrs[5])
+/* 入力レポートの値の属性（[5] の宣言ではなく値を指す。通知のときに、値の権限で暗号化を確かめてもらうため） */
+#define INPUT_REPORT_ATTR (&key_stream_svc.attrs[6])
 
 static void notify_sent_cb(struct bt_conn *conn, void *user_data) {
     ARG_UNUSED(conn);
@@ -128,6 +132,11 @@ int key_stream_ble_send(struct bt_conn *conn, const uint8_t *report, uint32_t id
     if (!bt_gatt_is_subscribed(conn, INPUT_REPORT_ATTR, BT_GATT_CCC_NOTIFY)) {
         return -ENOTCONN;
     }
+    // ATT MTU が小さい（23 のまま）と 32 バイトの通知は送れない（通知の頭 3 バイトが要る）。つながった直後の
+    // MTU の取り決めを待つため、間を空けて試し直してもらう（広がらなければ、本体が時間で見切って送るのをやめる）
+    if (bt_gatt_get_mtu(conn) < KEY_STREAM_REPORT_SIZE + 3) {
+        return -EBUSY;
+    }
     struct bt_gatt_notify_params params = {
         .attr = INPUT_REPORT_ATTR,
         .data = report,
@@ -138,8 +147,12 @@ int key_stream_ble_send(struct bt_conn *conn, const uint8_t *report, uint32_t id
     // 送るバッファの空きがなければ待つことがある（専用のワークキューで呼ぶので、ほかの処理は止めない）
     const int err = bt_gatt_notify_cb(conn, &params);
     if (err == -EPERM) {
+        // まだ暗号化されていない（ボンド済みの PC がつなぎ直した直後など）: 暗号化を頼んで、間を空けて試し直す
         bt_conn_set_security(conn, BT_SECURITY_L2);
-        return -EAGAIN;
+        return -EBUSY;
+    }
+    if (err == -EAGAIN) {
+        return -EBUSY; // PC がまだ GATT の変更を知らない（change-unaware）間は送れない
     }
     if (err == -ENOMEM || err == -ENOBUFS) {
         return -EAGAIN;

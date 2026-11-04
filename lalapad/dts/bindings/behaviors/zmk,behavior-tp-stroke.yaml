@@ -1,5 +1,6 @@
 # トラックパッドの一筆書きでキーを送る behavior（引数なし）。押している間に 1 本指で描いた向きの並びを覚え、
 # 指を離したとき（または先にこのキーを離したとき）に、並びが一致する binding を 1 回送る。
+# 押している間のタップ・ジェスチャーは捨てる。2 本指のスクロールはそのまま通す。
 # 実際に動きを読むのは、トラックパッドのリスナーに入れた zmk,input-processor-tp-keys。
 
 description: Hold and draw a stroke on the trackpad to send a binding
@@ -14,7 +15,9 @@ properties:
     required: true
     description: >
       向きの並び（dt-bindings/lalapad/tp_keys.h の TP_STROKE1〜4 と TP_UP・TP_DOWN・TP_LEFT・TP_RIGHT。
-      例 TP_STROKE2(TP_DOWN, TP_RIGHT)）。bindings と同じ数・同じ順番で書く
+      例 TP_STROKE2(TP_DOWN, TP_RIGHT)）。bindings と同じ数・同じ順番で書く。
+      続けて同じ向きに動かしても 1 つの向きとして数えるので、同じ向きを続けて並べたもの
+      （TP_STROKE2(TP_UP, TP_UP) など）は描けない。5 つ以上の向きを描いたときは、どれにも一致しない
   bindings:
     type: phandle-array
     required: true
@@ -22,8 +25,8 @@ properties:
   stroke-step:
     type: int
     default: 300
-    description: 1 つの向きとみなす動きの量（トラックパッドの生の値）
+    description: 1 つの向きとみなす動きの量（トラックパッドの生の値。1〜65535）
   tap-ms:
     type: int
     default: 10
-    description: 押してから離すまでの時間 (ms)
+    description: 押してから離すまで、離してから次を押すまでの時間 (ms)

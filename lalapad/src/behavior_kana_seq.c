@@ -9,15 +9,18 @@
  * - 送信キューが満杯のときや「離す」の再試行中は、残りの打鍵を送らずに打ち切る（順番を守る）。
  *   「押す」だけ登録できたキーは、必ず離す（kana_output.c の再試行）。
  * - かなと同じ送信キューに並ぶので、直前に打ったかなを追い越さない。
+ * - 送る間は、押している Shift・Ctrl など（&sk の Shift も）を隠す（Shift を押したままでも ← で文字を
+ *   選択しないように。keys に書いた LS(N1) などの修飾は隠さない）。
  *
  * かな配列モードでないときも使える（かなのレイヤーと、ほかのレイヤーに、同じキーを置ける）。
- * ime-on を付けたキーは、打鍵の前に IME オン（LANGUAGE_1）を送る。
- * かな配列モード中は、ime-on がなくても、しばらく文字を打っていなければ IME オンを先に送る。
+ * IME オン（LANGUAGE_1）を打鍵の前に送るのは次のとき:
+ * - かな配列モードでないとき: ime-on を付けたキーは毎回送る（付けていないキーは送らない）。
+ * - かな配列モード中: ime-on の有無に関係なく、かな・記号を ime-resync-ms 以上打っていなかったときだけ送る
+ *   （ime-resync-ms が 0 なら送らない。かな配列モードに入るときに IME オンを送っている）。
  */
 
 #define DT_DRV_COMPAT zmk_behavior_kana_seq
 
-#include <errno.h>
 #include <zephyr/device.h>
 #include <zephyr/logging/log.h>
 #include <drivers/behavior.h>
@@ -48,30 +51,24 @@ static int on_kana_seq_binding_pressed(struct zmk_behavior_binding *binding,
         return ZMK_BEHAVIOR_OPAQUE;
     }
 
-    int ret = 0;
+    bool ime_on = false;
+    uint32_t resync_ms = 0;
     if (kana_input_enabled()) {
         // かな配列モード中: かなと同じく、しばらく打っていなかったときだけ IME オンを先に送る
-        if (cfg->ime_resync_ms > 0) {
-            ret = kana_output_ime_on(&event, cfg->tap_ms, cfg->wait_ms, cfg->ime_resync_ms);
-        }
+        ime_on = cfg->ime_resync_ms > 0;
+        resync_ms = cfg->ime_resync_ms;
     } else if (cfg->ime_on) {
         // それ以外: IME の状態がわからないので、毎回 IME オンを先に送る
-        ret = kana_output_ime_on(&event, cfg->tap_ms, cfg->wait_ms, 0);
-    }
-    if (ret < 0) {
-        // IME オンを登録できなかった、または「離す」を再試行中: 順番を守るため、打鍵は送らない
-        LOG_WRN("Could not queue IME on (err %d), dropped key sequence", ret);
-        return ZMK_BEHAVIOR_OPAQUE;
+        ime_on = true;
     }
 
-    for (size_t i = 0; i < cfg->keys_len; i++) {
-        ret = kana_output_tap(&event, cfg->keys[i], cfg->tap_ms, cfg->wait_ms);
-        if (ret < 0) {
-            // -EBUSY / -ENOSPC: 何も登録していない。-EAGAIN: 「離す」は自動で再試行される。
-            // いずれも残りは送らない（順番が崩れないように）
-            LOG_WRN("Behavior queue busy/full (err %d), dropped rest of key sequence", ret);
-            break;
-        }
+    // IME オンを登録できなかったとき（または「離す」を再試行中）は、順番を守るため打鍵は送らない
+    const int ret = kana_output_send_keys(&event, cfg->keys, cfg->keys_len, cfg->tap_ms,
+                                          cfg->wait_ms, ime_on, resync_ms);
+    if (ret < 0) {
+        // -EBUSY / -ENOSPC: その打鍵から先は登録していない。-EAGAIN: 「離す」は自動で再試行される。
+        // いずれも残りは送っていない（順番が崩れないように）
+        LOG_WRN("Behavior queue busy/full (err %d), dropped (rest of) key sequence", ret);
     }
 
     return ZMK_BEHAVIOR_OPAQUE;

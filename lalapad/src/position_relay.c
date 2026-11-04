@@ -26,6 +26,8 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 /* 預けておける出来事の数（トラックパッドのタップ・ジェスチャーの押した／離したが、続けて届く分）。
  * システムワークキューが長く止まらない限り、満杯にはならない */
 #define RELAY_QUEUE_SIZE 64
+/* 満杯のときに、空くのを待つ時間 */
+#define RELAY_PUT_TIMEOUT_MS 50
 
 K_MSGQ_DEFINE(relay_queue, sizeof(struct zmk_position_state_changed_event), RELAY_QUEUE_SIZE, 4);
 
@@ -45,9 +47,12 @@ static int position_relay_listener(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
     struct zmk_position_state_changed_event ev = copy_raised_zmk_position_state_changed(pos);
-    if (k_msgq_put(&relay_queue, &ev, K_NO_WAIT) != 0) {
-        // 預けきれない（システムワークキューが長く止まったとき）: この場で処理する。押した／離したを落とすと
-        // 押されたままになるので、順番と処理するスレッドが崩れることより、落とさないことを優先する
+    // 満杯なら、空くのを少しだけ待つ（入力スレッドを止めるので長くは待たない。K_FOREVER にすると、システム
+    // ワークキューが入力イベントの列の空きを待っているときに、互いに待ち合って止まる）
+    if (k_msgq_put(&relay_queue, &ev, K_MSEC(RELAY_PUT_TIMEOUT_MS)) != 0) {
+        // それでも預けきれない（システムワークキューが長く止まったとき）: この場で処理する。まだ預けてある
+        // 出来事より先に処理されるので、順番が入れ替わることがある（同じ位置の「離した」が「押した」より先に
+        // 処理されると、押されたままになる）。落とせば確実に押されたまま・離されたままになるので、こちらを選ぶ
         LOG_WRN("Position relay queue full, processing position %d in place", pos->position);
         return ZMK_EV_EVENT_BUBBLE;
     }

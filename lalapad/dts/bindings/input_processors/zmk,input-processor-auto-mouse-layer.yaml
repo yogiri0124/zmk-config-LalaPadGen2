@@ -1,6 +1,9 @@
-# オートマウスレイヤーの入力処理。<&zip_auto_mouse_layer レイヤー番号 解除までのms> のように使う。
-# マウスレイヤーで &trans 以外（&none を含む）のキーと excluded-positions のキーは、押しても解除せず、離してから時間を数え直す。
-# &trans のキーを押すとすぐに解除する（そのキーは下のレイヤーのキーとして入力される）。
+# オートマウスレイヤーの入力処理。<&zip_auto_mouse_layer レイヤー番号 解除までのms> のように使う
+# （解除までの ms を 0 にすると、時間では解除しない）。カーソル移動・スクロールで有効にする（タップ・ジェスチャーや、
+# 触れただけでは有効にしない）。
+# マウスレイヤーで &trans 以外（&none を含む）のキーと excluded-positions のキーは、押しても解除せず、離してから時間を数え直す
+# （マウスレイヤーより上の有効なレイヤーに &trans 以外があるキーは、そちらが働くので除く）。
+# それ以外のキーを押すとすぐに解除する（&trans のキーは下のレイヤーのキーとして入力される）。
 
 description: Input processor that temporarily enables a mouse layer and keeps it while mouse keys are used
 

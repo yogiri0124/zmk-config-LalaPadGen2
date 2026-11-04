@@ -1,12 +1,16 @@
 /*
  * かな入力モジュールの共通部分（送信キューと、かな配列モードの状態）。
- * behavior_kana.c（かな）・behavior_kana_seq.c（記号などの打鍵の列）・behavior_kana_mode.c（オン／オフ）から使う。
- * 送信キューの目印（kana_output_add_marker）は behavior_alt_code.c からも使う。
+ * behavior_kana.c（かな）・behavior_kana_seq.c（記号などの打鍵の列）・behavior_kana_mode.c（オン／オフ）・
+ * behavior_kana_sync.c（キューの合図）から使う。
+ * behavior_alt_code.c も、送信キューの目印（kana_output_add_marker）と修飾キーを隠す仕組み
+ * （kana_output_mask_mods）を使う（かな入力のモジュールがあるビルドのとき）。
+ * KANA_CHECK_MS は、かな入力のモジュールがないビルドでも behavior_alt_code.c から使う（宣言とマクロだけのため）。
  */
 
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <zmk/behavior.h>
 #include <zmk/keymap.h>
@@ -36,13 +40,24 @@ void kana_output_release(const struct zmk_behavior_binding_event *event, uint32_
                          uint32_t wait_ms);
 
 /* 必要なら IME オン (LANGUAGE_1) のタップをキューに並べる（かな・記号を送る前に呼ぶ）。
- * resync_ms > 0: 最後にこの関数を呼んでから resync_ms 以上たっているときだけ送る（続けて打っている間は送らない）。
+ * resync_ms > 0: 最後にこの関数を呼んでから resync_ms 以上たっているとき、かな配列モードに入ってから
+ *                まだ送っていないとき、接続先の切り替えやトラックパッドのクリック・ジェスチャーの後の
+ *                最初の1回だけ送る（続けて打っている間は送らない）。
  * resync_ms = 0: 毎回送る。
  * 戻り値: 0 = 送らなくてよい、または登録できた / -EBUSY・-ENOSPC = 登録できなかった（次に呼んだときに改めて送る）
  *         -EAGAIN = 「押す」だけ登録できた（「離す」は自動で再試行する）。
  * 負の値のとき、呼び出し側は続く文字を送らずに打ち切ること */
 int kana_output_ime_on(const struct zmk_behavior_binding_event *event, uint32_t tap_ms,
                        uint32_t wait_ms, uint32_t resync_ms);
+
+/* かな・記号の打鍵の列 keys を送る: 修飾キーを隠す → （ime_on なら）kana_output_ime_on(resync_ms) →
+ * keys を順にタップ → 修飾キーを戻す、をキューに並べる。
+ * 押している Shift・Ctrl や、&sk の Shift などが、ローマ字や ← にかからないようにする
+ * （Caps Lock は PC 側の状態なので隠せない）。修飾キーを戻す合図は、満杯でも再試行して必ず並べる。
+ * 戻り値: 0 = すべて登録できた / 負の値 = 途中で打ち切った（kana_output_tap と同じ意味。残りは送っていない） */
+int kana_output_send_keys(const struct zmk_behavior_binding_event *event, const uint32_t *keys,
+                          size_t keys_len, uint32_t tap_ms, uint32_t wait_ms, bool ime_on,
+                          uint32_t resync_ms);
 
 /* かな配列モード中で、かつ解除処理中でなければ true（&kana_key の入力を受け付ける） */
 bool kana_input_enabled(void);
@@ -58,21 +73,36 @@ void kana_mode_on(const struct zmk_behavior_binding_event *event, zmk_keymap_lay
 
 /* かな配列モードをオフにする: 即座に &kana_key の受付を止め、IME オフ (LANGUAGE_2) と完了の合図を
  * キューに並べ、合図が処理された（それより前の送信がすべて実行された）時点でかなレイヤーを解除する。
- * sub_layers（親指シフト面など）も同じ時点で解除する（親指を押したまま抜けてもシフト面を残さない） */
-void kana_mode_off(const struct zmk_behavior_binding_event *event,
+ * sub_layers（親指シフト面など）も同じ時点で解除する（親指を押したまま抜けてもシフト面を残さない）。
+ * かな配列モードでないときは、layer と sub_layers の解除だけをすぐに行う（Studio の &tog などで
+ * かなのレイヤーだけが有効になったときに抜けられるように）。layer は kana_mode_on と同じレイヤー ID */
+void kana_mode_off(const struct zmk_behavior_binding_event *event, zmk_keymap_layer_id_t layer,
                    const zmk_keymap_layer_id_t *sub_layers, size_t sub_layers_len, uint32_t tap_ms,
                    uint32_t wait_ms);
 
 /* 目印が処理されたときに呼ばれる関数（目印は並べた順に処理される） */
 typedef void (*kana_output_marker_cb_t)(void);
 
-/* 目印が処理されたときに呼ぶ関数を登録する（1つだけ。Alt コードが使う） */
+/* 目印が処理されたときに呼ぶ関数を登録する（1つだけ。Alt コードが初期化のときに登録する） */
 void kana_output_set_marker_handler(kana_output_marker_cb_t cb);
 
 /* 送信キューの末尾に目印を並べる。それより前に並べた送信（かな・記号・マクロなど）がすべて実行されたとき、
- * 登録した関数が呼ばれる。キューが空なら、この関数の中ですぐに呼ばれる。
+ * 登録した関数が呼ばれる。キューの処理が待ち時間で止まっていなければ（それより前の送信がすべて済んで
+ * いれば）、この関数の中ですぐに呼ばれる。
  * 戻り値: 0 = 並べた / -EBUSY = 「離す」を再試行中なので並べていない / -ENOSPC = キューが満杯で並べていない */
 int kana_output_add_marker(const struct zmk_behavior_binding_event *event);
+
+/* 修飾キーを隠す（PC へ送るレポートから外す）仕組みの使い手 */
+enum kana_mask_owner {
+    KANA_MASK_KANA,     /* かな・記号の打鍵の列（kana_output_send_keys） */
+    KANA_MASK_ALT_CODE, /* Alt コードの送信（behavior_alt_code.c） */
+    KANA_MASK_OWNER_COUNT,
+};
+
+/* owner が隠したい修飾キー（MOD_LSFT などの組み合わせ。0 = 隠すのをやめる）を設定する。
+ * 実際に隠すのは、隠している使い手すべてが隠したいもの（共通部分）。PC へ送る修飾キーが変わったら
+ * キーボードのレポートをすぐ送る（隠すのをやめたとき、押したままの修飾キーを PC に戻すため） */
+void kana_output_mask_mods(enum kana_mask_owner owner, uint8_t mods);
 
 /* 完了の合図 (&kana_sync) がキューで処理されたときに behavior_kana_sync.c から呼ばれる */
 void kana_output_on_sync(uint32_t token);

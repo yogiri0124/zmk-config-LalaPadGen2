@@ -3,27 +3,37 @@
  *
  * keymap の zmk,behavior-tp-keys・zmk,behavior-tp-stroke のキーを押している間だけ、トラックパッドの動きを
  * カーソル・スクロールの代わりに、決めておいたキー（behavior）の入力に変える。押していない間は何もせず通す。
- * トラックパッドのリスナーの入力処理の並びの、速度の調整（scaler）より前に入れる（動きの量を、速度の設定や
- * 数字・記号レイヤーの低速に関係なく、トラックパッドの生の値で数えるため）。オートマウスレイヤーより前に
- * 入れるので、変えた動きではマウスレイヤーはオンにならない。
+ * トラックパッドのリスナーの入力処理の並びの先頭に入れる。
+ * - タップ・ジェスチャー（BTN_0〜7。trackpad_key_behaviors がキー位置 52〜67 に変える）より前で、押している間の
+ *   タップ・ジェスチャーを捨てる（矢印を出そうと軽く触れただけで、クリックにならないように）。捨てたボタンは
+ *   「離した」も捨てる。押す前から押されていたボタンの「離した」は通す。
+ * - 速度の調整（scaler）より前で、動きの量を、速度の設定や数字・記号レイヤーの低速に関係なく、生の値で数える。
+ * - オートマウスレイヤーより前なので、変えた動きではマウスレイヤーはオンにならない。
  *
- * - zmk,behavior-tp-keys: 動かした量 step ごとに、その向きの binding を 1 回送る（矢印キー、ダイヤルなど）。
- *   動き始めの向きで縦か横かを決め、指を離すまで変えない（斜めに動いても混ざらない）。
+ * - zmk,behavior-tp-keys: 指を動かした量 step ごとに、その向きの binding を 1 回送る（矢印キー、ダイヤルなど）。
+ *   向きは指を動かした向き（2 本指も、スクロールの向きではなく指の向き）。動き始めの向きで縦か横かを決め、
+ *   指が触れ直す・離れるか、モードのキーを押す・離すまで変えない（斜めに動いても混ざらない）。
+ *   送るのが追いつかないとき、待っている分は MAX_PENDING_STEPS までにする（指を止めた後に長く出続けないように）。
+ *   逆向きに動かしたら、まだ送っていない分は捨てる。
  * - zmk,behavior-tp-stroke: 1 本指で描いた向きの並び（最大 4 つ）を覚え、指を離したとき（または先にキーを
  *   離したとき）に、並びが一致する binding を 1 回送る。どれにも一致しなければ何もしない。
- * - 変えている間は、指を離した後の慣性による動きを捨てる（触れているかはドライバの INPUT_BTN_TOUCH で知る。
- *   一度も届いていないトラックパッドでは、慣性も動きとして数える）。
- *
- * - 変えた動き・捨てた動きは、値を 0 にしてから止める（ZMK_INPUT_PROC_STOP）。リスナーのレイヤーごとの
- *   上書き（lowspeedmode）の中では STOP が伝わらず、後ろの処理とカーソルの移動に進むため。
+ * - 指を離した後の慣性による動き（触れているかはドライバの INPUT_BTN_TOUCH で知る）は、キーにしない。
+ *   変えた触れ方の後の慣性は、モードのキーを先に離していても捨てる（カーソルやスクロールが残って動かないように）。
+ *   INPUT_BTN_TOUCH が一度も届いていないトラックパッドでは、慣性も動きとして数える。
+ * - モードのキーを押したときのレイヤーが解除されたら（押したままでも）、そのモードは終わる（描きかけの
+ *   一筆書きは送らずに捨てる）。トラックパッドが止まったままにならないように。
+ * - INPUT_BTN_TOUCH は、見たあと常に止める（リスナーは使わず、通すと空のマウスのレポートを送るため）。
+ * - 捨てた動き・ボタンは、リスナーが何もしない入力（動きは値 0 で同期なし、ボタンは INPUT_EV_MSC）に変えてから
+ *   止める（ZMK_INPUT_PROC_STOP）。リスナーのレイヤーごとの上書き（lowspeedmode）の中では、STOP しても
+ *   リスナー本体の集計・送信に進むため。
  *
  * 入力処理は入力スレッドで呼ばれる。behavior はシステムワークキューで呼ぶ（自作の behavior は状態を
  * システムワークキューだけで触る前提のため）ので、送るものを列に預けてワークで送る。送るワークの予約も
  * システムワークキューだけで行う（入力スレッドから予約し直すと、押してから離すまでの待ち時間が飛ぶため）。
  * 押した behavior は、モードのキーを押したときのレイヤーと位置で呼ぶ（&swap_next などが、そのレイヤーの
  * 解除で終わるように）。まだ押していない分は、そのレイヤーが解除されていたら捨てる（解除の後に &swap_next を
- * 押し直して、Alt が押されたままにならないように）。動かした量で送る分は、そのモードのキーを離していても捨てる
- * （一筆書きはキーを離して決めることがあるので捨てない）。押した分は必ず離す。
+ * 押し直して、Alt が押されたままにならないように）。動かした量で送る分は、そのモードのキーの押し方が
+ * 終わっていても捨てる（一筆書きはキーを離して決めることがあるので捨てない）。押した分は必ず離す。
  */
 
 #define DT_DRV_COMPAT zmk_input_processor_tp_keys
@@ -37,6 +47,8 @@
 #include <drivers/input_processor.h>
 
 #include <zmk/behavior.h>
+#include <zmk/event_manager.h>
+#include <zmk/events/layer_state_changed.h>
 #include <zmk/events/position_state_changed.h>
 #include <zmk/keymap.h>
 
@@ -50,19 +62,28 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 /* 同時に押しておけるモードのキーの数 */
 #define MAX_HELD_MODES 4
-/* 見分けるトラックパッド（リスナー）の数 */
+/* 見分ける入力デバイス（トラックパッド）の数 */
 #define MAX_SLOTS 4
 /* 一筆書きで覚える向きの数（dt-bindings/lalapad/tp_keys.h の TP_STROKE4 まで） */
 #define MAX_STROKE_LEN 4
-/* 送るのを待っておける数（大きく払ったときの分）。あふれた分は捨てる */
-#define ACTION_QUEUE_SIZE 32
-/* 1 回の入力で送る数の上限（大きな値が届いても、列をあふれさせない） */
-#define MAX_STEPS_PER_EVENT 8
+/* 送るのを待っておける数 */
+#define QUEUE_LEN 16
+/* 動かした量で送る分のうち、待っておける数 */
+#define MAX_PENDING_STEPS 8
+/* 1 回の入力で数える回数の上限（大きな値が届いても、待っておける数を超えて数えない） */
+#define MAX_STEPS_PER_EVENT MAX_PENDING_STEPS
+/* 捨てるタップ・ジェスチャー（INPUT_BTN_0〜7） */
+#define NUM_BUTTONS 8
 
 struct held_mode {
     const struct tp_keys_mode *mode;
     int layer;
     uint32_t position;
+    /* 押すたびに変わる番号（同じキーを離してすぐ押し直したとき、前の押し方の分と見分ける） */
+    uint32_t seq;
+    /* MOTION: 1 本指・2 本指を変えるか（その 4 つがすべて &trans なら変えずに通す） */
+    bool convert_cursor;
+    bool convert_scroll;
 };
 
 enum axis_lock { AXIS_NONE, AXIS_X, AXIS_Y };
@@ -73,15 +94,21 @@ struct axis_acc {
 };
 
 struct slot {
+    /* この入力デバイスの分（NULL なら空き） */
+    const struct device *dev;
     /* INPUT_BTN_TOUCH が届いたことがあるか、いま触れているか */
     bool touch_known;
     bool touching;
+    /* 今の触れ方（指を離した後の慣性を含む）で、動きをキーに変えたか */
+    bool converted_this_touch;
+    /* 捨てたタップ・ジェスチャーのボタン（「離した」も捨てる） */
+    uint8_t buttons_dropped;
     /* 最後に見たモードの切り替えの回数（変わったら、たまった量を捨てる） */
     uint32_t gen;
     struct axis_acc cursor;
     struct axis_acc scroll;
 
-    /* 一筆書き: 描いているモード（そのキーを押したときのレイヤー・位置も覚える） */
+    /* 一筆書き: 描いているモード（mode が NULL なら描いていない） */
     struct held_mode stroke;
     int32_t sx, sy;
     uint16_t code;
@@ -91,106 +118,27 @@ struct slot {
 };
 
 struct action {
-    struct zmk_behavior_binding binding;
-    /* 送るきっかけになったモードのキー（まだ押していない分を捨てるかの判断に使う） */
-    const struct tp_keys_mode *mode;
-    /* そのキーを押している間だけ送る（動かした量で送る分。一筆書きはキーを離して決めるので false） */
-    bool while_held;
+    const struct zmk_behavior_binding *binding;
     int layer;
     uint32_t position;
+    /* 送るきっかけになったモードのキーの押し方（held_mode の seq） */
+    uint32_t seq;
     uint16_t tap_ms;
+    /* 動かした量で送る分（そのキーを押している間だけ送る。待っておける数を限る） */
+    bool motion;
 };
 
+/* 以下はすべて lock で守る（入力スレッドとシステムワークキューから触る） */
 static struct k_spinlock lock;
 static struct held_mode held[MAX_HELD_MODES];
 static size_t held_len;
+static uint32_t press_seq;
 static uint32_t gen;
 static struct slot slots[MAX_SLOTS];
-
-K_MSGQ_DEFINE(tp_keys_actions, sizeof(struct action), ACTION_QUEUE_SIZE, 4);
-
-/* ---- 送る（システムワークキュー） ---- */
-
-static struct action current;
-static bool current_pressed;
-
-/* まだ押していない分を送ってよいか: そのレイヤーが有効で、while_held ならそのモードのキーを押したまま */
-static bool action_still_valid(const struct action *a) {
-    if (!zmk_keymap_layer_active(a->layer)) {
-        return false;
-    }
-    if (!a->while_held) {
-        return true;
-    }
-    bool held_now = false;
-    k_spinlock_key_t key = k_spin_lock(&lock);
-    for (size_t i = 0; i < held_len; i++) {
-        if (held[i].mode == a->mode && held[i].position == a->position) {
-            held_now = true;
-            break;
-        }
-    }
-    k_spin_unlock(&lock, key);
-    return held_now;
-}
-
-static void invoke(const struct action *a, bool pressed) {
-    struct zmk_behavior_binding_event event = {
-        .layer = a->layer,
-        .position = a->position,
-        .timestamp = k_uptime_get(),
-#if IS_ENABLED(CONFIG_ZMK_SPLIT)
-        .source = ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL,
-#endif
-    };
-    zmk_behavior_invoke_binding(&a->binding, event, pressed);
-}
-
-/* 1 回ごとに「押す → tap_ms → 離す → tap_ms → 次を押す」 */
-static void runner_work_cb(struct k_work *work);
-static K_WORK_DELAYABLE_DEFINE(runner_work, runner_work_cb);
-
-static void runner_work_cb(struct k_work *work) {
-    if (current_pressed) {
-        invoke(&current, false);
-        current_pressed = false;
-        if (k_msgq_num_used_get(&tp_keys_actions) > 0) {
-            k_work_schedule(&runner_work, K_MSEC(current.tap_ms));
-        }
-        return;
-    }
-    do {
-        if (k_msgq_get(&tp_keys_actions, &current, K_NO_WAIT) != 0) {
-            return;
-        }
-    } while (!action_still_valid(&current));
-    invoke(&current, true);
-    current_pressed = true;
-    k_work_schedule(&runner_work, K_MSEC(current.tap_ms));
-}
-
-/* 送っていなければ送り始める（システムワークキュー。送っている途中なら、その予約のまま続けて送る） */
-static void kick_work_cb(struct k_work *work) {
-    if (!current_pressed && !k_work_delayable_is_pending(&runner_work)) {
-        k_work_schedule(&runner_work, K_NO_WAIT);
-    }
-}
-
-static K_WORK_DEFINE(kick_work, kick_work_cb);
-
-/* 集めた送るものを列に預ける（ロックの外で呼ぶ） */
-static void submit(const struct action *actions, size_t n) {
-    if (n == 0) {
-        return;
-    }
-    for (size_t i = 0; i < n; i++) {
-        if (k_msgq_put(&tp_keys_actions, &actions[i], K_NO_WAIT) != 0) {
-            LOG_WRN("Trackpad keys: action queue full, dropping %d", (int)(n - i));
-            break;
-        }
-    }
-    k_work_submit(&kick_work);
-}
+static struct action queue[QUEUE_LEN];
+static size_t queue_len;
+/* 列がいっぱいで捨てた数（ログ用） */
+static uint32_t dropped;
 
 /* ---- 以下はロックを取った状態で呼ぶ ---- */
 
@@ -198,20 +146,78 @@ static bool is_trans(const struct zmk_behavior_binding *b) {
     return b->behavior_dev == NULL || strcmp(b->behavior_dev, TRANS_BEHAVIOR_NAME) == 0;
 }
 
-static bool add_action(struct action *out, size_t *n, size_t max, const struct held_mode *hm,
-                       const struct zmk_behavior_binding *b, bool while_held) {
-    if (is_trans(b) || *n >= max) {
+static bool any_converted(const struct zmk_behavior_binding *b) {
+    for (int i = 0; i < 4; i++) {
+        if (!is_trans(&b[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static const struct held_mode *active_mode(void) {
+    return held_len > 0 ? &held[held_len - 1] : NULL;
+}
+
+static bool is_held(uint32_t seq) {
+    for (size_t i = 0; i < held_len; i++) {
+        if (held[i].seq == seq) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void remove_held(size_t i) {
+    memmove(&held[i], &held[i + 1], (held_len - i - 1) * sizeof(held[0]));
+    held_len--;
+    gen++;
+}
+
+static void remove_queued(size_t i) {
+    memmove(&queue[i], &queue[i + 1], (queue_len - i - 1) * sizeof(queue[0]));
+    queue_len--;
+}
+
+/* 送る列に足す。足したら true */
+static bool enqueue(const struct held_mode *hm, const struct zmk_behavior_binding *b, bool motion) {
+    if (is_trans(b)) {
         return false;
     }
-    out[*n] = (struct action){
-        .binding = *b,
-        .mode = hm->mode,
-        .while_held = while_held,
+    if (motion) {
+        // 違う向き（または違う押し方）の分が待っていたら捨てる。同じ向きの分は MAX_PENDING_STEPS まで
+        size_t pending = 0;
+        bool other = false;
+        for (size_t i = 0; i < queue_len; i++) {
+            if (queue[i].motion) {
+                pending++;
+                other |= queue[i].binding != b || queue[i].seq != hm->seq;
+            }
+        }
+        if (other) {
+            for (size_t i = queue_len; i > 0; i--) {
+                if (queue[i - 1].motion) {
+                    remove_queued(i - 1);
+                }
+            }
+            pending = 0;
+        }
+        if (pending >= MAX_PENDING_STEPS) {
+            return false;
+        }
+    }
+    if (queue_len >= QUEUE_LEN) {
+        dropped++;
+        return false;
+    }
+    queue[queue_len++] = (struct action){
+        .binding = b,
         .layer = hm->layer,
         .position = hm->position,
+        .seq = hm->seq,
         .tap_ms = hm->mode->tap_ms,
+        .motion = motion,
     };
-    (*n)++;
     return true;
 }
 
@@ -229,87 +235,199 @@ static void reset_motion(struct slot *s) {
     s->scroll = (struct axis_acc){0};
 }
 
-/* 描いた並びに一致するものを送り、一筆書きを終える */
-static void finish_stroke(struct slot *s, struct action *out, size_t *n, size_t max) {
+/* 描いた並びに一致するものを送り、一筆書きを終える。送るものを足したら true */
+static bool finish_stroke(struct slot *s) {
     const struct tp_keys_mode *mode = s->stroke.mode;
+    bool queued = false;
     if (mode != NULL && s->len > 0 && !s->overflow) {
-        for (size_t i = 0; i < mode->num_strokes; i++) {
+        for (size_t i = 0; i < mode->num_bindings; i++) {
             if (mode->strokes[i] == s->code) {
-                add_action(out, n, max, &s->stroke, &mode->stroke_bindings[i], false);
+                queued = enqueue(&s->stroke, &mode->bindings[i], false);
                 break;
             }
         }
     }
     reset_stroke(s);
+    return queued;
 }
 
-static const struct held_mode *active_mode(void) {
-    return held_len > 0 ? &held[held_len - 1] : NULL;
+/* ---- 送る（システムワークキュー） ---- */
+
+static struct action current;
+static bool current_pressed;
+
+static void invoke(const struct action *a, bool pressed) {
+    struct zmk_behavior_binding_event event = {
+        .layer = a->layer,
+        .position = a->position,
+        .timestamp = k_uptime_get(),
+#if IS_ENABLED(CONFIG_ZMK_SPLIT)
+        .source = ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL,
+#endif
+    };
+    zmk_behavior_invoke_binding(a->binding, event, pressed);
 }
+
+/* 送ってよい次の分を取り出す。なければ false */
+static bool next_action(struct action *out) {
+    while (true) {
+        k_spinlock_key_t key = k_spin_lock(&lock);
+        if (queue_len == 0) {
+            k_spin_unlock(&lock, key);
+            return false;
+        }
+        *out = queue[0];
+        remove_queued(0);
+        const bool held_ok = !out->motion || is_held(out->seq);
+        k_spin_unlock(&lock, key);
+        if (held_ok && zmk_keymap_layer_active(out->layer)) {
+            return true;
+        }
+    }
+}
+
+/* 1 回ごとに「押す → tap_ms → 離す → tap_ms → 次を押す」 */
+static void runner_work_cb(struct k_work *work);
+static K_WORK_DELAYABLE_DEFINE(runner_work, runner_work_cb);
+
+static void runner_work_cb(struct k_work *work) {
+    if (current_pressed) {
+        invoke(&current, false);
+        current_pressed = false;
+        // 次を押す前に必ず待つ（この間に届いた分も、この予約で送る）
+        k_work_schedule(&runner_work, K_MSEC(current.tap_ms));
+        return;
+    }
+    if (!next_action(&current)) {
+        return;
+    }
+    invoke(&current, true);
+    current_pressed = true;
+    k_work_schedule(&runner_work, K_MSEC(current.tap_ms));
+}
+
+/* 送っていなければ送り始める（システムワークキュー。送っている途中なら、その予約のまま続けて送る） */
+static void kick_work_cb(struct k_work *work) {
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    const uint32_t n = dropped;
+    dropped = 0;
+    k_spin_unlock(&lock, key);
+    if (n > 0) {
+        LOG_WRN("Trackpad keys: queue full, dropped %u", n);
+    }
+
+    if (!current_pressed && !k_work_delayable_is_pending(&runner_work)) {
+        k_work_schedule(&runner_work, K_NO_WAIT);
+    }
+}
+
+static K_WORK_DEFINE(kick_work, kick_work_cb);
 
 /* ---- モードのキー（システムワークキュー） ---- */
 
 void tp_keys_mode_pressed(const struct tp_keys_mode *mode,
                           const struct zmk_behavior_binding_event *event) {
+    bool full = false;
     k_spinlock_key_t key = k_spin_lock(&lock);
     if (held_len < MAX_HELD_MODES) {
-        held[held_len++] = (struct held_mode){
+        struct held_mode *hm = &held[held_len++];
+        *hm = (struct held_mode){
             .mode = mode,
             .layer = event->layer,
             .position = event->position,
+            .seq = ++press_seq,
         };
+        if (mode->kind == TP_KEYS_KIND_MOTION) {
+            hm->convert_cursor = any_converted(&mode->bindings[TP_KEYS_CURSOR_FIRST]);
+            hm->convert_scroll = any_converted(&mode->bindings[TP_KEYS_SCROLL_FIRST]);
+        }
         gen++;
     } else {
-        LOG_WRN("Trackpad keys: too many mode keys held");
+        full = true;
     }
     k_spin_unlock(&lock, key);
+
+    if (full) {
+        LOG_WRN("Trackpad keys: too many mode keys held");
+    }
 }
 
 void tp_keys_mode_released(const struct tp_keys_mode *mode,
                            const struct zmk_behavior_binding_event *event) {
-    struct action out[MAX_SLOTS];
-    size_t n = 0;
-
+    bool queued = false;
     k_spinlock_key_t key = k_spin_lock(&lock);
     for (size_t i = held_len; i > 0; i--) {
         if (held[i - 1].mode == mode && held[i - 1].position == event->position) {
-            memmove(&held[i - 1], &held[i], (held_len - i) * sizeof(held[0]));
-            held_len--;
-            gen++;
+            const uint32_t seq = held[i - 1].seq;
+            remove_held(i - 1);
+            // 指より先にキーを離したら、そこまでに描いた並びで決める
+            for (size_t j = 0; j < MAX_SLOTS; j++) {
+                if (slots[j].stroke.mode != NULL && slots[j].stroke.seq == seq) {
+                    queued |= finish_stroke(&slots[j]);
+                }
+            }
             break;
-        }
-    }
-    // 指より先にキーを離したら、そこまでに描いた並びで決める
-    for (size_t i = 0; i < MAX_SLOTS; i++) {
-        if (slots[i].stroke.mode == mode && slots[i].stroke.position == event->position) {
-            finish_stroke(&slots[i], out, &n, ARRAY_SIZE(out));
         }
     }
     k_spin_unlock(&lock, key);
 
-    submit(out, n);
+    if (queued) {
+        k_work_submit(&kick_work);
+    }
 }
 
-/* ---- 入力処理（入力スレッド） ---- */
+/* レイヤーが解除されたら、そのレイヤーで押したモードを終える（描きかけの一筆書きは捨てる。システムワークキュー） */
+static int tp_keys_layer_listener(const zmk_event_t *eh) {
+    const struct zmk_layer_state_changed *ev = as_zmk_layer_state_changed(eh);
+    if (ev == NULL || ev->state) {
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    for (size_t i = held_len; i > 0; i--) {
+        if (!zmk_keymap_layer_active(held[i - 1].layer)) {
+            const uint32_t seq = held[i - 1].seq;
+            remove_held(i - 1);
+            for (size_t j = 0; j < MAX_SLOTS; j++) {
+                if (slots[j].stroke.mode != NULL && slots[j].stroke.seq == seq) {
+                    reset_stroke(&slots[j]);
+                }
+            }
+        }
+    }
+    k_spin_unlock(&lock, key);
+    return ZMK_EV_EVENT_BUBBLE;
+}
 
-/* 縦か横を決めて、step ごとにその向きの binding を送る。first は bindings の上・下・左・右の先頭。
- * up_negative: 値が負のほうを「上」とする（カーソルは下が正、ホイールは上が正） */
-static void convert_motion(struct axis_acc *acc, uint16_t code_x, uint16_t code, int32_t value,
-                           uint16_t step, bool up_negative, const struct held_mode *hm, size_t first,
-                           struct action *out, size_t *n, size_t max) {
-    if (step == 0) {
-        return;
+ZMK_LISTENER(tp_keys, tp_keys_layer_listener);
+ZMK_SUBSCRIPTION(tp_keys, zmk_layer_state_changed);
+
+/* ---- 入力処理（入力スレッド。以下もロックを取った状態で呼ぶ） ---- */
+
+static struct slot *find_slot(const struct device *dev) {
+    for (size_t i = 0; i < MAX_SLOTS; i++) {
+        if (slots[i].dev == dev) {
+            return &slots[i];
+        }
     }
-    const bool is_x = code == code_x;
-    if (is_x) {
-        acc->x += value;
-    } else {
-        acc->y += value;
+    for (size_t i = 0; i < MAX_SLOTS; i++) {
+        if (slots[i].dev == NULL) {
+            slots[i].dev = dev;
+            return &slots[i];
+        }
     }
+    return NULL;
+}
+
+/* 縦か横を決めて、step ごとにその向きの binding を送る。dx・dy は指を動かした向き（右・下が正）。
+ * first は bindings の上・下・左・右の先頭。送るものを足したら true */
+static bool convert_motion(struct axis_acc *acc, int32_t dx, int32_t dy, uint16_t step,
+                           const struct held_mode *hm, size_t first) {
+    acc->x += dx;
+    acc->y += dy;
 
     if (acc->axis == AXIS_NONE) {
         if (MAX(abs(acc->x), abs(acc->y)) < step) {
-            return;
+            return false;
         }
         acc->axis = abs(acc->x) >= abs(acc->y) ? AXIS_X : AXIS_Y;
     }
@@ -322,35 +440,34 @@ static void convert_motion(struct axis_acc *acc, uint16_t code_x, uint16_t code,
 
     int32_t *v = acc->axis == AXIS_X ? &acc->x : &acc->y;
     const struct zmk_behavior_binding *b = &hm->mode->bindings[first];
-    // 上・下・左・右の順。X は負が左、Y は up_negative に従う
-    const size_t neg = acc->axis == AXIS_X ? 2 : (up_negative ? 0 : 1);
-    const size_t pos = acc->axis == AXIS_X ? 3 : (up_negative ? 1 : 0);
+    // 上・下・左・右の順
+    const struct zmk_behavior_binding *neg = acc->axis == AXIS_X ? &b[2] : &b[0];
+    const struct zmk_behavior_binding *pos = acc->axis == AXIS_X ? &b[3] : &b[1];
+    bool queued = false;
     for (int i = 0; i < MAX_STEPS_PER_EVENT && *v >= step; i++) {
         *v -= step;
-        add_action(out, n, max, hm, &b[pos], true);
+        queued |= enqueue(hm, pos, true);
     }
     for (int i = 0; i < MAX_STEPS_PER_EVENT && *v <= -(int32_t)step; i++) {
         *v += step;
-        add_action(out, n, max, hm, &b[neg], true);
+        queued |= enqueue(hm, neg, true);
     }
     // 上限で打ち切った残りは捨てる（後からまとめて出ないように）
     if (abs(*v) >= step) {
         *v = 0;
     }
+    return queued;
 }
 
-static void track_stroke(struct slot *s, const struct held_mode *hm, uint16_t code, int32_t value) {
-    if (s->stroke.mode != hm->mode || s->stroke.position != hm->position) {
+static void track_stroke(struct slot *s, const struct held_mode *hm, int32_t dx, int32_t dy) {
+    if (s->stroke.mode == NULL || s->stroke.seq != hm->seq) {
         reset_stroke(s);
         s->stroke = *hm;
     }
-    if (code == INPUT_REL_X) {
-        s->sx += value;
-    } else {
-        s->sy += value;
-    }
+    s->sx += dx;
+    s->sy += dy;
     const uint16_t step = hm->mode->stroke_step;
-    if (step == 0 || MAX(abs(s->sx), abs(s->sy)) < step) {
+    if (MAX(abs(s->sx), abs(s->sy)) < step) {
         return;
     }
     uint8_t dir;
@@ -372,37 +489,31 @@ static void track_stroke(struct slot *s, const struct held_mode *hm, uint16_t co
     s->len++;
 }
 
-static int tp_keys_handle_event(const struct device *dev, struct input_event *event,
-                                uint32_t param1, uint32_t param2,
-                                struct zmk_input_processor_state *state) {
-    const uint8_t idx = state ? state->input_device_index : 0;
-    if (idx >= MAX_SLOTS) {
-        return ZMK_INPUT_PROC_CONTINUE;
-    }
-
-    struct action out[MAX_STEPS_PER_EVENT];
-    size_t n = 0;
-    int ret = ZMK_INPUT_PROC_CONTINUE;
-
-    k_spinlock_key_t key = k_spin_lock(&lock);
-    struct slot *s = &slots[idx];
-
-    if (event->type == INPUT_EV_KEY && event->code == INPUT_BTN_TOUCH) {
-        s->touch_known = true;
-        s->touching = event->value != 0;
-        // 触れ始め・離れたときに、たまった量と縦横の決定を捨てる。離れたら一筆書きを決める
-        reset_motion(s);
-        if (!s->touching) {
-            finish_stroke(s, out, &n, ARRAY_SIZE(out));
-        }
-        k_spin_unlock(&lock, key);
-        submit(out, n);
-        return ZMK_INPUT_PROC_CONTINUE;
-    }
-
-    if (event->type != INPUT_EV_REL) {
-        k_spin_unlock(&lock, key);
-        return ZMK_INPUT_PROC_CONTINUE;
+/* REL の入力。捨てるなら true。*queued は送るものを足したら true にする */
+static bool handle_rel(struct slot *s, const struct input_event *event, bool *queued) {
+    // 指を動かした向き（右・下が正）。ドライバは、ホイールを指を下へ動かした量、
+    // 横ホイールを指を左へ動かした量で送る
+    int32_t dx = 0, dy = 0;
+    bool is_cursor;
+    switch (event->code) {
+    case INPUT_REL_X:
+        dx = event->value;
+        is_cursor = true;
+        break;
+    case INPUT_REL_Y:
+        dy = event->value;
+        is_cursor = true;
+        break;
+    case INPUT_REL_WHEEL:
+        dy = event->value;
+        is_cursor = false;
+        break;
+    case INPUT_REL_HWHEEL:
+        dx = -event->value;
+        is_cursor = false;
+        break;
+    default:
+        return false;
     }
 
     if (s->gen != gen) {
@@ -410,38 +521,101 @@ static int tp_keys_handle_event(const struct device *dev, struct input_event *ev
         reset_motion(s);
     }
 
-    const struct held_mode *hm = active_mode();
-    const bool is_cursor = event->code == INPUT_REL_X || event->code == INPUT_REL_Y;
-    const bool is_scroll = event->code == INPUT_REL_WHEEL || event->code == INPUT_REL_HWHEEL;
     // 慣性（触れていない間の動き）か
     const bool coasting = s->touch_known && !s->touching;
+    const struct held_mode *hm = active_mode();
 
-    if (hm != NULL && is_cursor && hm->mode->num_strokes > 0) {
+    if (hm != NULL && hm->mode->kind == TP_KEYS_KIND_STROKE && is_cursor) {
         if (!coasting) {
-            track_stroke(s, hm, event->code, event->value);
+            track_stroke(s, hm, dx, dy);
+            s->converted_this_touch = true;
         }
-        event->value = 0;
-        ret = ZMK_INPUT_PROC_STOP;
-    } else if (hm != NULL && hm->mode->bindings != NULL &&
-               ((is_cursor && hm->mode->convert_cursor) || (is_scroll && hm->mode->convert_scroll))) {
+        return true;
+    }
+    if (hm != NULL && hm->mode->kind == TP_KEYS_KIND_MOTION &&
+        (is_cursor ? hm->convert_cursor : hm->convert_scroll)) {
         if (!coasting) {
-            if (is_cursor) {
-                convert_motion(&s->cursor, INPUT_REL_X, event->code, event->value,
-                               hm->mode->cursor_step, true, hm, TP_KEYS_CURSOR_FIRST, out, &n,
-                               ARRAY_SIZE(out));
-            } else {
-                convert_motion(&s->scroll, INPUT_REL_HWHEEL, event->code, event->value,
-                               hm->mode->scroll_step, false, hm, TP_KEYS_SCROLL_FIRST, out, &n,
-                               ARRAY_SIZE(out));
-            }
+            *queued |= is_cursor ? convert_motion(&s->cursor, dx, dy, hm->mode->cursor_step, hm,
+                                                  TP_KEYS_CURSOR_FIRST)
+                                 : convert_motion(&s->scroll, dx, dy, hm->mode->scroll_step, hm,
+                                                  TP_KEYS_SCROLL_FIRST);
+            s->converted_this_touch = true;
         }
-        event->value = 0;
-        ret = ZMK_INPUT_PROC_STOP;
+        return true;
+    }
+    // 変えた触れ方の後の慣性は、モードのキーを離していても捨てる
+    return coasting && s->converted_this_touch;
+}
+
+/* KEY の入力（触れている／離れた、タップ・ジェスチャー）。捨てるなら true */
+static bool handle_key(struct slot *s, const struct input_event *event, bool *queued) {
+    if (event->code == INPUT_BTN_TOUCH) {
+        s->touch_known = true;
+        s->touching = event->value != 0;
+        // 触れ始め・離れたときに、たまった量と縦横の決定を捨てる。離れたら一筆書きを決める
+        reset_motion(s);
+        if (s->touching) {
+            s->converted_this_touch = false;
+        } else {
+            *queued |= finish_stroke(s);
+        }
+        // リスナーは INPUT_BTN_TOUCH を使わない（同期つきなので、通すと空のマウスのレポートを毎回送る）。
+        // オートマウスレイヤーは、触れているかを入力デバイスから直接受け取る
+        return true;
+    }
+    if (event->code < INPUT_BTN_0 || event->code >= INPUT_BTN_0 + NUM_BUTTONS) {
+        return false;
+    }
+    const uint8_t bit = BIT(event->code - INPUT_BTN_0);
+    if (event->value) {
+        if (active_mode() != NULL) {
+            s->buttons_dropped |= bit;
+            return true;
+        }
+        return false;
+    }
+    if (s->buttons_dropped & bit) {
+        s->buttons_dropped &= ~bit;
+        return true;
+    }
+    return false;
+}
+
+static int tp_keys_handle_event(const struct device *dev, struct input_event *event,
+                                uint32_t param1, uint32_t param2,
+                                struct zmk_input_processor_state *state) {
+    if (event->type != INPUT_EV_KEY && event->type != INPUT_EV_REL) {
+        return ZMK_INPUT_PROC_CONTINUE;
+    }
+
+    bool drop = false;
+    bool queued = false;
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    struct slot *s = find_slot(event->dev);
+    if (s != NULL) {
+        drop = event->type == INPUT_EV_KEY ? handle_key(s, event, &queued)
+                                           : handle_rel(s, event, &queued);
     }
     k_spin_unlock(&lock, key);
 
-    submit(out, n);
-    return ret;
+    if (queued) {
+        k_work_submit(&kick_work);
+    }
+    if (!drop) {
+        return ZMK_INPUT_PROC_CONTINUE;
+    }
+    // リスナーが何もしない入力にして止める（lowspeedmode の中では STOP してもリスナー本体に進むため）。
+    // 同じ入力は、オートマウスレイヤーの「触れている」の受け取り（入力デバイスに直接つないだもの）にも届くので、
+    // INPUT_BTN_TOUCH は書き換えない（lowspeedmode の中では空のレポートが出るが、害はない）
+    if (event->type == INPUT_EV_REL) {
+        event->value = 0;
+        event->sync = false;
+    } else if (event->code != INPUT_BTN_TOUCH) {
+        // ボタンは値を 0 にすると「離した」になるので、リスナーが扱わない種類にする
+        event->type = INPUT_EV_MSC;
+        event->sync = false;
+    }
+    return ZMK_INPUT_PROC_STOP;
 }
 
 static struct zmk_input_processor_driver_api tp_keys_driver_api = {

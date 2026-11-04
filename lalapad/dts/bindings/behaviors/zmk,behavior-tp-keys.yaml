@@ -1,6 +1,6 @@
-# トラックパッドの動きをキーに変える behavior（引数なし）。押している間だけ、動かした量 cursor-step
-# （2 本指のスクロールは scroll-step）ごとに、その向きの binding を 1 回送る。
-# 動き始めの向きで縦か横かを決め、指を離すまで変えない。
+# トラックパッドの動きをキーに変える behavior（引数なし）。押している間だけ、指を動かした量 cursor-step
+# （2 本指は scroll-step）ごとに、その向きの binding を 1 回送る。押している間のタップ・ジェスチャーは捨てる。
+# 動き始めの向きで縦か横かを決め、指が触れ直す・離れるか、モードのキーを押す・離すまで変えない。
 # 実際に動きを変えるのは、トラックパッドのリスナーに入れた zmk,input-processor-tp-keys。
 
 description: Hold to turn trackpad movement into key presses (arrow keys, dials)
@@ -14,16 +14,17 @@ properties:
     type: phandle-array
     required: true
     description: >
-      8 つ: 1 本指の上・下・左・右、2 本指（スクロール）の上・下・左・右。
-      1 本指（または 2 本指）の 4 つをすべて &trans にすると、そちらは変えずにカーソル（スクロール）のまま通す
+      8 つ: 1 本指を上・下・左・右へ動かしたとき、2 本指を上・下・左・右へ動かしたとき（2 本指も指を動かした向き。
+      スクロールの向きではない）。1 本指（または 2 本指）の 4 つをすべて &trans にすると、そちらは変えずに
+      カーソル（スクロール）のまま通す
   cursor-step:
     type: int
     default: 150
-    description: 1 本指で 1 回送るのに必要な動きの量（トラックパッドの生の値。速度の設定には影響されない）
+    description: 1 本指で 1 回送るのに必要な動きの量（トラックパッドの生の値。速度の設定には影響されない。1〜65535）
   scroll-step:
     type: int
     default: 150
-    description: 2 本指で 1 回送るのに必要な動きの量（トラックパッドの生の値）
+    description: 2 本指で 1 回送るのに必要な動きの量（トラックパッドの生の値。2 本指の中心の動き。1〜65535）
   tap-ms:
     type: int
     default: 10

@@ -3,7 +3,7 @@
  *
  * ふだんのキーボードの HID（HID_0）とは別に、ベンダー定義の HID の機器（HID_1）を1つ増やす。
  * CONFIG_USB_HID_DEVICE_COUNT を 2 にしておく必要がある。
- * PC からのレポート（命令）は、出力レポート（SET_REPORT。割り込み OUT エンドポイントがあればそちら）で届く。
+ * PC からのレポート（命令）は、出力レポート（SET_REPORT）で届く。
  */
 
 #include <errno.h>
@@ -26,25 +26,32 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 // HID_0 はキーボード（ZMK）が使うので、キー位置の送信用にもう1つ要る
 BUILD_ASSERT(CONFIG_USB_HID_DEVICE_COUNT >= 2, "key stream over USB needs CONFIG_USB_HID_DEVICE_COUNT=2");
+// 割り込み OUT エンドポイントは使わない。有効にすると HID_0（ZMK のキーボード）にも OUT エンドポイントが付き、
+// ZMK はその受け取り（int_out_ready）を登録していないので、キーボードの出力レポート（LED など）が届かなくなる
+BUILD_ASSERT(!IS_ENABLED(CONFIG_ENABLE_HID_INT_OUT_EP),
+             "key stream over USB does not support CONFIG_ENABLE_HID_INT_OUT_EP");
 
 #define HID_GET_REPORT_TYPE_MASK 0xff00
 #define HID_REPORT_TYPE_OUTPUT 0x200
 
 static const struct device *hid_dev;
 
-/* USB は送り終わるまでこのバッファから直接読む（DMA）ので、スタックではなく静的に持つ。
- * 送り終わるまで（tx_busy の間）は書き換えない。本体が送る先を Bluetooth に変えて戻ってきた場合など、
- * 前の転送が終わっていなければ、次は受け付けない */
-static uint8_t tx_buf[KEY_STREAM_REPORT_SIZE];
-static atomic_t tx_busy;
-/* 送っている転送の番号（tx_busy の間だけ有効） */
-static uint32_t tx_id;
+/* USB は送り終わるまでバッファから直接読む（DMA。エンドポイントの大きさが 16 バイトなら 32 バイトは 2 回に
+ * 分けて送るので、途中で書き換えると前半と後半が別のレポートになる）ので、スタックではなく静的に持つ。
+ * 本体は、終わらない転送を見切って次を送ってくることがあるので、バッファを2つ交互に使い、最後に受け付けられた
+ * 転送のバッファ（tx_last）は書き換えない。USB の側は前の転送が終わるまで次を受け付けない（-EAGAIN）ので、
+ * 次が受け付けられた時点で、もう一方のバッファは使われていない。
+ * tx_bufs と tx_last は、本体の送る処理（1つのスレッド）からだけ触る */
+static uint8_t tx_bufs[2][KEY_STREAM_REPORT_SIZE];
+static uint8_t tx_last;
+/* 最後に送ろうとした転送の番号。送り終わったの知らせでは、どの転送が終わったかが分からないので、これを渡す
+ * （見切った前の転送が後から終わると、今の番号で知らせてしまうことがある。そのときは本体が次を少し早く送り、
+ *  USB の側に断られて送り直すだけで、バッファは書き換えない） */
+static atomic_t tx_id;
 
 static void in_ready_cb(const struct device *dev) {
     ARG_UNUSED(dev);
-    const uint32_t id = tx_id;
-    atomic_clear(&tx_busy);
-    key_stream_sent(id);
+    key_stream_sent((uint32_t)atomic_get(&tx_id));
 }
 
 static int set_report_cb(const struct device *dev, struct usb_setup_packet *setup, int32_t *len,
@@ -57,52 +64,39 @@ static int set_report_cb(const struct device *dev, struct usb_setup_packet *setu
     return 0;
 }
 
-#if IS_ENABLED(CONFIG_ENABLE_HID_INT_OUT_EP)
-static void out_ready_cb(const struct device *dev) {
-    uint8_t buf[KEY_STREAM_REPORT_SIZE];
-    uint32_t read = 0;
-    if (hid_int_ep_read(dev, buf, sizeof(buf), &read) == 0 && read > 0) {
-        key_stream_received(KEY_STREAM_TRANSPORT_USB, NULL, buf, read);
-    }
-}
-#endif
-
 /* GET_REPORT は受け付けない（登録しなければ Zephyr が -ENOTSUP で断る） */
 static const struct hid_ops ops = {
     .set_report = set_report_cb,
     .int_in_ready = in_ready_cb,
-#if IS_ENABLED(CONFIG_ENABLE_HID_INT_OUT_EP)
-    .int_out_ready = out_ready_cb,
-#endif
 };
 
 int key_stream_usb_send(const uint8_t *report, uint32_t id) {
     if (hid_dev == NULL || !zmk_usb_is_hid_ready()) {
         return -ENOTCONN;
     }
-    if (!atomic_cas(&tx_busy, 0, 1)) {
-        return -EAGAIN; // 前の転送がまだ終わっていない
+    if (zmk_usb_get_status() == USB_DC_SUSPEND) {
+        // PC がサスペンドしている間は送れない（Zephyr が断るたびに警告を出すので、ここで断って間を空ける）
+        return -EBUSY;
     }
-    tx_id = id;
-    memcpy(tx_buf, report, sizeof(tx_buf));
-    const int err = hid_int_ep_write(hid_dev, tx_buf, sizeof(tx_buf), NULL);
-    if (err != 0) {
-        atomic_clear(&tx_busy);
+    const uint8_t next = tx_last ^ 1;
+    memcpy(tx_bufs[next], report, KEY_STREAM_REPORT_SIZE);
+    atomic_set(&tx_id, (atomic_val_t)id);
+    const int err = hid_int_ep_write(hid_dev, tx_bufs[next], KEY_STREAM_REPORT_SIZE, NULL);
+    if (err == 0) {
+        tx_last = next;
+        return 0;
     }
     if (err == -EAGAIN || err == -EBUSY) {
-        return -EAGAIN;
+        return -EAGAIN; // 前の転送がまだ終わっていない（見切った転送が残っているときなど）
     }
     return err;
 }
-
-void key_stream_usb_abort(void) { atomic_clear(&tx_busy); }
 
 /* USB を抜いた（PC から使えなくなった）ら、USB で送っていた分をやめる */
 static int key_stream_usb_listener(const zmk_event_t *eh) {
     const struct zmk_usb_conn_state_changed *ev = as_zmk_usb_conn_state_changed(eh);
     if (ev != NULL && ev->conn_state != ZMK_USB_CONN_HID) {
         // 抜いたときは送っていた転送も取り消される（送り終わったの知らせは来ない）
-        atomic_clear(&tx_busy);
         key_stream_transport_lost(KEY_STREAM_TRANSPORT_USB, NULL);
     }
     return ZMK_EV_EVENT_BUBBLE;

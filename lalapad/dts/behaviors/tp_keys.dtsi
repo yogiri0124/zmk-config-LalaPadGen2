@@ -1,9 +1,9 @@
 #include <dt-bindings/lalapad/tp_keys.h>
 
 / {
-    // トラックパッドをキー操作に変える入力処理。トラックパッドのリスナーに <&zip_tp_keys> として、
-    // 速度の調整（scaler）とオートマウスレイヤーより前に入れる。どのキーに変えるか
-    // （zmk,behavior-tp-keys・zmk,behavior-tp-stroke）は keymap で定義する
+    // トラックパッドをキー操作に変える入力処理。トラックパッドのリスナーの入力処理の並びの先頭に
+    // <&zip_tp_keys> として入れる。どのキーに変えるか（zmk,behavior-tp-keys・zmk,behavior-tp-stroke）は
+    // keymap で定義する
     /omit-if-no-ref/ zip_tp_keys: zip_tp_keys {
         compatible = "zmk,input-processor-tp-keys";
         #input-processor-cells = <0>;

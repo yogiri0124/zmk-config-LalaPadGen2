@@ -1,6 +1,8 @@
 /*
  * かな配列モードのオン／オフ behavior (&kana_sw KANA_SW_ON / KANA_SW_OFF)。
  * 実際の処理（レイヤー切替と IME のオン／オフの順序管理）は kana_output.c で行う。
+ * KANA_SW_OFF は、かな配列モードでないのに layer が（Studio の &tog などで）有効なときも、layer と
+ * sub-layers を解除する（かなのレイヤーから抜けられなくならないように）。
  */
 
 #define DT_DRV_COMPAT zmk_behavior_kana_mode
@@ -55,7 +57,8 @@ static int on_kana_mode_binding_pressed(struct zmk_behavior_binding *binding,
         kana_mode_on(&event, cfg->layer, cfg->tap_ms, cfg->wait_ms);
         break;
     case KANA_SW_OFF:
-        kana_mode_off(&event, cfg->sub_layers, cfg->sub_layers_len, cfg->tap_ms, cfg->wait_ms);
+        kana_mode_off(&event, cfg->layer, cfg->sub_layers, cfg->sub_layers_len, cfg->tap_ms,
+                      cfg->wait_ms);
         break;
     default:
         LOG_WRN("Unknown kana mode command %d", binding->param1);

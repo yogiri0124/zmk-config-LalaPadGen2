@@ -10,7 +10,10 @@ properties:
   layer:
     type: int
     required: true
-    description: かな単打面のレイヤー番号（keymap で &kana_sw { layer = <...>; }; と指定する）
+    description: >
+      かな単打面のレイヤー番号（keymap の behaviors にある kana_sw の定義に layer = <...>; と書く）。
+      KANA_SW_OFF は、かな配列モードでないのにこのレイヤーが（Studio の &tog などで）有効なときも、
+      このレイヤーと sub-layers を解除する
   sub-layers:
     type: array
     default: []
