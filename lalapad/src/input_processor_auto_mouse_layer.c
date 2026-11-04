@@ -1,7 +1,7 @@
 /*
  * オートマウスレイヤーの入力処理 (zmk,input-processor-auto-mouse-layer)。
  *
- * トラックパッドのリスナーに <&zip_auto_mouse_layer 5 500> のように入れると、
+ * トラックパッドのリスナーに <&zip_auto_mouse_layer 5 300> のように入れると、
  * トラックパッドの操作でレイヤー param1 を有効にし、操作が止まって param2 ms たったら解除する。
  * ZMK 標準の zmk,input-processor-temp-layer と同じ使い方で、次の点が違う。
  *
@@ -9,7 +9,13 @@
  *   「マウス操作」として扱う。押してもレイヤーを解除せず、押している間は時間切れにしない。
  *   離したときから param2 ms を数え直す（クリック → ダブルクリックの間に解除されないように）。
  *   &none のキーは「マウスレイヤーの間は何もしないキー」になる。
- * - &trans のキーを押すと、すぐに解除する（そのキーは下のレイヤーのキーとして入力される）。
+ *   ただし、マウスレイヤーより上の有効なレイヤー（かなのレイヤーなど）に &trans 以外があるキーは、
+ *   そちらが働くので「マウス操作」ではない（excluded-positions のキーを除く）。
+ * - 「マウス操作」でないキーを押すと、すぐに解除する（&trans のキーは下のレイヤーのキーとして入力される）。
+ * - 有効にする前から押していたキーは、excluded-positions のキー（Ctrl など）だけを「マウス操作」として数える
+ *   （ほかのキーは下のレイヤーのキーとして押されているので、押したままでもレイヤーを保たない）。
+ * - 有効にするきっかけは、カーソル移動・スクロール（値が 0 でない REL）だけ。タップ・ジェスチャー
+ *   （クリックの直後に打ち始めても文字がマウスレイヤーのキーにならないように）や、触れただけでは有効にしない。
  * - touch-devices に指定した入力デバイスから INPUT_BTN_TOUCH（トラックパッドに触れている／離れた）が届く場合、
  *   触れている間は時間切れにしない。離れてから param2 ms で解除する（触れただけでは有効にしない）。
  *   そのデバイスからの入力は、触れている間のものだけを有効化・延長のきっかけにする
@@ -110,7 +116,7 @@ static bool position_is_excluded(const struct auto_mouse_config *cfg, uint32_t p
     return false;
 }
 
-/* マウスレイヤー上で &trans 以外が割り当ててあるキーか（&none も割り当てありとみなす。
+/* そのレイヤーで &trans 以外が割り当ててあるキーか（&none も割り当てありとみなす。
  * keymap で &none にした位置は、マウスレイヤーの間は押しても何もせず、レイヤーも解除しない） */
 static bool position_is_bound(zmk_keymap_layer_id_t layer, uint32_t position) {
     const struct zmk_behavior_binding *binding =
@@ -119,6 +125,22 @@ static bool position_is_bound(zmk_keymap_layer_id_t layer, uint32_t position) {
         return false;
     }
     return strcmp(binding->behavior_dev, TRANS_BEHAVIOR_NAME) != 0;
+}
+
+/* そのキーを押したとき、マウスレイヤーの割り当てが働くか（マウスレイヤーより上の有効なレイヤーに
+ * &trans 以外があれば、そちらが働く） */
+static bool mouse_layer_wins(zmk_keymap_layer_id_t mouse_layer, uint32_t position) {
+    for (int i = ZMK_KEYMAP_LAYERS_LEN - 1; i >= 0; i--) {
+        const zmk_keymap_layer_id_t id = zmk_keymap_layer_index_to_id(i);
+        if (id == mouse_layer) {
+            return true;
+        }
+        if (id != ZMK_KEYMAP_LAYER_ID_INVAL && zmk_keymap_layer_active(id) &&
+            position_is_bound(id, position)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 /* excluded-layers のどれかが有効か（有効なら、マウスレイヤーを新しく有効にしない） */
@@ -134,7 +156,8 @@ static bool excluded_layer_active(const struct auto_mouse_config *cfg) {
 static bool is_mouse_key(const struct device *dev, uint32_t position) {
     const struct auto_mouse_config *cfg = dev->config;
     const struct auto_mouse_data *data = dev->data;
-    return position_is_excluded(cfg, position) || position_is_bound(data->layer, position);
+    return position_is_excluded(cfg, position) ||
+           (position_is_bound(data->layer, position) && mouse_layer_wins(data->layer, position));
 }
 
 /* 以下はロックを取った状態で呼ぶ */
@@ -149,11 +172,13 @@ static void deactivate(struct auto_mouse_data *data) {
     LOG_DBG("Auto mouse layer %d deactivated", data->layer);
 }
 
-/* 有効にしたときに、それより前から押しているキーのうちマウス操作のものを数え直す */
+/* 有効にしたときに、それより前から押しているキーのうち excluded-positions のもの（Ctrl など）を数え直す
+ * （ほかのキーは下のレイヤーのキーとして押されているので数えない） */
 static void recount_held(const struct device *dev, struct auto_mouse_data *data) {
+    const struct auto_mouse_config *cfg = dev->config;
     data->held_count = 0;
     for (uint32_t pos = 0; pos < ZMK_KEYMAP_LEN; pos++) {
-        data->held[pos] = data->pressed[pos] && is_mouse_key(dev, pos);
+        data->held[pos] = data->pressed[pos] && position_is_excluded(cfg, pos);
         if (data->held[pos]) {
             data->held_count++;
         }
@@ -202,6 +227,9 @@ static void restart_timeout(const struct auto_mouse_config *cfg, struct auto_mou
     } else if (data->timeout_ms > 0) {
         data->deadline = k_uptime_get() + data->timeout_ms;
         k_work_reschedule(&data->disable_work, K_MSEC(data->timeout_ms));
+    } else {
+        // 時間では解除しない（触れている間の確かめの予約が残っていたら取り消す）
+        k_work_cancel_delayable(&data->disable_work);
     }
 }
 
@@ -279,8 +307,9 @@ static int auto_mouse_handle_event(const struct device *dev, struct input_event 
         return -EINVAL;
     }
 
-    // 触れている／離れたの合図は touch-devices から直接受け取るので、ここでは有効化のきっかけにしない
-    if (event->type == INPUT_EV_KEY && event->code == INPUT_BTN_TOUCH) {
+    // きっかけはカーソル移動・スクロールだけ（タップ・ジェスチャー、触れている／離れたの合図ではない。
+    // 触れている／離れたは touch-devices から直接受け取る）
+    if (event->type != INPUT_EV_REL || event->value == 0) {
         return ZMK_INPUT_PROC_CONTINUE;
     }
 

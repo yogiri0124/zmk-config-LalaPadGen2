@@ -9,19 +9,19 @@
  * 記号（、。… など）は、keymap で定義する zmk,behavior-kana-seq のキー（behavior_kana_seq.c）で送る。
  * スペース・エンター・バックスペース（KE_）も同じキューで送り、かな列を追い越さないようにする
  * （この3つは、押している間は押しっぱなしにして、キーリピートができるようにする）。
- * キューへの登録・押しっぱなし防止・かな配列モードの状態は kana_output.c にまとめている。
+ * かなを送る間は、押している Shift・Ctrl（&sk の Shift も）を隠す（"Ka" や Ctrl+K にならないように。
+ * Alt・Win は隠さない。理由と制約は kana_output.c の先頭）。
+ * スペース・エンター・バックスペースは隠さない（Shift+Enter・Ctrl+Backspace などとして使えるように）。
+ * キューへの登録・押しっぱなし防止・修飾キーを隠す処理・かな配列モードの状態は kana_output.c にまとめている。
  */
 
 #define DT_DRV_COMPAT zmk_behavior_kana
 
-#include <errno.h>
 #include <zephyr/device.h>
-#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <drivers/behavior.h>
 
 #include <zmk/behavior.h>
-#include <zmk/keymap.h>
 #include <zmk/matrix.h>
 
 #include <dt-bindings/kana/kana.h>
@@ -136,6 +136,10 @@ struct kana_entry {
 
 static const struct kana_entry kana_table[KN_MAX_ID + 1] = {KANA_LIST(KANA_TABLE_ENTRY)};
 
+/* かな（1〜KN_VU）と、編集用のキー3つ。その間の番号は欠番（kana.h に ID を足したら KANA_LIST にも足す） */
+#define KANA_COUNT_ENTRY(id, name, keys) +1
+BUILD_ASSERT((0 KANA_LIST(KANA_COUNT_ENTRY)) == KN_VU + 3, "KANA_LIST must cover every kana ID");
+
 struct behavior_kana_config {
     uint32_t tap_ms;
     uint32_t wait_ms;
@@ -155,9 +159,6 @@ static bool is_hold_key(uint32_t id) { return id == KE_SPACE || id == KE_ENTER |
 
 static const struct behavior_parameter_value_metadata param_values[] = {
     KANA_LIST(KANA_METADATA_ENTRY)};
-
-/* かな（1〜KN_VU）と、編集用のキー3つ。その間の番号は欠番（kana.h に ID を足したら KANA_LIST にも足す） */
-BUILD_ASSERT(ARRAY_SIZE(param_values) == KN_VU + 3, "KANA_LIST must cover every kana ID");
 
 static const struct behavior_parameter_metadata_set param_metadata_set[] = {{
     .param1_values = param_values,
@@ -189,8 +190,15 @@ static int on_kana_binding_pressed(struct zmk_behavior_binding *binding,
     }
 
     if (is_hold_key(id)) {
-        if (event.position < ZMK_KEYMAP_LEN && held_keycode[event.position] == 0) {
-            const uint32_t keycode = kana_table[id].keys[0];
+        const uint32_t keycode = kana_table[id].keys[0];
+        if (event.position >= ZMK_KEYMAP_LEN) {
+            // キー位置ごとの押しっぱなしを覚えられない位置（combos など）: 押しっぱなしにせず、1回タップする
+            const int ret = kana_output_tap(&event, keycode, cfg->tap_ms, cfg->wait_ms);
+            if (ret < 0) {
+                // -EAGAIN は「押す」だけ登録済み（「離す」は自動で再試行される）
+                LOG_WRN("Behavior queue busy/full (err %d), kana id %d", ret, id);
+            }
+        } else if (held_keycode[event.position] == 0) {
             const int ret = kana_output_press(&event, keycode, cfg->tap_ms);
             if (ret == 0) {
                 held_keycode[event.position] = keycode;
@@ -201,28 +209,18 @@ static int on_kana_binding_pressed(struct zmk_behavior_binding *binding,
         return ZMK_BEHAVIOR_OPAQUE;
     }
 
-    // かなの前だけ、しばらく打っていなかったら IME オンを先に送る（LANGUAGE_1 はトグルではないので重ねても害がない）。
-    // スペース・エンター・バックスペースの前には送らない（IME オフのときに全角スペースなどにならないように）
-    if (cfg->ime_resync_ms > 0) {
-        const int ret = kana_output_ime_on(&event, cfg->tap_ms, cfg->wait_ms, cfg->ime_resync_ms);
-        if (ret < 0) {
-            // -EBUSY / -ENOSPC: IME オンを登録できなかった。次の入力で改めて IME オンを試す。
-            // -EAGAIN: IME オンの「押す」は登録済み（「離す」は自動で再試行される）。
-            // いずれも順番を守るため、この文字は送らない
-            LOG_WRN("Could not queue IME on (err %d), dropped kana id %d", ret, id);
-            return ZMK_BEHAVIOR_OPAQUE;
-        }
-    }
-
+    // かなの前だけ、しばらく打っていなかったら IME オンを先に送る（LANGUAGE_1 はトグルではないので重ねても害がない。
+    // ime-resync-ms が 0 なら送らない）。
+    // スペース・エンター・バックスペースの前には送らない（IME オフのときに全角スペースなどにならないように）。
+    // IME オンを登録できなかったときは、順番を守るため、この文字は送らない（次の入力で改めて IME オンを試す）
     const struct kana_entry *entry = &kana_table[id];
-    for (int i = 0; i < entry->len; i++) {
-        const int ret = kana_output_tap(&event, entry->keys[i], cfg->tap_ms, cfg->wait_ms);
-        if (ret < 0) {
-            // -EBUSY / -ENOSPC: 何も登録していない。-EAGAIN: 「離す」は自動で再試行される。
-            // いずれも同じ文字の残りは送らない（順番が崩れないように）
-            LOG_WRN("Behavior queue busy/full (err %d), dropped rest of kana id %d", ret, id);
-            break;
-        }
+    const int ret = kana_output_send_keys(&event, entry->keys, entry->len, cfg->tap_ms,
+                                          cfg->wait_ms, cfg->ime_resync_ms > 0,
+                                          cfg->ime_resync_ms);
+    if (ret < 0) {
+        // -EBUSY / -ENOSPC: その打鍵から先は登録していない。-EAGAIN: 「離す」は自動で再試行される。
+        // いずれも同じ文字の残りは送っていない（順番が崩れないように）
+        LOG_WRN("Behavior queue busy/full (err %d), dropped (rest of) kana id %d", ret, id);
     }
 
     return ZMK_BEHAVIOR_OPAQUE;

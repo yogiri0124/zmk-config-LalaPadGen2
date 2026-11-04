@@ -1,6 +1,7 @@
 # Windows の Alt コードで文字を送る behavior（引数なし）。
 # codes の各値を「Alt を押したまま、テンキーでその10進数を打つ」操作として順に送り、最後に ← を cursor-left 回送る。
 # Num Lock がオフなら前後で Num Lock を押して一時的にオンにする（CONFIG_ZMK_HID_INDICATORS が必要）。
+# 送る間は、押している Shift・Ctrl を隠す。Alt か Win を押している間と、かな配列モードの解除処理中は送らない。
 
 description: Send characters as Windows Alt codes, independent of the Num Lock state
 

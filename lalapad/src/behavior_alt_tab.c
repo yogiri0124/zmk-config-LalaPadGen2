@@ -54,12 +54,17 @@ static void raise_key(uint32_t keycode, bool pressed) {
     raising = false;
 }
 
-/* Alt を離して、切り替えを終える */
+/* Alt を離して、切り替えを終える（押したままの Tab も先に離す。ほかのキーで終えたとき、
+ * そのキーが Tab と一緒に届かないように） */
 static void end_switch(void) {
     if (!active) {
         return;
     }
     active = false;
+    if (held_tab != 0) {
+        raise_key(held_tab, false);
+        held_tab = 0;
+    }
     raise_key(LALT, false);
 }
 

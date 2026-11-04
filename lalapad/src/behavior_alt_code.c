@@ -19,6 +19,8 @@
  * - Alt（左右どちらか）がすでに押されている間（Alt キーを押したまま、mod_lock_alt で押しっぱなし など）は
  *   送らずに捨てる。ZMK は押した数で修飾キーを数えるので、ここで Alt を離しても PC 側の Alt は離れず、
  *   Alt コードの区切りがつかない（2つ目以降の値が1つ目に続いて打たれ、違う文字になる）ため。
+ *   Win（左右どちらか）が押されている間も、送らずに捨てる（Win+Alt+数字などのショートカットになるため。
+ *   Win は隠さない: 隠すと PC には Win だけを押して離したように見え、スタートメニューが開くため）。
  * - 送る操作は開始時に一覧（steps）にまとめ、k_work で1つずつ順に送る。behavior queue を
  *   使わないので、キューが満杯で「離す」や Num Lock の復元が抜けることはない。
  * - 押したら、まず behavior queue の末尾に目印を並べ（kana_output_add_marker）、それより前に並んでいた
@@ -26,13 +28,24 @@
  *   目印を並べられないとき（キューが満杯、または「離す」の再試行中）は、その押下は送らない
  *   （送り始める前なので後始末は要らない。かな・記号も、並べられなければ送らない）。
  *   かな入力のモジュールがないビルドでは、すぐに送り始める。
+ * - かな配列モードの解除処理中に押されたら、送らずに捨てる（&kana_key・記号のキーと同じ。commit-ime の
+ *   IME オンが、解除の IME オフの後に送られないように）。
+ * - 送っている間は、押している Shift・Ctrl（&sk・mod_lock_* を含む）を PC へ送るレポートから隠す
+ *   （ZMK の masked modifiers。隠すのは KANA_MASKED_MODS）。Shift を押したままだと Windows はテンキーを
+ *   矢印キーなどとして扱い、Ctrl を押したままだと Ctrl+Alt+数字になるため。Alt・Win は隠さない
+ *   （自分の Alt は隠せず、押している Alt・Win は上のとおり送らずに捨てる）。
+ *   続けて押した Alt コードを続けて送るときは、間で戻さずに隠したままにする（間で戻すと、押したままの
+ *   Shift・Ctrl が一瞬 PC に届くため）。間に通す預かった入力があるときだけ、戻してから通す。
+ *   制約: 送っている間に届いて預かった &kana_key の打鍵は、送り終えてから通すので、その時点では
+ *   かなの修飾キーを隠す処理が終わっていて、押したままの修飾キーがかかることがある。
  * - 送信中に押された分は待ち行列に入れ、前の送信が終わってから順に送る。
  * - 送信中にほかから届いたキー入力（通常のキー、&kana_key やマクロの送信など）は、いったん預かり
  *   （ZMK の zmk_keycode_state_changed を capture する）、送り終えてから届いた順のまま通す。
  *   Alt を押したままの間に通常のキーが PC に届くと Alt+キー（メニュー操作など）になってしまうため。
  *   - 「押す」も「離す」も、届いた順のまま預かって、そのまま通す（押した数を数える修飾キーも崩れない）。
  *   - 次の送信が待っているときは、その送信の目印より前に届いた分だけを先に通してから、次を送り始める
- *     （預かった入力と、続けて押した Alt コードのキーの順番を守る）。
+ *     （預かった入力と、続けて押した Alt コードのキーの順番を守る）。次の送信の目印がまだ処理されて
+ *     いなければ、預かった分をすべて通し、目印が処理されて送り始めるまでは預からない。
  *   - 例外として、PC 側ですでに押されているキーの「離す」で、同じキーのイベントが待ち行列に
  *     （通している最中のものも含めて）ないものは、預からずにそのまま通す（送信を始める前から押して
  *     いたキーが、押しっぱなしのまま Alt と重ならないように）。PC 側で押されているキーは、この
@@ -54,7 +67,8 @@
  *   （続けて押したときに、オンにした報告が残っていると、オフなのに切り替えずに送ってしまう）。
  *   そのため、Num Lock をオンにして最後まで送り、オフに戻したときは「この接続先は ASSUME_MS の間
  *   Num Lock オフ」と記録し、その間は PC の報告より記録を使う
- *   （この間に別のキーボードなどで Num Lock を切り替えた場合は反映されない）。
+ *   （この間にこのキーボードの Num Lock キー（&kp KP_NUMLOCK など）を押したら記録を消して報告に従う。
+ *   別のキーボードなどで Num Lock を切り替えた場合は反映されない）。
  *
  * behavior のコールバックと k_work はどちらもシステムワークキューで動くので、送信の状態の排他は不要。
  */
@@ -79,9 +93,8 @@
 #include <zmk/hid_indicators.h>
 #endif
 
-#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_KANA)
+/* KANA_CHECK_MS は、かな入力のモジュールがないビルドでも使う（関数はかな入力のモジュールがあるときだけ呼ぶ） */
 #include "kana_output.h"
-#endif
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -150,8 +163,14 @@ static uint32_t captured_pushed;
 /* PC 側で押されているキーの数（この listener を通した入力と、預かって通し終えた入力から数える） */
 static struct key_count held[MAX_HELD];
 
-/* 自分のキー入力を送っているスレッド（送っている間だけ。それ以外は NULL） */
+/* 自分のキー入力を送っているスレッド（送っている間だけ。それ以外は NULL）と、送っているキー入力。
+ * スレッドだけでなくキーと「押す／離す」も比べる（自分のキー入力の処理の中で、ほかの behavior が同じスレッドで
+ * 別のキー入力を出すことがある。例: &sk は次のキーを離したときに、その中で修飾キーを離す。それは自分のものとして
+ * 扱わず、ほかの入力と同じく預かるか数える） */
 static k_tid_t raising_thread;
+static uint16_t raising_usage_page;
+static uint32_t raising_keycode;
+static bool raising_state;
 
 /* ---- 送信の状態 ---- */
 
@@ -167,7 +186,9 @@ static struct zmk_endpoint_instance active_endpoint;
 static bool alt_down;
 static uint32_t key_down;
 
-/* Num Lock をオフに戻した記録: assumed_endpoint は assume_until まで Num Lock オフとみなす */
+/* Num Lock をオフに戻した記録: assumed_endpoint は assume_until まで Num Lock オフとみなす。
+ * assumed_off は、Num Lock キーが通ったときに listener（ほかのスレッドのこともある）からも false にする
+ * （bool を1つ書くだけなので、送信側の読み取りとの排他はしない） */
 static bool assumed_off;
 static struct zmk_endpoint_instance assumed_endpoint;
 static int64_t assume_until;
@@ -232,11 +253,28 @@ static void track_held(const struct zmk_keycode_state_changed *ev) {
     k->count++;
 }
 
+/* Num Lock キー（KP_NUMLOCK）の「押す」か */
+static bool is_num_lock_press(const struct zmk_keycode_state_changed *ev) {
+    return ev->state && ev->usage_page == HID_USAGE_KEY &&
+           ev->keycode == HID_USAGE_KEY_KEYPAD_NUM_LOCK_AND_CLEAR;
+}
+
 /* 自分の送るキー入力。預からずに PC へ通すよう印を付けて送る（押して離すので held には数えない） */
 static void raise_own(uint32_t keycode, bool pressed, int64_t timestamp) {
+    const struct zmk_keycode_state_changed ev =
+        zmk_keycode_state_changed_from_encoded(keycode, pressed, timestamp);
+    raising_usage_page = ev.usage_page;
+    raising_keycode = ev.keycode;
+    raising_state = ev.state;
     raising_thread = k_current_get();
-    raise_zmk_keycode_state_changed_from_encoded(keycode, pressed, timestamp);
+    raise_zmk_keycode_state_changed(ev);
     raising_thread = NULL;
+}
+
+/* raise_own で送っている自分のキー入力か */
+static bool is_own(const struct zmk_keycode_state_changed *ev) {
+    return raising_thread == k_current_get() && ev->usage_page == raising_usage_page &&
+           ev->keycode == raising_keycode && ev->state == raising_state;
 }
 
 /* 送信を始める: ここからのほかのキー入力を預かる */
@@ -274,8 +312,21 @@ static void release_captured(bool all, uint32_t mark) {
         captured_head = (captured_head + 1) % MAX_CAPTURED;
         captured_count--;
         track_held(&ev.data);
+        if (is_num_lock_press(&ev.data)) {
+            // 預かっていた Num Lock キーを PC へ通した: Num Lock オフとみなす記録を消して、PC の報告に従う
+            assumed_off = false;
+        }
         k_spin_unlock(&capture_lock, key);
     }
+}
+
+/* 通し番号が mark より前の、預かった入力があるか（release_captured(false, mark) で通すものがあるか） */
+static bool has_captured_before(uint32_t mark) {
+    k_spinlock_key_t key = k_spin_lock(&capture_lock);
+    const uint32_t head_seq = captured_pushed - captured_count;
+    const bool ret = captured_count > 0 && (int32_t)(head_seq - mark) < 0;
+    k_spin_unlock(&capture_lock, key);
+    return ret;
 }
 
 static bool reported_num_lock(struct zmk_endpoint_instance endpoint) {
@@ -296,6 +347,22 @@ static bool current_num_lock(struct zmk_endpoint_instance endpoint) {
         return false;
     }
     return reported_num_lock(endpoint);
+}
+
+/* 送っている間、押している Shift・Ctrl を PC へ送るレポートから隠す（on = false で戻す。
+ * 隠している状態のまま、もう一度 on = true で呼んでも PC へは何も送らない） */
+static void mask_mods(bool on) {
+    const uint8_t mods = on ? KANA_MASKED_MODS : 0;
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_KANA)
+    // かなの打鍵の列も同じ仕組みで隠すので、両方の設定をまとめる kana_output.c に任せる
+    kana_output_mask_mods(KANA_MASK_ALT_CODE, mods);
+#else
+    const int changed = on ? zmk_hid_masked_modifiers_set(mods) : zmk_hid_masked_modifiers_clear();
+    if (changed > 0) {
+        // 隠すのをやめたとき、押したままの修飾キーを PC 側でも押したままに戻す
+        zmk_endpoints_send_report(HID_USAGE_KEY);
+    }
+#endif
 }
 
 static void add_step(uint32_t keycode, bool press) {
@@ -355,15 +422,28 @@ static void build_steps(const struct behavior_alt_code_config *cfg) {
 /* 待ち行列の先頭から次の送信を始める。先頭の目印がまだ処理されていなければ、処理されるまで待つ。
  * 待ち行列が空なら、預かった入力をすべて通して待機状態に戻る */
 static void start_next(void) {
+    // 前の送信が終わった（または中止した）。隠していた修飾キーは、続けて送るときは隠したままにし
+    // （間で戻すと、押したままの Shift・Ctrl が一瞬 PC に届く）、預かった入力を通す前と、待機状態に戻る
+    // ときに戻す（預かった入力は隠さずに通す）
     while (pending_count > 0) {
         if (!pending[0].ready) {
-            // 先頭の目印がまだ（それより前に並んだかななどの送信が終わっていない）: 目印の処理で呼び直される
+            // 先頭の目印がまだ（それより前に並んだかななどの送信が終わっていない）: 目印の処理で呼び直される。
+            // 待っている間は預からない（預かったままだと、その間に流れてくるかななどが、目印の処理の後に
+            // 隠さずにまとめて通される）。いま預かっている分を届いた順に通して、預かるのをやめる。
+            // 預かっている分は、どれもこの目印が処理されるより前に届いたもので、目印が処理されたときにも
+            // （mark より前の分として）この送信より先に通すものなので、ここで通しても順番は変わらない。
+            // 目印が処理されたときの mark は、その後に預かった分だけを指す
+            mask_mods(false);
             busy = false;
             active_cfg = NULL;
+            release_captured(true, 0);
             return;
         }
-        // この送信の目印より前に届いて預かっていた入力を、先に通す
-        release_captured(false, pending[0].mark);
+        // この送信の目印より前に届いて預かっていた入力を、先に通す（あれば、修飾キーを戻してから）
+        if (has_captured_before(pending[0].mark)) {
+            mask_mods(false);
+            release_captured(false, pending[0].mark);
+        }
 
         const struct behavior_alt_code_config *cfg = pending[0].cfg;
         const struct zmk_endpoint_instance pressed_endpoint = pending[0].endpoint;
@@ -381,9 +461,15 @@ static void start_next(void) {
             LOG_WRN("Alt is already held, dropping alt code");
             continue;
         }
+        if (zmk_hid_get_explicit_mods() & (MOD_LGUI | MOD_RGUI)) {
+            // Win が押されている: Win+Alt+数字などのショートカットになるので送らない（Win は隠さない）
+            LOG_WRN("Win is held, dropping alt code");
+            continue;
+        }
         num_lock_toggled = !current_num_lock(active_endpoint);
         build_steps(cfg);
         start_capturing();
+        mask_mods(true);
         busy = true;
         active_cfg = cfg;
         step_index = 0;
@@ -392,6 +478,7 @@ static void start_next(void) {
         k_work_schedule(&alt_code_work, K_NO_WAIT);
         return;
     }
+    mask_mods(false);
     busy = false;
     active_cfg = NULL;
     release_captured(true, 0);
@@ -465,7 +552,7 @@ static int alt_code_keycode_listener(const zmk_event_t *eh) {
     if (ev == NULL) {
         return ZMK_EV_EVENT_BUBBLE;
     }
-    if (raising_thread == k_current_get()) {
+    if (is_own(ev)) {
         return ZMK_EV_EVENT_BUBBLE;
     }
 
@@ -490,6 +577,11 @@ static int alt_code_keycode_listener(const zmk_event_t *eh) {
         LOG_WRN("Alt code capture queue full, passing 0x%02X", ev->keycode);
         track_held(ev);
     }
+    if (ret == ZMK_EV_EVENT_BUBBLE && is_num_lock_press(ev)) {
+        // このキーボードの Num Lock キーが PC へ通る（Num Lock が切り替わる）: Num Lock オフとみなす記録を消して、
+        // PC の報告に従う（記録のままだと、Num Lock がオンになったのに切り替えて送り、数字が矢印キーになる）
+        assumed_off = false;
+    }
     k_spin_unlock(&capture_lock, key);
     return ret;
 }
@@ -502,6 +594,14 @@ static int on_alt_code_binding_pressed(struct zmk_behavior_binding *binding,
     const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
     const struct behavior_alt_code_config *cfg = dev->config;
 
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_KANA)
+    if (kana_mode_exiting()) {
+        // かな配列モードの解除処理中（IME オフの後に Alt コードや IME オンが送られないよう捨てる）
+        LOG_DBG("Kana mode exiting, dropped alt code press");
+        return ZMK_BEHAVIOR_OPAQUE;
+    }
+#endif
+
     if (pending_count >= MAX_PENDING) {
         LOG_WRN("Too many pending alt code presses, ignoring");
         return ZMK_BEHAVIOR_OPAQUE;
@@ -512,9 +612,9 @@ static int on_alt_code_binding_pressed(struct zmk_behavior_binding *binding,
     };
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_KANA)
     // behavior queue の末尾に目印を並べる。それより前の送信（かななど）が終わったら alt_code_on_marker が
-    // 呼ばれる（キューが空なら、この中ですぐ呼ばれる）。並べられなければ、この押下は取り消す
-    // （並べられないのは満杯か「離す」の再試行中で、すぐには処理されないので、この分は待ち行列の末尾に残っている）
-    kana_output_set_marker_handler(alt_code_on_marker);
+    // 呼ばれる（キューの処理が待ち時間で止まっていなければ、この中ですぐ呼ばれる）。並べられなければ、この押下は
+    // 取り消す（並べられないのは満杯か「離す」の再試行中で、目印は処理されていないので、この分は待ち行列の末尾に
+    // 残っている）。alt_code_on_marker は初期化のときに登録してある
     if (kana_output_add_marker(&event) < 0) {
         pending_count--;
         LOG_WRN("Behavior queue busy/full, dropped alt code press");
@@ -540,15 +640,20 @@ static const struct behavior_driver_api behavior_alt_code_driver_api = {
 #endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 };
 
-/* 時間の設定は 0〜10 秒（負の値や大きすぎる値で、待ち時間の計算がおかしくならないように） */
-#define ALT_CODE_CHECK_MS(n, prop)                                                                 \
-    BUILD_ASSERT(DT_INST_PROP(n, prop) >= 0 && DT_INST_PROP(n, prop) <= 10000,                     \
-                 "alt code: " #prop " must be 0-10000 ms");
+/* 目印が処理されたときに呼ぶ関数を登録する（インスタンスごとに呼ばれるが、登録する関数は同じ） */
+static int behavior_alt_code_init(const struct device *dev) {
+    ARG_UNUSED(dev);
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_KANA)
+    kana_output_set_marker_handler(alt_code_on_marker);
+#endif
+    return 0;
+}
 
+/* 時間の設定は 0〜10 秒（負の値や大きすぎる値で、待ち時間の計算がおかしくならないように） */
 #define ALT_CODE_INST(n)                                                                           \
-    ALT_CODE_CHECK_MS(n, tap_ms)                                                                   \
-    ALT_CODE_CHECK_MS(n, wait_ms)                                                                  \
-    ALT_CODE_CHECK_MS(n, ime_wait_ms)                                                              \
+    KANA_CHECK_MS(n, tap_ms, 10000)                                                                \
+    KANA_CHECK_MS(n, wait_ms, 10000)                                                               \
+    KANA_CHECK_MS(n, ime_wait_ms, 10000)                                                           \
     BUILD_ASSERT(DT_INST_PROP(n, cursor_left) >= 0 &&                                              \
                      DT_INST_PROP_LEN(n, codes) * MAX_STEPS_PER_CODE +                             \
                              2 * DT_INST_PROP(n, cursor_left) + MAX_STEPS_EXTRA <=                 \
@@ -564,7 +669,8 @@ static const struct behavior_driver_api behavior_alt_code_driver_api = {
         .commit_ime = DT_INST_PROP(n, commit_ime),                                                 \
         .ime_wait_ms = DT_INST_PROP(n, ime_wait_ms),                                               \
     };                                                                                             \
-    BEHAVIOR_DT_INST_DEFINE(n, NULL, NULL, NULL, &behavior_alt_code_config_##n, POST_KERNEL,       \
-                            CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &behavior_alt_code_driver_api);
+    BEHAVIOR_DT_INST_DEFINE(n, behavior_alt_code_init, NULL, NULL, &behavior_alt_code_config_##n,  \
+                            POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT,                      \
+                            &behavior_alt_code_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(ALT_CODE_INST)

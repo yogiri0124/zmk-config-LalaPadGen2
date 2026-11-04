@@ -58,7 +58,7 @@ static int on_cursor_slow_binding_pressed(struct zmk_behavior_binding *binding,
         atomic_inc(&hold_count);
         break;
     case CURSOR_SLOW_TOGGLE:
-        atomic_set(&toggled, atomic_get(&toggled) ? 0 : 1);
+        atomic_xor(&toggled, 1);
         break;
     case CURSOR_SLOW_ONESHOT:
         atomic_set(&oneshot_position, event.position);

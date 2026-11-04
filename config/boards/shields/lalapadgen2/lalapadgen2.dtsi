@@ -6,24 +6,28 @@
 #include <input/processors.dtsi>
 #include "lalapadgen2-layouts.dtsi"
 #include <behaviors/cursor_slow.dtsi>
+#include <behaviors/tp_keys.dtsi>
 
-#define POS_TP_LCLK_L  52
-#define POS_TP_RCLK_L  53
-#define POS_TP_MCLK_L  54
-#define POS_TP_LEFT_L  58
-#define POS_TP_RIGHT_L 59
-#define POS_TP_UP_L    60
-#define POS_TP_DOWN_L  61
-#define POS_TP_PINCH_L 62
+// トラックパッドのタップ・ジェスチャーを割り当てるキーの位置（_L・_R は左右のトラックパッド）。
+// SWIPE_* は 3 本指で指を動かした向き（ドライバは右へのスワイプを INPUT_BTN_3、左へを BTN_4、
+// 上へを BTN_5、下へを BTN_6 で送る）
+#define POS_TP_LCLK_L        52
+#define POS_TP_RCLK_L        53
+#define POS_TP_MCLK_L        54
+#define POS_TP_SWIPE_RIGHT_L 58
+#define POS_TP_SWIPE_LEFT_L  59
+#define POS_TP_SWIPE_UP_L    60
+#define POS_TP_SWIPE_DOWN_L  61
+#define POS_TP_PINCH_L       62
 
-#define POS_TP_LCLK_R  55
-#define POS_TP_RCLK_R  56
-#define POS_TP_MCLK_R  57
-#define POS_TP_LEFT_R  63
-#define POS_TP_RIGHT_R 64
-#define POS_TP_UP_R    65
-#define POS_TP_DOWN_R  66
-#define POS_TP_PINCH_R 67
+#define POS_TP_LCLK_R        55
+#define POS_TP_RCLK_R        56
+#define POS_TP_MCLK_R        57
+#define POS_TP_SWIPE_RIGHT_R 63
+#define POS_TP_SWIPE_LEFT_R  64
+#define POS_TP_SWIPE_UP_R    65
+#define POS_TP_SWIPE_DOWN_R  66
+#define POS_TP_PINCH_R       67
 
 / {
     chosen {
@@ -104,10 +108,10 @@
                     &tp_to_pos  POS_TP_LCLK_R
                     &tp_to_pos  POS_TP_RCLK_R
                     &tp_to_pos  POS_TP_MCLK_R
-                    &tp_to_pos  POS_TP_LEFT_R
-                    &tp_to_pos  POS_TP_RIGHT_R
-                    &tp_to_pos  POS_TP_UP_R
-                    &tp_to_pos  POS_TP_DOWN_R
+                    &tp_to_pos  POS_TP_SWIPE_RIGHT_R
+                    &tp_to_pos  POS_TP_SWIPE_LEFT_R
+                    &tp_to_pos  POS_TP_SWIPE_UP_R
+                    &tp_to_pos  POS_TP_SWIPE_DOWN_R
                     &tp_to_pos  POS_TP_PINCH_R
                     >;
     };
@@ -129,10 +133,10 @@
                     &tp_to_pos  POS_TP_LCLK_L
                     &tp_to_pos  POS_TP_RCLK_L
                     &tp_to_pos  POS_TP_MCLK_L
-                    &tp_to_pos  POS_TP_LEFT_L
-                    &tp_to_pos  POS_TP_RIGHT_L
-                    &tp_to_pos  POS_TP_UP_L
-                    &tp_to_pos  POS_TP_DOWN_L
+                    &tp_to_pos  POS_TP_SWIPE_RIGHT_L
+                    &tp_to_pos  POS_TP_SWIPE_LEFT_L
+                    &tp_to_pos  POS_TP_SWIPE_UP_L
+                    &tp_to_pos  POS_TP_SWIPE_DOWN_L
                     &tp_to_pos  POS_TP_PINCH_L
                     >;
     };
@@ -158,8 +162,11 @@
     // オートマウスレイヤー: トラックパッド操作でレイヤー5 (MOUSE_LAYER) を一時的に有効化する（自作: lalapad/src/input_processor_auto_mouse_layer.c）。
     // マウスレイヤーで &trans 以外のキー（&none を含む）と excluded-positions のキーは「マウス操作」として扱い、
     // 押しても解除せず、押している間は時間切れにしない（離してから数え直す）。&none の位置は、マウスレイヤーの間は
-    // 何もしないキーになる。&trans の位置を押すと即解除し、そのキーは下のレイヤー（Default など）のキーとして入力される。
-    // トラックパッドに触れている間も時間切れにしない（離れてから 500ms で解除）。触れている合図は
+    // 何もしないキーになる。ただし、マウスレイヤーより上の有効なレイヤー（かな）に割り当てのあるキーは、そちらが働くので
+    // 「マウス操作」ではない。「マウス操作」でないキーを押すと即解除し、&trans の位置のキーは下のレイヤー（Default など）の
+    // キーとして入力される。有効にする前から押していたキーは、excluded-positions のものだけを数える。
+    // 有効にするきっかけはカーソル移動・スクロールだけ（タップ・ジェスチャー、触れただけでは有効にしない）。
+    // トラックパッドに触れている間も時間切れにしない（離れてから 300ms で解除）。触れている合図は
     // ドライバの INPUT_BTN_TOUCH（CONFIG_INPUT_IQS9151_REPORT_TOUCH）で、受け取るデバイスは親機の overlay の touch-devices で指定する。
     // excluded-positions: マウスレイヤーでは &trans だが、押しても解除したくない位置。
     // 修飾キー (LCTRL=30, LWIN=31, LALT=40。Ctrl+クリックなど)、トラックパッド由来の位置 (52-67)。
@@ -176,21 +183,29 @@
     // カーソル低速: &zip_cursor_slow は keymap の cur_slow_hold / cur_slow_toggle / cur_slow_once で低速がオンの間だけカーソルを 1/3 にする。
     // lowspeedmode: 数字・記号レイヤー（keymap の SECONDARY_LAYER = 2・TERTIARY_LAYER = 3）の間はカーソルとスクロールを遅くする。
     // この間はオートマウスレイヤーを入れていないので、トラックパッドを操作してもマウスレイヤーは新しくオンにならない。
+    // トラックパッドをキー操作に変える: &zip_tp_keys は keymap の zmk,behavior-tp-keys・zmk,behavior-tp-stroke のキーを
+    // 押している間だけ、動きをキーの入力に変え、タップ・ジェスチャーを捨てる（自作: lalapad/src/tp_keys.c）。
+    // タップ・ジェスチャーを捨てるため trackpad_key_behaviors より前に、動きの量を生の値で数えるため scaler より前に、
+    // 変えた動きでマウスレイヤーをオンにしないためオートマウスレイヤーより前に、つまり先頭に入れる。
+    // INPUT_BTN_TOUCH（触れている／離れた）もここで止める（リスナーは使わない。オートマウスレイヤーは
+    // 入力デバイスから直接受け取る）。
     trackpad_listener_R: trackpad_listener_R {
         compatible = "zmk,input-listener";
         status = "disabled";
         device = <&trackpad_split_R>;
-        input-processors = <&trackpad_key_behaviors_R>,
+        input-processors = <&zip_tp_keys>,
+                           <&trackpad_key_behaviors_R>,
                            <&zip_xy_scaler 1 5>,
                            <&zip_scroll_scaler 1 12>,
                            <&zip_dynamic_xy_scaler>,
                            <&zip_cursor_slow 1 3>,
                            <&zip_dynamic_scroll_scaler>,
                            <&zip_scroll_snap_gate_R>,
-                           <&zip_auto_mouse_layer 5 500>;
+                           <&zip_auto_mouse_layer 5 300>;
         lowspeedmode {
             layers = <2>,<3>;
-            input-processors =  <&trackpad_key_behaviors_R>,
+            input-processors =  <&zip_tp_keys>,
+                                <&trackpad_key_behaviors_R>,
                                 <&zip_xy_scaler 1 15>,
                                 <&zip_scroll_scaler 1 40>,
                                 <&zip_dynamic_xy_scaler>,
@@ -203,17 +218,19 @@
         compatible = "zmk,input-listener";
         status = "disabled";
         device = <&trackpad_split_L>;
-        input-processors = <&trackpad_key_behaviors_L>,
+        input-processors = <&zip_tp_keys>,
+                           <&trackpad_key_behaviors_L>,
                            <&zip_xy_scaler 1 5>,
                            <&zip_scroll_scaler 1 12>,
                            <&zip_dynamic_xy_scaler>,
                            <&zip_cursor_slow 1 3>,
                            <&zip_dynamic_scroll_scaler>,
                            <&zip_scroll_snap_gate_L>,
-                           <&zip_auto_mouse_layer 5 500>;
+                           <&zip_auto_mouse_layer 5 300>;
         lowspeedmode {
             layers = <2>,<3>;
-            input-processors =  <&trackpad_key_behaviors_L>,
+            input-processors =  <&zip_tp_keys>,
+                                <&trackpad_key_behaviors_L>,
                                 <&zip_xy_scaler 1 15>,
                                 <&zip_scroll_scaler 1 40>,
                                 <&zip_dynamic_xy_scaler>,
@@ -277,13 +294,15 @@
 // （先に書いた子ノードが優先される。<N> はレイヤー番号、_R / _L は左右で合わせる）:
 //     snapmode {
 //         layers = <N>;
-//         input-processors = <&trackpad_key_behaviors_R>,
+//         input-processors = <&zip_tp_keys>,
+//                            <&trackpad_key_behaviors_R>,
 //                            <&zip_xy_scaler 1 5>,
 //                            <&zip_scroll_scaler 1 12>,
 //                            <&zip_dynamic_xy_scaler>,
+//                            <&zip_cursor_slow 1 3>,
 //                            <&zip_dynamic_scroll_scaler>,
 //                            <&zip_scroll_snap_R>,
-//                            <&zip_auto_mouse_layer 5 500>;
+//                            <&zip_auto_mouse_layer 5 300>;
 //     };
 // 判定状態（サンプル・軸ロック）は左右のトラックパッドで独立させるため、インスタンスを分ける。
 // y-threshold <1 1>: |y| > |x| なら Y 軸。x-threshold <101 100>: |y| < 1.01|x| なら X 軸

@@ -109,7 +109,8 @@ static void mkp_input_callback(struct input_event *evt) {
     if (locked & BIT(button)) {
         LOG_DBG("Mouse button %d unlocked (click)", button);
         set_locked(button, false);
-        // 送るのは ZMK の入力リスナーに任せる（このクリックの押下と合わせて送られる）
+        // ここでは送らない（ボタンはこのクリックが押したままにしているので、このクリックを離したときに、
+        // 離れた状態が ZMK の入力リスナーから送られる）
     }
 }
 
