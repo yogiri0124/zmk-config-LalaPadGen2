@@ -20,12 +20,14 @@
  *   0x02 状態:  [2] 右との Bluetooth の接続がある（1/0。右からキーが届く準備ができているとは限らない）
  *               [3] 送っている種類（開始で指定したもの）
  *               [4] キーの位置の数（この番号より前がキー） [5] 位置の数の合計 [6..7] 次の通し番号（u16 LE）
- *               「開始」したとき、問い合わせに答えるとき、右とのつながりが変わったときに送る
+ *               「開始」したとき、問い合わせに答えるとき、右とのつながりが変わったとき、
+ *               送り終わったの知らせが来ない状態のレポートを見切ったときに送る
  *   0x03 押されているキーの一覧:  [2..3] 通し番号（u16 LE。この番号より前のキーまでを反映した一覧）
  *               [4] 位置の数の合計  [5..] 押されている位置のビット（位置 p は [5 + p/8] の bit (p%8)。
  *               送っている種類の位置だけ。ほかは 0）
  *               キーの列の順番どおりに（それより前のキーを送り終えてから）送るので、通し番号は前のキーの続きになる。
- *               「開始」したとき、問い合わせに答えるとき、送り待ちがあふれてキーを捨てたときに送る
+ *               「開始」したとき、問い合わせに答えるとき、送り待ちがあふれてキーを捨てたとき、
+ *               送り終わったの知らせが来ないキー・一覧のレポートを見切ったときに送る
  * PC → キーボード
  *   0x81 開始・生存確認: [2] 送ってほしい種類（bit0: キー、bit1: トラックパッドのタップ・ジェスチャー）
  *   0x82 終了
@@ -93,8 +95,9 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define EVENT_QUEUE_SIZE 64
 /* 送り道が「今は送れない」（-EAGAIN）と言ったときに、もう一度試すまでの時間 */
 #define RETRY_MS 5
-/* 送り道が「しばらく送れない」（-EBUSY。USB のサスペンド中、Bluetooth の MTU が小さい・暗号化前など）と
- * 言ったときに、もう一度試すまでの時間 */
+/* 送り道が「しばらく送れない」（-EBUSY。USB のサスペンド中・前の転送が終わっていないときなど）と
+ * 言ったときに、もう一度試すまでの時間（Bluetooth の MTU が小さい・暗号化前も -EBUSY にしてあるが、32 バイトの
+ * 「開始」は MTU が 35 以上の暗号化した接続でしか届かないので、念のための備え） */
 #define RETRY_SLOW_MS 100
 /* 送れない状態がこの時間続いたら、送るのをやめる（試し直し続けないように。アプリの次の「開始」でまた始まる） */
 #define SEND_GIVE_UP_MS 5000
@@ -170,9 +173,10 @@ static uint32_t pressed_list_requested;
 static uint32_t pressed_list_sent;
 /* 送っている最中のレポートがある（送り終わるまで次を送らない）。送るたびに番号を付け、「送り終わった」は
  * その番号で照合する（送る先を変えた後や見切った後に、遅れて届いた「送り終わった」と取り違えないように）。
- * 送った送り道と接続も覚えておき、その送り道が切れたら待つのをやめる。接続は見分けるだけで参照は持たない
- * （送っている間は stream_conn と送る処理が参照を持ち、接続が切れたら key_stream_transport_lost で外すので、
- *  手放された後に同じ場所を使う別の接続と取り違えることはない） */
+ * 送った送り道と接続も覚えておき、その送り道が切れたら待つのをやめる。接続は見分ける（ポインタを比べる）
+ * だけで、参照は持たず、中身にも触らない（送るのをやめた後などは、参照を誰も持たないまま残ることがある）。
+ * 接続が切れると、その接続の場所が別の接続に使われる前に、切れたの知らせ（key_stream_transport_lost）で
+ * 外すので、別の接続と取り違えることはない */
 static bool in_flight;
 static uint32_t in_flight_id;
 static uint8_t in_flight_kind;
@@ -202,7 +206,7 @@ K_MSGQ_DEFINE(command_queue, sizeof(struct command), 4, 4);
 
 /* ---- 専用のワークキュー ---- */
 
-K_THREAD_STACK_DEFINE(key_stream_stack, THREAD_STACK_SIZE);
+static K_THREAD_STACK_DEFINE(key_stream_stack, THREAD_STACK_SIZE);
 static struct k_work_q key_stream_q;
 
 static void send_work_handler(struct k_work *work);
@@ -215,6 +219,11 @@ static K_WORK_DELAYABLE_DEFINE(timeout_work, timeout_work_handler);
 static K_WORK_DELAYABLE_DEFINE(flight_work, flight_work_handler);
 
 static void kick_send(k_timeout_t delay) { k_work_reschedule_for_queue(&key_stream_q, &send_work, delay); }
+
+/* 送るものが増えた（キー・状態・一覧）: すぐ送る。ただし、試し直しを待っているときは、その時刻を早めない
+ * （k_work_schedule は、すでに予約・待ちがあれば何もしない。送れない間に、キーを押すたびにすぐ試し直して
+ *  Bluetooth の暗号化を頼み直したりしないように。予約がなければ、動いている最中でもすぐ並べる） */
+static void request_send(void) { k_work_schedule_for_queue(&key_stream_q, &send_work, K_NO_WAIT); }
 
 static bool position_wanted(uint8_t mask, uint32_t position) {
     const uint8_t kind = position < TRACKPAD_FIRST ? STREAM_KEYS : STREAM_TRACKPAD;
@@ -411,6 +420,13 @@ static void send_work_handler(struct k_work *work) {
     if (in_flight && in_flight_id == id) {
         finish_in_flight_locked();
     }
+    if (!streaming) {
+        // 送っている間に送り道が切れて、送るのはもうやめている（key_stream_transport_lost。送れなかったのは
+        // そのため）。やめる処理は済んでいるので、警告もやめ直しもしない
+        k_spin_unlock(&lock, key);
+        release_conn(conn);
+        return;
+    }
     const bool retry = err == -EAGAIN || err == -EBUSY;
     bool give_up = false;
     if (retry) {
@@ -553,7 +569,7 @@ static void command_work_handler(struct k_work *work) {
             k_spin_unlock(&lock, key);
             release_conn(cmd.conn);
             if (same) {
-                kick_send(K_NO_WAIT);
+                request_send();
             }
             break;
         }
@@ -641,7 +657,7 @@ static int key_stream_listener(const zmk_event_t *eh) {
     }
     k_spin_unlock(&lock, key);
     if (queued) {
-        kick_send(K_NO_WAIT);
+        request_send();
     }
     return ZMK_EV_EVENT_BUBBLE;
 }
@@ -686,7 +702,7 @@ static void split_link_changed(bool lost) {
     }
     k_spin_unlock(&lock, key);
     if (send) {
-        kick_send(K_NO_WAIT);
+        request_send();
     }
 }
 

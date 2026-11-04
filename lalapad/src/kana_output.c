@@ -10,7 +10,11 @@
  * - 同じ合図の仕組みを、ほかのモジュール（Alt コード）にも「それより前に並べた送信がすべて終わったら
  *   知らせる」目印として貸す（kana_output_add_marker）。合図の番号で、どちらの合図かを見分ける。
  * - かな・記号の打鍵の列は、前後に「修飾キーを隠す／戻す」合図を並べて送る（kana_output_send_keys）。
- *   合図はキューの中で打鍵と同じ順に処理されるので、押している Shift などが、その列の打鍵にだけかからない。
+ *   合図はキューの中で打鍵と同じ順に処理されるので、押している Shift・Ctrl が、その列の打鍵にかからない。
+ *   隠すのは Shift・Ctrl だけ（KANA_MASKED_MODS）。Alt・Win は隠さない（押したままの Alt・Win を隠すと、
+ *   PC には Alt・Win を単独で押して離したように見え、メニューバーやスタートメニューが開くため）。
+ *   制約: 隠している間（その列を送り終えるまで）に、キューを通らないほかのキーを Shift・Ctrl といっしょに
+ *   押すと、そのキーにも Shift・Ctrl がかからない（隠すのは PC へ送るレポート全体のため）。
  *   隠すのは ZMK の masked modifiers（mod-morph と同じ仕組み）。キーマップで mod-morph を使うと、
  *   互いに隠す設定を上書きし合うので、併用しない（このキーマップでは使っていない）。
  *
@@ -32,7 +36,6 @@
 #include <zmk/matrix.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/endpoint_changed.h>
-#include <zmk/events/keycode_state_changed.h>
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/events/position_state_changed.h>
 
@@ -52,11 +55,12 @@ BUILD_ASSERT(DT_NODE_EXISTS(DT_NODELABEL(kana_sync)),
 #define RETRY_INTERVAL_MS 10
 /* 合図の番号（&kana_sync の引数）。かなモードの解除の合図は同時に1つしかない（解除中は解除も入り直しも
  * 受け付けない）。目印は並べた順に処理されるので、どの目印かは呼ぶ側が順番で分かる。
- * 修飾キーを隠す／戻す合図は、打鍵の列ごとに必ず対で並ぶ（戻す合図の再試行中は次の列を並べない） */
-#define SYNC_KANA_OFF 0
-#define SYNC_MARKER 1
-#define SYNC_MASK_ON 2
-#define SYNC_MASK_OFF 3
+ * 修飾キーを隠す／戻す合図は、打鍵の列ごとに必ず対で並ぶ（戻す合図の再試行中は次の列を並べない）。
+ * 0 は使わない（&kana_sync は ZMK Studio の一覧にも出るので、引数 0 のまま割り当てて押されても何もしない） */
+#define SYNC_KANA_OFF 1
+#define SYNC_MARKER 2
+#define SYNC_MASK_ON 3
+#define SYNC_MASK_OFF 4
 
 /* トラックパッドのクリック・ジェスチャーのキー位置（config/boards/shields/lalapadgen2/lalapadgen2.dtsi の
  * POS_TP_*。52〜57 がクリック、58〜67 がジェスチャー）。押した後は、ほかのウィンドウや入力欄に移って
@@ -104,10 +108,21 @@ static struct zmk_behavior_binding sync_binding(uint32_t token) {
     };
 }
 
+static void cancel_kana_mask(void);
+
 static void add_pending_release(const struct zmk_behavior_binding_event *event,
                                 struct zmk_behavior_binding binding, bool press, uint32_t wait) {
     if (pending_count >= PENDING_RELEASE_MAX) {
-        // 上の数え方では起きない（配列の範囲を守るための確認）。押しっぱなしや隠したままにはせず、その場で実行する
+        // 上の数え方では起きない（配列の範囲を守るための確認）
+        if (strcmp(binding.behavior_dev, SYNC_BEHAVIOR_NAME) == 0 &&
+            binding.param1 == SYNC_MASK_OFF) {
+            // 修飾キーを戻す合図: その場で実行すると、同じ列の「隠す」合図がまだキューにあれば、後から
+            // 処理されて隠したままになる。実行はせず、その列の「隠す」を取り消す（隠したままにしない）
+            LOG_ERR("Too many pending releases, cancelling modifier mask");
+            cancel_kana_mask();
+            return;
+        }
+        // キーの「離す」: 押しっぱなしにはせず、その場で実行する
         LOG_ERR("Too many pending releases, invoking 0x%08X immediately", binding.param1);
         struct zmk_behavior_binding_event now = *event;
         now.timestamp = k_uptime_get();
@@ -187,6 +202,13 @@ void kana_output_release(const struct zmk_behavior_binding_event *event, uint32_
 /* 使い手ごとの隠したい修飾キー（0 = 隠していない） */
 static uint8_t mask_mods[KANA_MASK_OWNER_COUNT];
 
+/* かなの「隠す」合図を並べた数と、処理した数（取り消すときに、まだキューにあるかを見分ける） */
+static uint32_t mask_on_queued;
+static uint32_t mask_on_done;
+/* mask_on_cancelled なら、mask_on_cancel_seq 番目に処理される「隠す」合図では隠さない */
+static bool mask_on_cancelled;
+static uint32_t mask_on_cancel_seq;
+
 void kana_output_mask_mods(enum kana_mask_owner owner, uint8_t mods) {
     mask_mods[owner] = mods;
 
@@ -206,6 +228,19 @@ void kana_output_mask_mods(enum kana_mask_owner owner, uint8_t mods) {
         // （隠すのをやめたとき、押したままの Shift などを PC 側でも押したままに戻す）
         zmk_endpoints_send_report(HID_USAGE_KEY);
     }
+}
+
+/* 修飾キーを戻す合図を並べられなかったときに、その列の「隠す」を取り消す（add_pending_release から呼ぶ。
+ * 戻す合図が再試行に回っている間は次の列を並べないので、その列の「隠す」合図は最後に並べたもの） */
+static void cancel_kana_mask(void) {
+    if (mask_on_done != mask_on_queued) {
+        // その列の「隠す」合図がまだキューにある: 処理されても隠さない（それより前の列は、対の合図で戻る）
+        mask_on_cancelled = true;
+        mask_on_cancel_seq = mask_on_queued;
+        return;
+    }
+    // その列の「隠す」合図は処理済み（いま隠しているのはその列の分）: すぐ戻す
+    kana_output_mask_mods(KANA_MASK_KANA, 0);
 }
 
 /* ---- IME オンの送り直し ---- */
@@ -241,8 +276,11 @@ int kana_output_send_keys(const struct zmk_behavior_binding_event *event, const 
     if (release_pending()) {
         return -EBUSY;
     }
-    // 修飾キーを隠す合図。キューの処理が待ち時間で止まっていなければ、この中ですぐ処理される
+    // 修飾キーを隠す合図。キューの処理が待ち時間で止まっていなければ、この中ですぐ処理されるので、
+    // 並べた数は先に数える
+    mask_on_queued++;
     if (zmk_behavior_queue_add(event, sync_binding(SYNC_MASK_ON), true, 0) < 0) {
+        mask_on_queued--;
         return -ENOSPC;
     }
 
@@ -337,7 +375,13 @@ void kana_output_on_sync(uint32_t token) {
         }
         return;
     case SYNC_MASK_ON:
-        kana_output_mask_mods(KANA_MASK_KANA, 0xFF);
+        mask_on_done++;
+        if (mask_on_cancelled && mask_on_done == mask_on_cancel_seq) {
+            // 戻す合図を並べられなかった列（cancel_kana_mask）: 隠さない
+            mask_on_cancelled = false;
+            return;
+        }
+        kana_output_mask_mods(KANA_MASK_KANA, KANA_MASKED_MODS);
         return;
     case SYNC_MASK_OFF:
         kana_output_mask_mods(KANA_MASK_KANA, 0);
@@ -345,6 +389,7 @@ void kana_output_on_sync(uint32_t token) {
     case SYNC_KANA_OFF:
         break;
     default:
+        // 0（ZMK Studio などで割り当てられた &kana_sync）や未知の番号: 何もしない
         return;
     }
     if (off_stage != KANA_OFF_WAIT_SYNC) {

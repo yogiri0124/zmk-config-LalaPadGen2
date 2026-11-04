@@ -22,10 +22,13 @@
  *   INPUT_BTN_TOUCH が一度も届いていないトラックパッドでは、慣性も動きとして数える。
  * - モードのキーを押したときのレイヤーが解除されたら（押したままでも）、そのモードは終わる（描きかけの
  *   一筆書きは送らずに捨てる）。トラックパッドが止まったままにならないように。
- * - INPUT_BTN_TOUCH は、見たあと常に止める（リスナーは使わず、通すと空のマウスのレポートを送るため）。
- * - 捨てた動き・ボタンは、リスナーが何もしない入力（動きは値 0 で同期なし、ボタンは INPUT_EV_MSC）に変えてから
- *   止める（ZMK_INPUT_PROC_STOP）。リスナーのレイヤーごとの上書き（lowspeedmode）の中では、STOP しても
+ * - INPUT_BTN_TOUCH は、見たあと常に止める（リスナーは使わず、通すと空のマウスのレポートを送るため。
+ *   lowspeedmode の中では STOP が伝わらないので、空のレポートが 1 回出る）。
+ * - 捨てた動き・ボタンは、リスナーが何もしない入力（INPUT_EV_MSC、同期なし）に変えてから止める
+ *   （ZMK_INPUT_PROC_STOP）。リスナーのレイヤーごとの上書き（lowspeedmode）の中では、STOP しても
  *   リスナー本体の集計・送信に進むため。
+ * - ドライバが 1 組で送る動き（X と Y など）は、組の途中でモードが変わっても、組の最初と同じ扱いにする。
+ * - 2 本指のピンチ（BTN_7 と Ctrl＋ホイール）は考えていない（ドライバの設定でピンチを無効にしてある）。
  *
  * 入力処理は入力スレッドで呼ばれる。behavior はシステムワークキューで呼ぶ（自作の behavior は状態を
  * システムワークキューだけで触る前提のため）ので、送るものを列に預けてワークで送る。送るワークの予約も
@@ -101,8 +104,12 @@ struct slot {
     bool touching;
     /* 今の触れ方（指を離した後の慣性を含む）で、動きをキーに変えたか */
     bool converted_this_touch;
-    /* 捨てたタップ・ジェスチャーのボタン（「離した」も捨てる） */
+    /* 捨てたタップ・ジェスチャーのボタン（「離した」も捨てる。押すたびに決め直す） */
     uint8_t buttons_dropped;
+    /* 同期（sync）のない動きを受け取った後で、同じ組の続きを待っているか、その組を捨てているか
+     * （ドライバは X と Y、横と縦のホイールを 1 組で送る。組の途中でモードが変わっても、組ごとに同じ扱いにする） */
+    bool in_frame;
+    bool frame_dropped;
     /* 最後に見たモードの切り替えの回数（変わったら、たまった量を捨てる） */
     uint32_t gen;
     struct axis_acc cursor;
@@ -543,8 +550,13 @@ static bool handle_rel(struct slot *s, const struct input_event *event, bool *qu
         }
         return true;
     }
+    if (!coasting) {
+        // モードのキーを離した後に、触れたままふつうに動かしたら、その後の慣性はふつうに通す
+        s->converted_this_touch = false;
+        return false;
+    }
     // 変えた触れ方の後の慣性は、モードのキーを離していても捨てる
-    return coasting && s->converted_this_touch;
+    return s->converted_this_touch;
 }
 
 /* KEY の入力（触れている／離れた、タップ・ジェスチャー）。捨てるなら true */
@@ -568,11 +580,9 @@ static bool handle_key(struct slot *s, const struct input_event *event, bool *qu
     }
     const uint8_t bit = BIT(event->code - INPUT_BTN_0);
     if (event->value) {
-        if (active_mode() != NULL) {
-            s->buttons_dropped |= bit;
-            return true;
-        }
-        return false;
+        // 押すたびに決め直す（前に捨てた押下の「離した」が届かなかったときに、後の「離した」を捨てないように）
+        WRITE_BIT(s->buttons_dropped, event->code - INPUT_BTN_0, active_mode() != NULL);
+        return (s->buttons_dropped & bit) != 0;
     }
     if (s->buttons_dropped & bit) {
         s->buttons_dropped &= ~bit;
@@ -592,9 +602,17 @@ static int tp_keys_handle_event(const struct device *dev, struct input_event *ev
     bool queued = false;
     k_spinlock_key_t key = k_spin_lock(&lock);
     struct slot *s = find_slot(event->dev);
-    if (s != NULL) {
-        drop = event->type == INPUT_EV_KEY ? handle_key(s, event, &queued)
-                                           : handle_rel(s, event, &queued);
+    if (s != NULL && event->type == INPUT_EV_KEY) {
+        drop = handle_key(s, event, &queued);
+    } else if (s != NULL) {
+        // 組の途中なら、組の最初の扱いに合わせる（通した組は続きも通し、捨てた組は続きも捨てる）
+        if (s->in_frame && !s->frame_dropped) {
+            drop = false;
+        } else {
+            drop = handle_rel(s, event, &queued) || s->in_frame;
+        }
+        s->frame_dropped = drop;
+        s->in_frame = !event->sync;
     }
     k_spin_unlock(&lock, key);
 
@@ -604,15 +622,13 @@ static int tp_keys_handle_event(const struct device *dev, struct input_event *ev
     if (!drop) {
         return ZMK_INPUT_PROC_CONTINUE;
     }
-    // リスナーが何もしない入力にして止める（lowspeedmode の中では STOP してもリスナー本体に進むため）。
-    // 同じ入力は、オートマウスレイヤーの「触れている」の受け取り（入力デバイスに直接つないだもの）にも届くので、
-    // INPUT_BTN_TOUCH は書き換えない（lowspeedmode の中では空のレポートが出るが、害はない）
-    if (event->type == INPUT_EV_REL) {
-        event->value = 0;
-        event->sync = false;
-    } else if (event->code != INPUT_BTN_TOUCH) {
-        // ボタンは値を 0 にすると「離した」になるので、リスナーが扱わない種類にする
+    // リスナーが何もしない入力（INPUT_EV_MSC）にして止める（lowspeedmode の中では STOP してもリスナー本体に
+    // 進むため。動きは値を 0 にしてもスクロールの端数が足されることがあり、ボタンは値を 0 にすると「離した」になる）。
+    // INPUT_BTN_TOUCH は書き換えずに止めるだけにする（lowspeedmode の中では空のレポートが 1 回出るが、害はない。
+    // オートマウスレイヤーが入力デバイスから直接受け取る「触れている」を、呼ばれる順番に頼らずに守るため）
+    if (event->type == INPUT_EV_REL || event->code != INPUT_BTN_TOUCH) {
         event->type = INPUT_EV_MSC;
+        event->value = 0;
         event->sync = false;
     }
     return ZMK_INPUT_PROC_STOP;

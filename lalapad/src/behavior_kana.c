@@ -9,7 +9,8 @@
  * 記号（、。… など）は、keymap で定義する zmk,behavior-kana-seq のキー（behavior_kana_seq.c）で送る。
  * スペース・エンター・バックスペース（KE_）も同じキューで送り、かな列を追い越さないようにする
  * （この3つは、押している間は押しっぱなしにして、キーリピートができるようにする）。
- * かなを送る間は、押している Shift・Ctrl など（&sk の Shift も）を隠す（"Ka" や Ctrl+K にならないように）。
+ * かなを送る間は、押している Shift・Ctrl（&sk の Shift も）を隠す（"Ka" や Ctrl+K にならないように。
+ * Alt・Win は隠さない。理由と制約は kana_output.c の先頭）。
  * スペース・エンター・バックスペースは隠さない（Shift+Enter・Ctrl+Backspace などとして使えるように）。
  * キューへの登録・押しっぱなし防止・修飾キーを隠す処理・かな配列モードの状態は kana_output.c にまとめている。
  */
@@ -21,7 +22,6 @@
 #include <drivers/behavior.h>
 
 #include <zmk/behavior.h>
-#include <zmk/keymap.h>
 #include <zmk/matrix.h>
 
 #include <dt-bindings/kana/kana.h>

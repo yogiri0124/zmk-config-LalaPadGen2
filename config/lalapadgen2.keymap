@@ -193,7 +193,8 @@
 
         // --- swap_: ウィンドウの切り替え（Alt+Tab。自作モジュール lalapad/ の zmk,behavior-alt-tab） ---
         // 最初に押したときに Alt を押したままにして、押すたびに Tab（swap_prev は Shift+Tab）を送る。
-        // 押し始めたときのレイヤーを離す（&mo のキーを離す）か、ほかのキーを押すと Alt を離して、選んだウィンドウに切り替わる。
+        // 押し始めたときのレイヤーを離す（&mo のキーを離す）か、ほかのキー（キーコードを送るもの。クリックやレイヤーのキーは除く）を押すと
+        // Alt を離して、選んだウィンドウに切り替わる。
         // swap_next と swap_prev は Alt を共有するので、どちらから押し始めても、途中で入れ替えてもよい
         swap_next: swap_next {
             compatible = "zmk,behavior-alt-tab";

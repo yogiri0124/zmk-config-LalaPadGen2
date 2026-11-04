@@ -48,7 +48,7 @@ void key_stream_transport_lost(enum key_stream_transport transport, struct bt_co
 
 /* 32 バイトのレポートを1つ送り始める。送り終わったら key_stream_sent(id) を呼ぶ。
  * report は戻るまでに写すので、戻った後に書き換えてよい。本体が待つのをやめた（見切った）転送が
- * まだ終わっていなくても呼ばれることがある。送り道は、その転送のバッファを書き換えずに断る（-EAGAIN）か、別に送る。
+ * まだ終わっていなくても呼ばれることがある。送り道は、その転送のバッファを書き換えずに断る（-EAGAIN・-EBUSY）か、別に送る。
  * 戻り値: 0 = 送り始めた / -EAGAIN = 今は送れない（少し後でもう一度試す）/
  *         -EBUSY = しばらく送れない（間を空けてもう一度試す。USB のサスペンド中など）/ そのほか = 送れない（送るのをやめる） */
 int key_stream_usb_send(const uint8_t *report, uint32_t id);

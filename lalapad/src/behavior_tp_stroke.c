@@ -46,7 +46,8 @@ static const struct behavior_driver_api behavior_tp_stroke_driver_api = {
                  "tp-stroke: strokes and bindings need the same number of entries");               \
     BUILD_ASSERT(DT_INST_PROP(n, stroke_step) > 0 && DT_INST_PROP(n, stroke_step) <= UINT16_MAX,   \
                  "tp-stroke: stroke-step must be 1..65535");                                       \
-    BUILD_ASSERT(DT_INST_PROP(n, tap_ms) <= UINT16_MAX, "tp-stroke: tap-ms must be 0..65535");     \
+    BUILD_ASSERT(DT_INST_PROP(n, tap_ms) >= 0 && DT_INST_PROP(n, tap_ms) <= UINT16_MAX,            \
+                 "tp-stroke: tap-ms must be 0..65535");                                            \
     static const uint16_t tp_stroke_strokes_##n[] = DT_INST_PROP(n, strokes);                      \
     static const struct zmk_behavior_binding tp_stroke_bindings_##n[] = {LISTIFY(                  \
         DT_INST_PROP_LEN(n, bindings), ZMK_KEYMAP_EXTRACT_BINDING, (, ), DT_DRV_INST(n))};         \

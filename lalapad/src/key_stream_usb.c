@@ -87,7 +87,11 @@ int key_stream_usb_send(const uint8_t *report, uint32_t id) {
         return 0;
     }
     if (err == -EAGAIN || err == -EBUSY) {
-        return -EAGAIN; // 前の転送がまだ終わっていない（見切った転送が残っているときなど）
+        // 前の転送がまだ終わっていない（見切った転送が残っているときなど）。本体は送り終わったの知らせを待ってから
+        // 次を送るので、ふだんはここに来ない（nRF の USB は、知らせの前に次を受け付けられる状態にしている）。
+        // Zephyr は断るたびに、その中で何度も試し直して警告を出すので、短い間隔（-EAGAIN）で試し直させると
+        // 警告が続けて出る。間を空けて試し直してもらう（-EBUSY）
+        return -EBUSY;
     }
     return err;
 }

@@ -52,7 +52,11 @@ static int position_relay_listener(const zmk_event_t *eh) {
     if (k_msgq_put(&relay_queue, &ev, K_MSEC(RELAY_PUT_TIMEOUT_MS)) != 0) {
         // それでも預けきれない（システムワークキューが長く止まったとき）: この場で処理する。まだ預けてある
         // 出来事より先に処理されるので、順番が入れ替わることがある（同じ位置の「離した」が「押した」より先に
-        // 処理されると、押されたままになる）。落とせば確実に押されたまま・離されたままになるので、こちらを選ぶ
+        // 処理されると、押されたままになる）。落とせば確実に押されたまま・離されたままになるので、こちらを選ぶ。
+        // この場で処理すると、キーマップと behavior が入力スレッドで動くので、上に書いた問題が残る（その位置の
+        // behavior が入力イベントの列の空きを K_FOREVER で待つと、入力スレッドが自分の列を待って止まりうる）。
+        // 預ける列が満杯のまま 50 ms 空かない（システムワークキューが長く止まった）ときだけで、止まるのはさらに
+        // 入力イベントの列も満杯のときなので、まれな場合の妥協とする
         LOG_WRN("Position relay queue full, processing position %d in place", pos->position);
         return ZMK_EV_EVENT_BUBBLE;
     }

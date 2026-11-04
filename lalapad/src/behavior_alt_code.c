@@ -19,6 +19,8 @@
  * - Alt（左右どちらか）がすでに押されている間（Alt キーを押したまま、mod_lock_alt で押しっぱなし など）は
  *   送らずに捨てる。ZMK は押した数で修飾キーを数えるので、ここで Alt を離しても PC 側の Alt は離れず、
  *   Alt コードの区切りがつかない（2つ目以降の値が1つ目に続いて打たれ、違う文字になる）ため。
+ *   Win（左右どちらか）が押されている間も、送らずに捨てる（Win+Alt+数字などのショートカットになるため。
+ *   Win は隠さない: 隠すと PC には Win だけを押して離したように見え、スタートメニューが開くため）。
  * - 送る操作は開始時に一覧（steps）にまとめ、k_work で1つずつ順に送る。behavior queue を
  *   使わないので、キューが満杯で「離す」や Num Lock の復元が抜けることはない。
  * - 押したら、まず behavior queue の末尾に目印を並べ（kana_output_add_marker）、それより前に並んでいた
@@ -28,9 +30,12 @@
  *   かな入力のモジュールがないビルドでは、すぐに送り始める。
  * - かな配列モードの解除処理中に押されたら、送らずに捨てる（&kana_key・記号のキーと同じ。commit-ime の
  *   IME オンが、解除の IME オフの後に送られないように）。
- * - 送っている間は、押している Shift・Ctrl など（&sk・mod_lock_* を含む）を PC へ送るレポートから隠す
- *   （ZMK の masked modifiers）。Shift を押したままだと Windows はテンキーを矢印キーなどとして扱い、
- *   Ctrl を押したままだと Ctrl+Alt+数字になるため。自分の Alt は隠さない。
+ * - 送っている間は、押している Shift・Ctrl（&sk・mod_lock_* を含む）を PC へ送るレポートから隠す
+ *   （ZMK の masked modifiers。隠すのは KANA_MASKED_MODS）。Shift を押したままだと Windows はテンキーを
+ *   矢印キーなどとして扱い、Ctrl を押したままだと Ctrl+Alt+数字になるため。Alt・Win は隠さない
+ *   （自分の Alt は隠せず、押している Alt・Win は上のとおり送らずに捨てる）。
+ *   続けて押した Alt コードを続けて送るときは、間で戻さずに隠したままにする（間で戻すと、押したままの
+ *   Shift・Ctrl が一瞬 PC に届くため）。間に通す預かった入力があるときだけ、戻してから通す。
  *   制約: 送っている間に届いて預かった &kana_key の打鍵は、送り終えてから通すので、その時点では
  *   かなの修飾キーを隠す処理が終わっていて、押したままの修飾キーがかかることがある。
  * - 送信中に押された分は待ち行列に入れ、前の送信が終わってから順に送る。
@@ -157,8 +162,14 @@ static uint32_t captured_pushed;
 /* PC 側で押されているキーの数（この listener を通した入力と、預かって通し終えた入力から数える） */
 static struct key_count held[MAX_HELD];
 
-/* 自分のキー入力を送っているスレッド（送っている間だけ。それ以外は NULL） */
+/* 自分のキー入力を送っているスレッド（送っている間だけ。それ以外は NULL）と、送っているキー入力。
+ * スレッドだけでなくキーと「押す／離す」も比べる（自分のキー入力の処理の中で、ほかの behavior が同じスレッドで
+ * 別のキー入力を出すことがある。例: &sk は次のキーを離したときに、その中で修飾キーを離す。それは自分のものとして
+ * 扱わず、ほかの入力と同じく預かるか数える） */
 static k_tid_t raising_thread;
+static uint16_t raising_usage_page;
+static uint32_t raising_keycode;
+static bool raising_state;
 
 /* ---- 送信の状態 ---- */
 
@@ -249,9 +260,20 @@ static bool is_num_lock_press(const struct zmk_keycode_state_changed *ev) {
 
 /* 自分の送るキー入力。預からずに PC へ通すよう印を付けて送る（押して離すので held には数えない） */
 static void raise_own(uint32_t keycode, bool pressed, int64_t timestamp) {
+    const struct zmk_keycode_state_changed ev =
+        zmk_keycode_state_changed_from_encoded(keycode, pressed, timestamp);
+    raising_usage_page = ev.usage_page;
+    raising_keycode = ev.keycode;
+    raising_state = ev.state;
     raising_thread = k_current_get();
-    raise_zmk_keycode_state_changed_from_encoded(keycode, pressed, timestamp);
+    raise_zmk_keycode_state_changed(ev);
     raising_thread = NULL;
+}
+
+/* raise_own で送っている自分のキー入力か */
+static bool is_own(const struct zmk_keycode_state_changed *ev) {
+    return raising_thread == k_current_get() && ev->usage_page == raising_usage_page &&
+           ev->keycode == raising_keycode && ev->state == raising_state;
 }
 
 /* 送信を始める: ここからのほかのキー入力を預かる */
@@ -297,6 +319,15 @@ static void release_captured(bool all, uint32_t mark) {
     }
 }
 
+/* 通し番号が mark より前の、預かった入力があるか（release_captured(false, mark) で通すものがあるか） */
+static bool has_captured_before(uint32_t mark) {
+    k_spinlock_key_t key = k_spin_lock(&capture_lock);
+    const uint32_t head_seq = captured_pushed - captured_count;
+    const bool ret = captured_count > 0 && (int32_t)(head_seq - mark) < 0;
+    k_spin_unlock(&capture_lock, key);
+    return ret;
+}
+
 static bool reported_num_lock(struct zmk_endpoint_instance endpoint) {
 #if IS_ENABLED(CONFIG_ZMK_HID_INDICATORS)
     return (zmk_hid_indicators_get_profile(endpoint) & HID_INDICATOR_NUM_LOCK) != 0;
@@ -317,9 +348,10 @@ static bool current_num_lock(struct zmk_endpoint_instance endpoint) {
     return reported_num_lock(endpoint);
 }
 
-/* 送っている間、自分の Alt 以外の修飾キーを PC へ送るレポートから隠す（on = false で戻す） */
+/* 送っている間、押している Shift・Ctrl を PC へ送るレポートから隠す（on = false で戻す。
+ * 隠している状態のまま、もう一度 on = true で呼んでも PC へは何も送らない） */
 static void mask_mods(bool on) {
-    const uint8_t mods = on ? (uint8_t)~MOD_LALT : 0;
+    const uint8_t mods = on ? KANA_MASKED_MODS : 0;
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_KANA)
     // かなの打鍵の列も同じ仕組みで隠すので、両方の設定をまとめる kana_output.c に任せる
     kana_output_mask_mods(KANA_MASK_ALT_CODE, mods);
@@ -389,17 +421,22 @@ static void build_steps(const struct behavior_alt_code_config *cfg) {
 /* 待ち行列の先頭から次の送信を始める。先頭の目印がまだ処理されていなければ、処理されるまで待つ。
  * 待ち行列が空なら、預かった入力をすべて通して待機状態に戻る */
 static void start_next(void) {
-    // 前の送信が終わった（または中止した）: 隠していた修飾キーを戻す（預かった入力は隠さずに通す）
-    mask_mods(false);
+    // 前の送信が終わった（または中止した）。隠していた修飾キーは、続けて送るときは隠したままにし
+    // （間で戻すと、押したままの Shift・Ctrl が一瞬 PC に届く）、預かった入力を通す前と、待機状態に戻る
+    // ときに戻す（預かった入力は隠さずに通す）
     while (pending_count > 0) {
         if (!pending[0].ready) {
             // 先頭の目印がまだ（それより前に並んだかななどの送信が終わっていない）: 目印の処理で呼び直される
+            mask_mods(false);
             busy = false;
             active_cfg = NULL;
             return;
         }
-        // この送信の目印より前に届いて預かっていた入力を、先に通す
-        release_captured(false, pending[0].mark);
+        // この送信の目印より前に届いて預かっていた入力を、先に通す（あれば、修飾キーを戻してから）
+        if (has_captured_before(pending[0].mark)) {
+            mask_mods(false);
+            release_captured(false, pending[0].mark);
+        }
 
         const struct behavior_alt_code_config *cfg = pending[0].cfg;
         const struct zmk_endpoint_instance pressed_endpoint = pending[0].endpoint;
@@ -417,6 +454,11 @@ static void start_next(void) {
             LOG_WRN("Alt is already held, dropping alt code");
             continue;
         }
+        if (zmk_hid_get_explicit_mods() & (MOD_LGUI | MOD_RGUI)) {
+            // Win が押されている: Win+Alt+数字などのショートカットになるので送らない（Win は隠さない）
+            LOG_WRN("Win is held, dropping alt code");
+            continue;
+        }
         num_lock_toggled = !current_num_lock(active_endpoint);
         build_steps(cfg);
         start_capturing();
@@ -429,6 +471,7 @@ static void start_next(void) {
         k_work_schedule(&alt_code_work, K_NO_WAIT);
         return;
     }
+    mask_mods(false);
     busy = false;
     active_cfg = NULL;
     release_captured(true, 0);
@@ -502,7 +545,7 @@ static int alt_code_keycode_listener(const zmk_event_t *eh) {
     if (ev == NULL) {
         return ZMK_EV_EVENT_BUBBLE;
     }
-    if (raising_thread == k_current_get()) {
+    if (is_own(ev)) {
         return ZMK_EV_EVENT_BUBBLE;
     }
 

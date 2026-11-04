@@ -132,8 +132,10 @@ int key_stream_ble_send(struct bt_conn *conn, const uint8_t *report, uint32_t id
     if (!bt_gatt_is_subscribed(conn, INPUT_REPORT_ATTR, BT_GATT_CCC_NOTIFY)) {
         return -ENOTCONN;
     }
-    // ATT MTU が小さい（23 のまま）と 32 バイトの通知は送れない（通知の頭 3 バイトが要る）。つながった直後の
-    // MTU の取り決めを待つため、間を空けて試し直してもらう（広がらなければ、本体が時間で見切って送るのをやめる）
+    // ATT MTU が小さい（23 のまま）と 32 バイトの通知は送れない（通知の頭 3 バイトが要る）。ただし、32 バイトの
+    // 「開始」（出力レポートの書き込み）も MTU が 35 以上でないと届かず（長い書き込みは CONFIG_BT_ATT_PREPARE_COUNT
+    // が既定の 0 なので受け付けない）、MTU は接続の間に小さくならないので、送っている間はここに来ない。念のための備え
+    // （間を空けて試し直してもらい、広がらなければ、本体が時間で見切って送るのをやめる）
     if (bt_gatt_get_mtu(conn) < KEY_STREAM_REPORT_SIZE + 3) {
         return -EBUSY;
     }
@@ -147,12 +149,15 @@ int key_stream_ble_send(struct bt_conn *conn, const uint8_t *report, uint32_t id
     // 送るバッファの空きがなければ待つことがある（専用のワークキューで呼ぶので、ほかの処理は止めない）
     const int err = bt_gatt_notify_cb(conn, &params);
     if (err == -EPERM) {
-        // まだ暗号化されていない（ボンド済みの PC がつなぎ直した直後など）: 暗号化を頼んで、間を空けて試し直す
+        // 暗号化されていない: 暗号化を頼んで、間を空けて試し直す（「開始」は暗号化した接続でしか書き込めず、
+        // 暗号化は接続の間に外れないので、ふだんはここに来ない。念のための備え）
         bt_conn_set_security(conn, BT_SECURITY_L2);
         return -EBUSY;
     }
     if (err == -EAGAIN) {
-        return -EBUSY; // PC がまだ GATT の変更を知らない（change-unaware）間は送れない
+        // Bluetooth がまだ使える状態になっていない（BT_DEV_READY の前）。change-unaware の間も -EAGAIN になるが、
+        // それは CONFIG_BT_GATT_ENFORCE_CHANGE_UNAWARE（使っていない）のときだけ
+        return -EBUSY;
     }
     if (err == -ENOMEM || err == -ENOBUFS) {
         return -EAGAIN;

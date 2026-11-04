@@ -1,5 +1,3 @@
-#include <dt-bindings/lalapad/tp_keys.h>
-
 / {
     // トラックパッドをキー操作に変える入力処理。トラックパッドのリスナーの入力処理の並びの先頭に
     // <&zip_tp_keys> として入れる。どのキーに変えるか（zmk,behavior-tp-keys・zmk,behavior-tp-stroke）は
