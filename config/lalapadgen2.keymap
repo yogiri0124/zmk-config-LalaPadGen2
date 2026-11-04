@@ -216,6 +216,23 @@
             #binding-cells = <0>;
         };
 
+        // --- link_: Chrome のリンク ---
+        // カーソルを合わせたリンクを、シークレットウィンドウで開く。右クリックでメニューを出し、
+        // メニューの「シークレット ウィンドウでリンクを開く」のアクセスキー G を押す（メニューが出るのを 200ms 待つ）
+        link_incognito: link_incognito {
+            compatible = "zmk,behavior-macro";
+            #binding-cells = <0>;
+            wait-ms = <0>;
+            tap-ms = <30>;
+            bindings
+                = <&macro_wait_time 200>
+                , <&mkp RCLK>
+                , <&macro_wait_time 0>
+                , <&kp G>
+                ;
+            display-name = "Link Incog";
+        };
+
         // --- tp_: トラックパッドをキー操作に変える（自作モジュール lalapad/ の zmk,behavior-tp-keys・zmk,behavior-tp-stroke） ---
         // 押している間だけ、トラックパッドの動きを、カーソル・スクロールの代わりにキーの入力に変える。
         // 実際の処理は lalapadgen2.dtsi のリスナーに入れた &zip_tp_keys。
@@ -511,7 +528,7 @@
             bindings = <
             &none  &kp AMPS  &pair_cquote_ime  &swap_prev  &swap_next  &kp PAGE_UP  &kp HOME  &kp UP  &kp END  &kp PRINTSCREEN
             &kp AT  &kp EXCL  &kp MINUS  &sym_hbar_ime  &none  &kp PAGE_DOWN  &kp LEFT  &kp DOWN  &kp RIGHT  &none
-            &kp BACKSLASH  &kp PRCNT  &kp CARET  &none  &none  &none  &none  &none  &none  &none
+            &kp BACKSLASH  &kp PRCNT  &kp CARET  &tp_arrow  &none  &none  &none  &none  &none  &none
             &trans  &trans  &trans  &trans  &kp LEFT_SHIFT  &kp LS(ENTER)  &trans  &trans  &trans  &trans  &trans  &kp CAPS
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
@@ -535,11 +552,11 @@
         MOUSE_LAYER {
             display-name = "mouse_layer";
             bindings = <
-            &kp LC(A)  &kp LC(W)  &kp LC(LS(T))  &clk_lock_l  &kp UP  &kp LC(LS(TAB))  &kp LC(TAB)  &none  &none  &none
-            &none  &mkp MCLK  &mkp RCLK  &mkp LCLK  &none  &kp LEFT  &kp RIGHT  &none  &none  &none
+            &kp LC(A)  &kp LC(W)  &kp LC(LS(T))  &clk_lock_l  &kp UP  &kp LC(LS(TAB))  &kp LC(TAB)  &link_incognito  &none  &none
+            &none  &mkp MCLK  &mkp RCLK  &mkp LCLK  &none  &kp LEFT  &kp RIGHT  &tp_arrow  &tp_draw  &tp_dial
             &kp LC(Z)  &kp LC(X)  &kp LC(C)  &kp LC(V)  &kp DOWN  &none  &none  &none  &none  &none
-            &trans  &trans  &tp_arrow  &trans  &scr_snap_hold  &cur_slow_toggle  &trans  &trans  &trans  &tp_draw  &trans  &tp_dial
-            &trans  &kp RS(RIGHT)  &trans  &kp LS(LEFT)  &trans  &trans  &trans  &trans  &trans  &trans
+            &trans  &trans  &none  &trans  &scr_snap_hold  &cur_slow_toggle  &trans  &trans  &trans  &none  &trans  &none
+            &trans  &kp RS(RIGHT)  &trans  &kp LS(LEFT)  &kp LC(LS(C))  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             >;
