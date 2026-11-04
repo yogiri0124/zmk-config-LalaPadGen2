@@ -11,6 +11,9 @@
  *   &none のキーは「マウスレイヤーの間は何もしないキー」になる。
  *   ただし、マウスレイヤーより上の有効なレイヤー（かなのレイヤーなど）に &trans 以外があるキーは、
  *   そちらが働くので「マウス操作」ではない（excluded-positions のキーを除く）。
+ * - passive-positions のキーは、マウスレイヤーに割り当てがあって働く場合でも「マウス操作」として扱わない。
+ *   押しても解除せず、時間切れも延ばさない（押している間も時間切れを数え続ける）。マウスレイヤーで &trans など、
+ *   下や上のレイヤーのキーが働く場合は、ほかのキーと同じく、押すとすぐに解除する。
  * - 「マウス操作」でないキーを押すと、すぐに解除する（&trans のキーは下のレイヤーのキーとして入力される）。
  * - 有効にする前から押していたキーは、excluded-positions のキー（Ctrl など）だけを「マウス操作」として数える
  *   （ほかのキーは下のレイヤーのキーとして押されているので、押したままでもレイヤーを保たない）。
@@ -70,6 +73,8 @@ struct auto_mouse_config {
     size_t num_excluded_layers;
     const uint16_t *excluded_positions;
     size_t num_positions;
+    const uint16_t *passive_positions;
+    size_t num_passive_positions;
     uint32_t touch_stale_ms;
     const struct device *const *touch_devs;
     size_t num_touch_devs;
@@ -116,6 +121,15 @@ static bool position_is_excluded(const struct auto_mouse_config *cfg, uint32_t p
     return false;
 }
 
+static bool position_is_passive(const struct auto_mouse_config *cfg, uint32_t position) {
+    for (size_t i = 0; i < cfg->num_passive_positions; i++) {
+        if (cfg->passive_positions[i] == position) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* そのレイヤーで &trans 以外が割り当ててあるキーか（&none も割り当てありとみなす。
  * keymap で &none にした位置は、マウスレイヤーの間は押しても何もせず、レイヤーも解除しない） */
 static bool position_is_bound(zmk_keymap_layer_id_t layer, uint32_t position) {
@@ -153,11 +167,23 @@ static bool excluded_layer_active(const struct auto_mouse_config *cfg) {
     return false;
 }
 
+/* マウスレイヤーの割り当てが働くキーか（&trans でなく、上の有効なレイヤーに隠されていない） */
+static bool mouse_binding_works(const struct device *dev, uint32_t position) {
+    const struct auto_mouse_data *data = dev->data;
+    return position_is_bound(data->layer, position) && mouse_layer_wins(data->layer, position);
+}
+
 static bool is_mouse_key(const struct device *dev, uint32_t position) {
     const struct auto_mouse_config *cfg = dev->config;
-    const struct auto_mouse_data *data = dev->data;
     return position_is_excluded(cfg, position) ||
-           (position_is_bound(data->layer, position) && mouse_layer_wins(data->layer, position));
+           (!position_is_passive(cfg, position) && mouse_binding_works(dev, position));
+}
+
+/* 押しても解除も延長もしないキーか（passive-positions で、マウスレイヤーの割り当てが働くもの） */
+static bool is_passive_key(const struct device *dev, uint32_t position) {
+    const struct auto_mouse_config *cfg = dev->config;
+    return !position_is_excluded(cfg, position) && position_is_passive(cfg, position) &&
+           mouse_binding_works(dev, position);
 }
 
 /* 以下はロックを取った状態で呼ぶ */
@@ -383,7 +409,7 @@ static void handle_position(const struct device *dev,
                     data->held_count++;
                 }
                 restart_timeout(dev->config, data);
-            } else {
+            } else if (!is_passive_key(dev, ev->position)) {
                 deactivate(data);
             }
         }
@@ -463,13 +489,14 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
                  "auto mouse layer: excluded-layers is out of range");
 #define AUTO_MOUSE_CHECK_POSITION(node_id, prop, idx)                                              \
     BUILD_ASSERT(DT_PROP_BY_IDX(node_id, prop, idx) < ZMK_KEYMAP_LEN,                              \
-                 "auto mouse layer: excluded-positions is out of range");
+                 "auto mouse layer: excluded-positions / passive-positions is out of range");
 
 #define AUTO_MOUSE_INST(n)                                                                         \
     BUILD_ASSERT(DT_INST_PROP_LEN_OR(n, touch_devices, 0) <= MAX_TOUCH_DEVICES,                    \
                  "too many touch-devices");                                                        \
     DT_INST_FOREACH_PROP_ELEM(n, excluded_layers, AUTO_MOUSE_CHECK_LAYER)                          \
     DT_INST_FOREACH_PROP_ELEM(n, excluded_positions, AUTO_MOUSE_CHECK_POSITION)                    \
+    DT_INST_FOREACH_PROP_ELEM(n, passive_positions, AUTO_MOUSE_CHECK_POSITION)                     \
     COND_CODE_1(DT_INST_NODE_HAS_PROP(n, touch_devices),                                           \
                 (static const struct device *const auto_mouse_touch_devs_##n[] = {                 \
                      DT_INST_FOREACH_PROP_ELEM(n, touch_devices, AUTO_MOUSE_TOUCH_DEV)};),         \
@@ -481,6 +508,7 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
         .disable_work = Z_WORK_DELAYABLE_INITIALIZER(disable_work_cb),                             \
     };                                                                                             \
     static const uint16_t auto_mouse_excluded_##n[] = DT_INST_PROP(n, excluded_positions);         \
+    static const uint16_t auto_mouse_passive_##n[] = DT_INST_PROP(n, passive_positions);           \
     static const zmk_keymap_layer_id_t auto_mouse_excluded_layers_##n[] = {                        \
         DT_INST_FOREACH_PROP_ELEM_SEP(n, excluded_layers, DT_PROP_BY_IDX, (, ))};                   \
     static const struct auto_mouse_config auto_mouse_config_##n = {                                \
@@ -489,6 +517,8 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
         .num_excluded_layers = DT_INST_PROP_LEN(n, excluded_layers),                               \
         .excluded_positions = auto_mouse_excluded_##n,                                             \
         .num_positions = DT_INST_PROP_LEN(n, excluded_positions),                                  \
+        .passive_positions = auto_mouse_passive_##n,                                               \
+        .num_passive_positions = DT_INST_PROP_LEN(n, passive_positions),                           \
         .touch_stale_ms = DT_INST_PROP(n, touch_stale_ms),                                         \
         .touch_devs = COND_CODE_1(DT_INST_NODE_HAS_PROP(n, touch_devices),                         \
                                   (auto_mouse_touch_devs_##n), (NULL)),                            \
