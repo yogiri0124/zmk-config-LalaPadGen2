@@ -184,9 +184,13 @@
 | `zmk,behavior-key-lock` | `mod_lock_…` | 0 | `keycode`（必須） | キーの押しっぱなし切り替え（押しっぱなしかどうかは自分で覚える。ほかのキーで同じキーを押していても独立して切り替わる。接続先の切り替えで解除） |
 | `zmk,behavior-cursor-slow` | `cur_slow_hold` `_toggle` `_once` | 0 | `mode`（必須。`CURSOR_SLOW_HOLD` など） | カーソル低速のオン・オフ |
 | `zmk,behavior-scroll-snap-hold` | `scr_snap_hold` | 0 | — | 押している間だけスクロールを縦か横にそろえる |
-| `zmk,input-processor-auto-mouse-layer` | `zip_auto_mouse_layer`（dtsi） | 2（レイヤー番号、解除までの ms） | `require-prior-idle-ms`、`excluded-positions`、`touch-devices`、`touch-stale-ms` | トラックパッドの操作でマウスレイヤーを一時的に有効にする（マウスレイヤーで `&trans` の位置を押すと解除。ただし `excluded-positions` の位置は `&trans` でも解除しない。`&none` の位置は何もしない） |
+| `zmk,behavior-alt-tab` | `swap_next` `swap_prev` | 0 | `reverse`（Shift+Tab を送る） | ウィンドウの切り替え。最初に押したときに Alt を押したままにして Tab を送り、押すたびに Tab を送る。押し始めたレイヤーの解除、ほかのキー（キーコードを送るもの）の押下、接続先の切り替えで Alt を離す（順方向・逆方向で Alt を共有） |
+| `zmk,behavior-tp-keys` | `tp_arrow` `tp_dial` | 0 | `bindings`（必須。8 つ: 1 本指を上・下・左・右、2 本指を上・下・左・右へ動かしたとき）、`cursor-step` `scroll-step`（既定 150。トラックパッドの生の値）、`tap-ms`（既定 10） | 押している間だけ、トラックパッドを動かした量ごとに、その向きの binding を送る（4 つとも `&trans` の側はカーソル・スクロールのまま）。押している間のタップ・ジェスチャーは捨てる |
+| `zmk,behavior-tp-stroke` | `tp_draw` | 0 | `strokes`（必須。`TP_STROKE1`〜`4`。`dt-bindings/lalapad/tp_keys.h`）、`bindings`（必須。strokes と同じ数）、`stroke-step`（既定 300）、`tap-ms`（既定 10） | 押している間に 1 本指で描いた向きの並びを、指（またはキー）を離したときに binding に変える |
+| `zmk,input-processor-auto-mouse-layer` | `zip_auto_mouse_layer`（dtsi） | 2（レイヤー番号、解除までの ms。0 なら時間では解除しない） | `require-prior-idle-ms`、`excluded-layers`（keymap で指定）、`excluded-positions`、`touch-devices`、`touch-stale-ms` | カーソル移動・スクロールでマウスレイヤーを一時的に有効にする（タップ・ジェスチャーや触れただけでは有効にしない）。マウスレイヤーで `&trans` の位置、またはマウスレイヤーより上の有効なレイヤー（かな）に割り当てのある位置を押すと解除。`excluded-positions` の位置は解除しない。`&none` の位置は何もしない。`excluded-layers` が有効な間は有効にしない |
 | `zmk,input-processor-cursor-slow` | `zip_cursor_slow`（`behaviors/cursor_slow.dtsi`） | 2（倍率の分子、分母） | — | カーソル低速の間、カーソル移動を遅くする |
 | `zmk,input-processor-scroll-snap-gate` | `zip_scroll_snap_gate_R` `_L`（dtsi） | 0 | `processor`（必須） | `scr_snap_hold` を押している間だけ、スクロールスナップにイベントを渡す |
+| `zmk,input-processor-tp-keys` | `zip_tp_keys`（`behaviors/tp_keys.dtsi`） | 0 | — | `tp_` のキーを押している間、トラックパッドの動きをキーに変える。リスナーの入力処理の並びの先頭に入れる |
 
 - 引数なし（0）の behavior は、ZMK Studio から選べるよう `zmk_behavior_get_empty_param_metadata` を返す。
-- `kana_sync`（`behaviors/kana.dtsi`）は送信キューの処理完了の合図に使う内部用で、keymap には書かない。
+- `kana_sync`（`behaviors/kana.dtsi`）は送信キューの処理完了の合図に使う内部用で、keymap には書かない（ZMK Studio の一覧には出るが、割り当てられない）。

@@ -473,12 +473,12 @@
         COMBO_ESC {
             bindings = <&kp ESCAPE>;
             key-positions = <0 1>;
-            layers = <DEFAULT_LAYER CONTROL_LAYER SECONDARY_LAYER TERTIARY_LAYER SYSTEM_LAYER MOUSE_LAYER>;
+            layers = <DEFAULT_LAYER CONTROL_LAYER SECONDARY_LAYER TERTIARY_LAYER SYSTEM_LAYER MOUSE_LAYER KANA_LAYER>;
         };
         COMBO_TAB {
             bindings = <&kp TAB>;
             key-positions = <10 11>;
-            layers = <DEFAULT_LAYER CONTROL_LAYER SECONDARY_LAYER TERTIARY_LAYER SYSTEM_LAYER MOUSE_LAYER>;
+            layers = <DEFAULT_LAYER CONTROL_LAYER SECONDARY_LAYER TERTIARY_LAYER SYSTEM_LAYER MOUSE_LAYER KANA_LAYER>;
         };
     };
 
