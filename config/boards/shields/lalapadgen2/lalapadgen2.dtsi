@@ -6,6 +6,7 @@
 #include <input/processors.dtsi>
 #include "lalapadgen2-layouts.dtsi"
 #include <behaviors/cursor_slow.dtsi>
+#include <behaviors/tp_keys.dtsi>
 
 #define POS_TP_LCLK_L  52
 #define POS_TP_RCLK_L  53
@@ -176,11 +177,15 @@
     // カーソル低速: &zip_cursor_slow は keymap の cur_slow_hold / cur_slow_toggle / cur_slow_once で低速がオンの間だけカーソルを 1/3 にする。
     // lowspeedmode: 数字・記号レイヤー（keymap の SECONDARY_LAYER = 2・TERTIARY_LAYER = 3）の間はカーソルとスクロールを遅くする。
     // この間はオートマウスレイヤーを入れていないので、トラックパッドを操作してもマウスレイヤーは新しくオンにならない。
+    // トラックパッドをキー操作に変える: &zip_tp_keys は keymap の zmk,behavior-tp-keys・zmk,behavior-tp-stroke のキーを
+    // 押している間だけ、動きをキーの入力に変える（自作: lalapad/src/tp_keys.c）。動きの量を生の値で数えるため
+    // scaler より前に、変えた動きでマウスレイヤーをオンにしないためオートマウスレイヤーより前に入れる。
     trackpad_listener_R: trackpad_listener_R {
         compatible = "zmk,input-listener";
         status = "disabled";
         device = <&trackpad_split_R>;
         input-processors = <&trackpad_key_behaviors_R>,
+                           <&zip_tp_keys>,
                            <&zip_xy_scaler 1 5>,
                            <&zip_scroll_scaler 1 12>,
                            <&zip_dynamic_xy_scaler>,
@@ -191,6 +196,7 @@
         lowspeedmode {
             layers = <2>,<3>;
             input-processors =  <&trackpad_key_behaviors_R>,
+                                <&zip_tp_keys>,
                                 <&zip_xy_scaler 1 15>,
                                 <&zip_scroll_scaler 1 40>,
                                 <&zip_dynamic_xy_scaler>,
@@ -204,6 +210,7 @@
         status = "disabled";
         device = <&trackpad_split_L>;
         input-processors = <&trackpad_key_behaviors_L>,
+                           <&zip_tp_keys>,
                            <&zip_xy_scaler 1 5>,
                            <&zip_scroll_scaler 1 12>,
                            <&zip_dynamic_xy_scaler>,
@@ -214,6 +221,7 @@
         lowspeedmode {
             layers = <2>,<3>;
             input-processors =  <&trackpad_key_behaviors_L>,
+                                <&zip_tp_keys>,
                                 <&zip_xy_scaler 1 15>,
                                 <&zip_scroll_scaler 1 40>,
                                 <&zip_dynamic_xy_scaler>,
@@ -278,6 +286,7 @@
 //     snapmode {
 //         layers = <N>;
 //         input-processors = <&trackpad_key_behaviors_R>,
+//                            <&zip_tp_keys>,
 //                            <&zip_xy_scaler 1 5>,
 //                            <&zip_scroll_scaler 1 12>,
 //                            <&zip_dynamic_xy_scaler>,

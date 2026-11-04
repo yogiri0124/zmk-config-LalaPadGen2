@@ -33,6 +33,11 @@ config ZMK_BEHAVIOR_ALT_CODE
     default y
     depends on DT_HAS_ZMK_BEHAVIOR_ALT_CODE_ENABLED
 
+config ZMK_TP_KEYS
+    bool "Trackpad to keys (zmk,behavior-tp-keys, zmk,behavior-tp-stroke, zmk,input-processor-tp-keys)"
+    default y
+    depends on (DT_HAS_ZMK_BEHAVIOR_TP_KEYS_ENABLED || DT_HAS_ZMK_BEHAVIOR_TP_STROKE_ENABLED || DT_HAS_ZMK_INPUT_PROCESSOR_TP_KEYS_ENABLED) && ZMK_POINTING
+
 config ZMK_SCROLL_SNAP_GATE
     bool "Scroll snap hold (zmk,behavior-scroll-snap-hold, zmk,input-processor-scroll-snap-gate)"
     default y

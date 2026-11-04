@@ -8,6 +8,7 @@
 #include <behaviors/kana.dtsi>
 #include <behaviors/mouse_button_toggle.dtsi>
 #include <dt-bindings/lalapad/cursor_slow.h>
+#include <dt-bindings/lalapad/tp_keys.h>
 
 #define DEFAULT_LAYER   0
 #define CONTROL_LAYER   1
@@ -213,6 +214,72 @@
             compatible = "zmk,behavior-scroll-snap-hold";
             display-name = "Snap Hold";
             #binding-cells = <0>;
+        };
+
+        // --- tp_: トラックパッドをキー操作に変える（自作モジュール lalapad/ の zmk,behavior-tp-keys・zmk,behavior-tp-stroke） ---
+        // 押している間だけ、トラックパッドの動きを、カーソル・スクロールの代わりにキーの入力に変える。
+        // 実際の処理は lalapadgen2.dtsi のリスナーに入れた &zip_tp_keys。
+        // tp-keys の bindings は 8 つ: 1 本指の上・下・左・右、2 本指（スクロール）の上・下・左・右。
+        // 4 つとも &trans にした側は、変えずにカーソル（スクロール）のまま。動き始めの向きで縦か横かを決め、指を離すまで変えない。
+        // *-step は 1 回送るのに必要な動きの量（トラックパッドの生の値。速度の設定には影響されない）。
+        // display-name は bindings より後ろに書く（LaLapad-Gen2-Editor は、display-name の後に bindings がある定義を
+        // レイヤーと見なすため）
+        // 矢印: 1 本指で ←→↑↓、2 本指で上下が PgUp・PgDn、左右が Home・End
+        tp_arrow: tp_arrow {
+            compatible = "zmk,behavior-tp-keys";
+            #binding-cells = <0>;
+            bindings
+                = <&kp UP>, <&kp DOWN>, <&kp LEFT>, <&kp RIGHT>
+                , <&kp PAGE_UP>, <&kp PAGE_DOWN>, <&kp HOME>, <&kp END>
+                ;
+            cursor-step = <150>;
+            scroll-step = <300>;
+            display-name = "TP Arrow";
+        };
+        // ダイヤル: 1 本指で上下が音量、左右がタブ（Ctrl+Shift+Tab・Ctrl+Tab）。
+        // 2 本指で上下がウィンドウの切り替え（swap_prev・swap_next。キーとトラックパッドから手を離してマウスレイヤーが
+        // 切れるか、ほかのキーを押すと、選んだウィンドウに切り替わる）、左右が仮想デスクトップ（Ctrl+Win+←・→）
+        tp_dial: tp_dial {
+            compatible = "zmk,behavior-tp-keys";
+            #binding-cells = <0>;
+            bindings
+                = <&kp C_VOL_UP>, <&kp C_VOL_DN>, <&kp LC(LS(TAB))>, <&kp LC(TAB)>
+                , <&swap_prev>, <&swap_next>, <&kp LC(LG(LEFT))>, <&kp LC(LG(RIGHT))>
+                ;
+            cursor-step = <300>;
+            scroll-step = <300>;
+            display-name = "TP Dial";
+        };
+        // 一筆書き: 押したまま 1 本指で線を描き、指（またはこのキー）を離すと、描いた向きの並びに合うものを送る。
+        // ← 戻る、→ 進む、↑ 新しいタブ、↓ 再読み込み、↓→ タブを閉じる、↓← 閉じたタブを開き直す、
+        // ↑← 前のタブ、↑→ 次のタブ、→↓ シークレットウィンドウ
+        tp_draw: tp_draw {
+            compatible = "zmk,behavior-tp-stroke";
+            #binding-cells = <0>;
+            strokes = <
+                TP_STROKE1(TP_LEFT)
+                TP_STROKE1(TP_RIGHT)
+                TP_STROKE1(TP_UP)
+                TP_STROKE1(TP_DOWN)
+                TP_STROKE2(TP_DOWN, TP_RIGHT)
+                TP_STROKE2(TP_DOWN, TP_LEFT)
+                TP_STROKE2(TP_UP, TP_LEFT)
+                TP_STROKE2(TP_UP, TP_RIGHT)
+                TP_STROKE2(TP_RIGHT, TP_DOWN)
+                >;
+            bindings
+                = <&kp LA(LEFT)>
+                , <&kp LA(RIGHT)>
+                , <&kp LC(T)>
+                , <&kp F5>
+                , <&kp LC(W)>
+                , <&kp LC(LS(T))>
+                , <&kp LC(LS(TAB))>
+                , <&kp LC(TAB)>
+                , <&kp LC(LS(N))>
+                ;
+            stroke-step = <300>;
+            display-name = "TP Draw";
         };
 
         // --- sym_: 記号（Windows の Alt コードで送るもの。IME の状態やローマ字テーブルに関係なく入る） ---
@@ -471,7 +538,7 @@
             &kp LC(A)  &kp LC(W)  &kp LC(LS(T))  &clk_lock_l  &kp UP  &kp LC(LS(TAB))  &kp LC(TAB)  &none  &none  &none
             &none  &mkp MCLK  &mkp RCLK  &mkp LCLK  &none  &kp LEFT  &kp RIGHT  &none  &none  &none
             &kp LC(Z)  &kp LC(X)  &kp LC(C)  &kp LC(V)  &kp DOWN  &none  &none  &none  &none  &none
-            &trans  &trans  &none  &trans  &scr_snap_hold  &cur_slow_toggle  &trans  &trans  &trans  &none  &trans  &none
+            &trans  &trans  &tp_arrow  &trans  &scr_snap_hold  &cur_slow_toggle  &trans  &trans  &trans  &tp_draw  &trans  &tp_dial
             &trans  &kp RS(RIGHT)  &trans  &kp LS(LEFT)  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
