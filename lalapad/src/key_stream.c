@@ -174,6 +174,9 @@ static int64_t retry_since;
  *  キーは送り待ちにためておき、入力先のままなら照合の後に送り、入力先でなくなっていれば捨てる） */
 static uint32_t route_requested;
 static uint32_t route_checked;
+/* 照合の前に、入力先が実際に変わった（zmk_endpoint_changed）か。変わったら、照合の時点で前の入力先に
+ * 戻っていても、送っている分はやめる（A → B → A と切り替える間に B で打ったキーを、A へ送らないように） */
+static bool route_left;
 
 /* 送り待ちのキー（輪状の待ち行列） */
 static struct key_event events[EVENT_QUEUE_SIZE];
@@ -545,11 +548,14 @@ static bool route_selected(enum key_stream_transport transport, struct bt_conn *
 
 /* 入力先が変わった（USB ⇔ Bluetooth、プロファイルの切り替え）: 送っている先が入力先でなくなっていたら、
  * 送るのをやめる（専用のワークキュー）。入力先に戻れば、アプリが送り続けている「開始」でまた始まる。
+ * 入力先が実際に変わっていたら（route_left）、照合の時点で前の入力先に戻っていても、やめる。
  * 照合している間に次の知らせが来たら、この処理がもう一度並ぶ（照合待ちのまま、次の照合で決める） */
 static void route_work_handler(struct k_work *work) {
     k_spinlock_key_t key = k_spin_lock(&lock);
     // ここまでの知らせの分を照合する（ZMK は入力先を変えてから知らせるので、この後に読む入力先は新しい）
     const uint32_t gen = route_requested;
+    const bool left = route_left;
+    route_left = false;
     const bool active = streaming;
     const enum key_stream_transport transport = stream_transport;
     // 調べている間に接続が切れて、stream_conn の参照がほかのスレッドで手放されても使えるように、参照を持つ
@@ -560,7 +566,7 @@ static void route_work_handler(struct k_work *work) {
     }
 #endif
     k_spin_unlock(&lock, key);
-    const bool keep = !active || route_selected(transport, conn);
+    const bool keep = !active || (!left && route_selected(transport, conn));
 
     key = k_spin_lock(&lock);
     // 調べている間に、切れて（key_stream_transport_lost）もうやめていたら、やめ直さない
@@ -591,6 +597,10 @@ static void route_work_handler(struct k_work *work) {
 static int key_stream_endpoint_listener(const zmk_event_t *eh) {
     k_spinlock_key_t key = k_spin_lock(&lock);
     route_requested++;
+    // ZMK は入力先が実際に変わったときだけ zmk_endpoint_changed を出す
+    if (as_zmk_endpoint_changed(eh) != NULL) {
+        route_left = true;
+    }
     k_spin_unlock(&lock, key);
     k_work_submit_to_queue(&key_stream_q, &route_work);
     return ZMK_EV_EVENT_BUBBLE;
