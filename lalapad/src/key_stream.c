@@ -9,6 +9,11 @@
  * 常にデータを読むので、キーボード側からはアプリが開いているかどうかが分からないため）。
  * アプリは開いている間「開始」を送り続け（生存確認）、それが途切れたら送るのをやめる。
  * 送る先は、最後に「開始」が届いた送り道（USB、または Bluetooth のその接続）。
+ * ただし、「開始」は ZMK がいまキーの入力を送っている先（zmk_endpoints_selected()。Bluetooth なら、
+ * 選んでいるプロファイルの接続）から届いたものだけを受け付け、ほかの PC からのものは黙って無視する（答えない）。
+ * 入力先が変わったら（USB ⇔ Bluetooth の切り替え、プロファイルの切り替え）、送っている先が入力先でなくなった
+ * 時点で送るのをやめる（別の PC で打った内容が、ほかの PC のアプリに見えないように）。入力先に戻れば、
+ * アプリが送り続けている「開始」で、始め直しとしてまた始まる。
  *
  * レポートの形（32 バイト。足りない分は 0）:
  *   [0] 形式の版（KEY_STREAM_PROTOCOL_VERSION）  [1] 種類  [2..] 種類ごとの中身
@@ -49,10 +54,17 @@
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/usb/class/hid.h>
 
+#include <zmk/endpoints.h>
 #include <zmk/event_manager.h>
+#include <zmk/events/endpoint_changed.h>
 #include <zmk/events/position_state_changed.h>
 #include <zmk/hid.h>
 #include <zmk/matrix.h>
+
+#if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_BLE)
+#include <zmk/ble.h>
+#include <zmk/events/ble_active_profile_changed.h>
+#endif
 
 /* 右（子機）とのつながりを見るか（Bluetooth で分割している親機） */
 #define WATCH_SPLIT_LINK (IS_ENABLED(CONFIG_ZMK_SPLIT_BLE) && IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL))
@@ -157,6 +169,11 @@ static int64_t last_keepalive;
 /* 送れない（-EAGAIN・-EBUSY）が続いているか、続き始めた時刻（送れたら、または送るのをやめたら外す） */
 static bool retrying;
 static int64_t retry_since;
+/* 入力先が変わったの知らせを受けた回数と、照合を始めた時点の回数（違えば照合待ち）。照合待ちの間は送らない
+ * （入力先が変わった後に押したキー、つまり別の PC で打ったキーを、照合の前に前の PC へ送らないように。
+ *  キーは送り待ちにためておき、入力先のままなら照合の後に送り、入力先でなくなっていれば捨てる） */
+static uint32_t route_requested;
+static uint32_t route_checked;
 
 /* 送り待ちのキー（輪状の待ち行列） */
 static struct key_event events[EVENT_QUEUE_SIZE];
@@ -213,10 +230,12 @@ static void send_work_handler(struct k_work *work);
 static void command_work_handler(struct k_work *work);
 static void timeout_work_handler(struct k_work *work);
 static void flight_work_handler(struct k_work *work);
+static void route_work_handler(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(send_work, send_work_handler);
 static K_WORK_DEFINE(command_work, command_work_handler);
 static K_WORK_DELAYABLE_DEFINE(timeout_work, timeout_work_handler);
 static K_WORK_DELAYABLE_DEFINE(flight_work, flight_work_handler);
+static K_WORK_DEFINE(route_work, route_work_handler);
 
 static void kick_send(k_timeout_t delay) { k_work_reschedule_for_queue(&key_stream_q, &send_work, delay); }
 
@@ -337,7 +356,8 @@ static void send_work_handler(struct k_work *work) {
     static uint8_t report[KEY_STREAM_REPORT_SIZE];
 
     k_spinlock_key_t key = k_spin_lock(&lock);
-    if (!streaming || in_flight) {
+    // 入力先の照合待ちの間は送らない（照合の後に、入力先のままなら送り直しを頼まれる）
+    if (!streaming || in_flight || route_requested != route_checked) {
         k_spin_unlock(&lock, key);
         return;
     }
@@ -491,11 +511,111 @@ static void flight_work_handler(struct k_work *work) {
     }
 }
 
+/* ---- 入力先との照合 ---- */
+
+/* その送り道（Bluetooth ならその接続）が、ZMK がいまキーの入力を送っている先か。専用のワークキューで、
+ * lock の外で呼ぶ（Bluetooth の接続を探すため）。conn は呼び出し側が参照を持っていること */
+static bool route_selected(enum key_stream_transport transport, struct bt_conn *conn) {
+    const struct zmk_endpoint_instance ep = zmk_endpoints_selected();
+    switch (transport) {
+    case KEY_STREAM_TRANSPORT_USB:
+        return ep.transport == ZMK_TRANSPORT_USB;
+#if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_BLE)
+    case KEY_STREAM_TRANSPORT_BLE: {
+        // どの送り道もつながっていないとき、ZMK は Bluetooth を選んだことにするので、選んでいるプロファイルが
+        // つながっているかも確かめる（つながっていないと zmk_ble_active_profile_conn は警告を出す）
+        if (ep.transport != ZMK_TRANSPORT_BLE || conn == NULL ||
+            !zmk_ble_active_profile_is_connected()) {
+            return false;
+        }
+        // 選んでいるプロファイルの接続（参照が付いて返るので手放す）
+        struct bt_conn *active = zmk_ble_active_profile_conn();
+        const bool same = active == conn;
+        if (active != NULL) {
+            bt_conn_unref(active);
+        }
+        return same;
+    }
+#endif
+    default:
+        ARG_UNUSED(conn);
+        return false;
+    }
+}
+
+/* 入力先が変わった（USB ⇔ Bluetooth、プロファイルの切り替え）: 送っている先が入力先でなくなっていたら、
+ * 送るのをやめる（専用のワークキュー）。入力先に戻れば、アプリが送り続けている「開始」でまた始まる。
+ * 照合している間に次の知らせが来たら、この処理がもう一度並ぶ（照合待ちのまま、次の照合で決める） */
+static void route_work_handler(struct k_work *work) {
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    // ここまでの知らせの分を照合する（ZMK は入力先を変えてから知らせるので、この後に読む入力先は新しい）
+    const uint32_t gen = route_requested;
+    const bool active = streaming;
+    const enum key_stream_transport transport = stream_transport;
+    // 調べている間に接続が切れて、stream_conn の参照がほかのスレッドで手放されても使えるように、参照を持つ
+    struct bt_conn *conn = NULL;
+#if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_BLE)
+    if (stream_conn != NULL) {
+        conn = bt_conn_ref(stream_conn);
+    }
+#endif
+    k_spin_unlock(&lock, key);
+    const bool keep = !active || route_selected(transport, conn);
+
+    key = k_spin_lock(&lock);
+    // 調べている間に、切れて（key_stream_transport_lost）もうやめていたら、やめ直さない
+    const bool same = !keep && streaming && stream_transport == transport && stream_conn == conn;
+    struct bt_conn *old_conn = NULL;
+    if (same) {
+        old_conn = stop_locked();
+    }
+    route_checked = gen;
+    const bool resume = streaming && route_requested == route_checked;
+    k_spin_unlock(&lock, key);
+    release_conn(old_conn);
+    release_conn(conn);
+    if (same) {
+        k_work_cancel_delayable(&timeout_work);
+        LOG_DBG("Key stream stopped: no longer the selected endpoint");
+    }
+    if (resume) {
+        // 照合待ちの間にためたキーなどを送る
+        kick_send(K_NO_WAIT);
+    }
+}
+
+/* 入力先が変わったの知らせ。知らせを出したスレッドで呼ばれるので、照合待ちの印だけ付けて、専用のワークキューに渡す。
+ * USB ⇔ Bluetooth の切り替え・プロファイルの切り替えは zmk_endpoint_changed で届く。入力先の番号が変わらないまま、
+ * 選んでいるプロファイルの接続が変わる（つながった・切れた、BT_CLR で消した）ときは zmk_endpoint_changed が
+ * 出ないことがあるので、zmk_ble_active_profile_changed も見る */
+static int key_stream_endpoint_listener(const zmk_event_t *eh) {
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    route_requested++;
+    k_spin_unlock(&lock, key);
+    k_work_submit_to_queue(&key_stream_q, &route_work);
+    return ZMK_EV_EVENT_BUBBLE;
+}
+
+ZMK_LISTENER(key_stream_endpoint, key_stream_endpoint_listener);
+ZMK_SUBSCRIPTION(key_stream_endpoint, zmk_endpoint_changed);
+#if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_BLE)
+ZMK_SUBSCRIPTION(key_stream_endpoint, zmk_ble_active_profile_changed);
+#endif
+
 /* ---- 命令（専用のワークキュー） ---- */
 
 static void start(enum key_stream_transport transport, struct bt_conn *conn, uint8_t mask) {
     struct bt_conn *old_conn = NULL;
     const int64_t now = k_uptime_get();
+
+    // ZMK がいまキーの入力を送っている先からの「開始」だけを受け付ける（ほかの PC には、別の PC で打った内容を
+    // 送らない）。答えずに無視する（生存確認の時間も数え直さない）。入力先が変わって、今送っている先からの
+    // 「開始」を無視したときは、入力先が変わったの知らせ（route_work）で送るのをやめる
+    if (!route_selected(transport, conn)) {
+        LOG_DBG("Key stream start ignored: not the selected endpoint (transport %d)", transport);
+        release_conn(conn);
+        return;
+    }
 
     k_spinlock_key_t key = k_spin_lock(&lock);
     const bool fresh = !streaming || stream_transport != transport || stream_conn != conn ||
@@ -735,6 +855,9 @@ static int key_stream_init(void) {
     static const struct k_work_queue_config config = {.name = "key_stream"};
     k_work_queue_start(&key_stream_q, key_stream_stack, K_THREAD_STACK_SIZEOF(key_stream_stack),
                        THREAD_PRIORITY, &config);
+    // ワークキューを始める前に入力先が変わったの知らせが来ていたら、渡せていないので、ここで照合を済ませる
+    // （照合待ちのままだと送れない）
+    k_work_submit_to_queue(&key_stream_q, &route_work);
     return 0;
 }
 

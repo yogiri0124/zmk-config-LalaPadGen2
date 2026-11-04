@@ -39,7 +39,7 @@
 </head>
 <body>
 <h1>Key Stream Viewer</h1>
-<p class="note">LaLaPad Gen2 のキー位置の送信（raw HID）を確かめるページです。Chrome か Edge で開き、「つなぐ」を押してください。USB でも Bluetooth でも使えます。</p>
+<p class="note">LaLaPad Gen2 のキー位置の送信（raw HID）を確かめるページです。Chrome か Edge で開き、「つなぐ」を押してください。USB でも Bluetooth でも使えます。<br>キーボードがいまキーの入力を送っている PC（<code>&amp;out</code>・<code>&amp;bt</code> で選んでいる先）でだけ届きます。入力先を切り替えると止まり、この PC に戻すと自動でまた届きます（開いたままで待てます）。</p>
 
 <div class="bar">
   <button id="connect">つなぐ</button>
@@ -77,6 +77,9 @@ let device = null, timer = null, nextSeq = null, received = 0, lost = 0;
 let closing = false;
 // キーの位置の数（この番号から先がトラックパッドのタップ・ジェスチャー。状態のレポートで受け取る）
 let keyPositions = 52;
+// つないでから状態のレポートを受け取ったか（届かなければ、この PC が入力先でないことを知らせる）
+let gotStatus = false, statusHintTimer = null;
+const STATUS_HINT_MS = 3000;
 
 // キーの並び（README の位置番号の図と同じ。-1 はすき間）
 const ROWS = [
@@ -141,6 +144,7 @@ function onReport(event) {
   if (d.getUint8(0) !== VERSION) { log(`形式の版が違います: ${d.getUint8(0)}`); return; }
   const type = d.getUint8(1);
   if (type === MSG_STATUS) {
+    gotStatus = true;
     // 右との Bluetooth の接続があるか（右が切れたときの「離した」は、キーボードがキーとして送ってくる）
     const right = d.getUint8(2) === 1;
     $('right').textContent = right ? 'つながっている' : '切れている';
@@ -190,6 +194,19 @@ function onReport(event) {
   // 知らない種類は読み飛ばす
 }
 
+// キーボードは、入力先でない PC からの「開始」・問い合わせには答えない。しばらく状態が届かなければ知らせる
+// （生存確認の「開始」は送り続けるので、入力先がこの PC に戻れば、そのとき状態から届き始める）
+function expectStatus(dev) {
+  if (!dev) return;
+  gotStatus = false;
+  clearTimeout(statusHintTimer);
+  statusHintTimer = setTimeout(() => {
+    if (device === dev && !gotStatus) {
+      log('状態が届きません。キーボードの入力先がこの PC ではないようです（入力先をこの PC に切り替えると届き始めます）');
+    }
+  }, STATUS_HINT_MS);
+}
+
 async function open(dev) {
   // 開けてから（失敗しても前の状態を残さないよう）この機器を使う
   if (!dev.opened) await dev.open();
@@ -200,6 +217,7 @@ async function open(dev) {
   nextSeq = null;
   Object.values(keyEls).forEach((el) => el.classList.remove('on'));
   log(`つなぎました: ${device.productName}`);
+  expectStatus(dev);
   await send(CMD_START, mask(), dev);
   // 開き直したときなど、キーボードがまだ前の「開始」で送り続けていると、今の「開始」は生存確認として扱われ、
   // 状態と押されているキーが届かない。問い合わせて、今の状態を受け取る（送れなかったら「問い合わせる」で送り直せる）
@@ -218,6 +236,7 @@ async function close(unplugged = false) {
   device = null;
   closing = true; // 閉じ終わるまで、つなぎ直さない（同じ機器を開き直した後に、ここで閉じてしまわないように）
   clearInterval(timer); timer = null;
+  clearTimeout(statusHintTimer); statusHintTimer = null;
   dev.removeEventListener('inputreport', onReport);
   Object.values(keyEls).forEach((el) => el.classList.remove('on'));
   $('device').textContent = '—'; $('right').textContent = '—'; $('right').className = '';
@@ -251,7 +270,7 @@ $('connect').addEventListener('click', async () => {
   }
 });
 $('disconnect').addEventListener('click', () => close());
-$('query').addEventListener('click', () => send(CMD_STATUS));
+$('query').addEventListener('click', () => { expectStatus(device); send(CMD_STATUS); });
 $('clear').addEventListener('click', () => { $('log').replaceChildren(); received = 0; lost = 0; $('count').textContent = 0; $('lost').textContent = 0; });
 $('trackpad').addEventListener('change', () => {
   // 受け取るのをやめたトラックパッドの位置は、この後「離した」が届かないので、押している表示を消しておく

@@ -465,6 +465,7 @@ ks_touten: ks_touten {
 
 - 送るのは、アプリから「開始」を受けている間だけです。アプリが「終了」を送らずに閉じたときも、最後の生存確認から 6 秒で止まります。それ以外のときは何も送らないので、ふだんの入力や電池には影響しません。
 - 左右のキーをまとめて、左（親機）から送ります。トラックパッドのタップ・ジェスチャーは、アプリが指定したときだけ送ります。
+- 送るのは、キーボードがいまキーの入力を送っている PC（`&out` で選んだ USB／Bluetooth、Bluetooth なら `&bt` で選んでいるプロファイルの PC）のアプリにだけです。ほかの PC でアプリを開いていても、そちらには送りません。入力先を切り替えると送るのをやめ、アプリを開いたままその PC に戻すと、自動でまた送り始めます。
 - 決まりごと（見分けるための値、データの形）は [docs/key-stream.md](docs/key-stream.md) に、キーの実際の配置（カラムスタッガード）は [docs/key-stream-layout.json](docs/key-stream-layout.json) にあります。
 - 確かめるには、[docs/tools/key-stream-viewer.html](docs/tools/key-stream-viewer.html) を Chrome か Edge で開いて「つなぐ」を押します。
 - 書き込んだ後、Bluetooth でつないでいると増えた HID が見えないことがあります。そのときは、Windows の Bluetooth 設定でキーボードを削除して、ペアリングし直してください。
