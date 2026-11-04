@@ -5,7 +5,8 @@
  * 固定している間は、ほかの操作でそのレイヤーが解除されても、すぐに有効にし直す（&mo のキーを離しても、
  * オートマウスレイヤーの時間切れでも切れない）。もう一度押すと固定をやめて、そのレイヤーを解除する
  * （オートマウスレイヤーが有効にしているレイヤーなら解除はせず、ふだんどおり時間を数え直す）。
- * 一番下のレイヤー（Default）は固定しない。
+ * 一番下のレイヤー（Default）と、conditional_layers が有効・解除するレイヤー（then-layer。数字＋記号でなる
+ * システムレイヤーなど）は固定しない（条件で解除されるたびに有効にし直すと、条件の評価と取り合いになるため）。
  *
  * 状態はシステムワークキューで書き換える（behavior のコールバックと、レイヤーの出来事の listener）。
  * オートマウスレイヤーの入力処理（入力スレッド）からも読むので、atomic で持つ。
@@ -32,6 +33,12 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 BUILD_ASSERT(ZMK_KEYMAP_LAYERS_LEN <= 32, "layer lock: up to 32 layers");
 
+/* conditional_layers の then-layer（固定しないレイヤー）。keymap の宣言順の番号（起動時はレイヤー ID と同じ） */
+#define LAYER_LOCK_CL_THEN(child) | BIT(DT_PROP(child, then_layer))
+#define LAYER_LOCK_CL_NODE(node) DT_FOREACH_CHILD(node, LAYER_LOCK_CL_THEN)
+static const uint32_t conditional_layers =
+    0 DT_FOREACH_STATUS_OKAY(zmk_conditional_layers, LAYER_LOCK_CL_NODE);
+
 /* 固定しているレイヤー（レイヤー ID のビット） */
 static atomic_t locked;
 
@@ -44,7 +51,8 @@ bool layer_lock_is_locked(zmk_keymap_layer_id_t layer) {
 static int on_layer_lock_binding_pressed(struct zmk_behavior_binding *binding,
                                          struct zmk_behavior_binding_event event) {
     const zmk_keymap_layer_id_t layer = event.layer;
-    if (layer >= 32 || layer == zmk_keymap_layer_default()) {
+    if (layer >= 32 || layer == zmk_keymap_layer_default() || (conditional_layers & BIT(layer))) {
+        LOG_DBG("Layer %d cannot be locked", layer);
         return ZMK_BEHAVIOR_OPAQUE;
     }
     if (layer_lock_is_locked(layer)) {

@@ -184,7 +184,7 @@
 | `zmk,behavior-key-lock` | `mod_lock_…` | 0 | `keycode`（必須） | キーの押しっぱなし切り替え（押しっぱなしかどうかは自分で覚える。ほかのキーで同じキーを押していても独立して切り替わる。接続先の切り替えで解除） |
 | `zmk,behavior-cursor-slow` | `cur_slow_hold` `_toggle` `_once` | 0 | `mode`（必須。`CURSOR_SLOW_HOLD` など） | カーソル低速のオン・オフ |
 | `zmk,behavior-scroll-snap-hold` | `scr_snap_hold` | 0 | — | 押している間だけスクロールを縦か横にそろえる |
-| `zmk,behavior-layer-lock` | `lyr_lock` | 0 | — | 置いたレイヤーを固定する／固定をやめる（Layer Lock。固定している間は、そのレイヤーが解除されてもすぐ有効にし直す。固定をやめるとそのレイヤーを解除する。オートマウスレイヤーなら解除せず時間を数え直す。Default は固定しない） |
+| `zmk,behavior-layer-lock` | `lyr_lock` | 0 | — | 置いたレイヤーを固定する／固定をやめる（Layer Lock。固定している間は、そのレイヤーが解除されてもすぐ有効にし直す。固定をやめるとそのレイヤーを解除する。オートマウスレイヤーなら解除せず時間を数え直す。Default と conditional_layers の then-layer は固定しない） |
 | `zmk,behavior-alt-tab` | `swap_next` `swap_prev` | 0 | `reverse`（Shift+Tab を送る） | ウィンドウの切り替え。最初に押したときに Alt を押したままにして Tab を送り、押すたびに Tab を送る。押し始めたレイヤーの解除、ほかのキー（キーコードを送るもの）の押下、接続先の切り替えで Alt を離す（順方向・逆方向で Alt を共有） |
 | `zmk,behavior-tp-keys` | `tp_arrow` `tp_dial` | 0 | `bindings`（必須。8 つ: 1 本指を上・下・左・右、2 本指を上・下・左・右へ動かしたとき）、`cursor-step` `scroll-step`（既定 150。トラックパッドの生の値）、`tap-ms`（既定 10） | 押している間だけ、トラックパッドを動かした量ごとに、その向きの binding を送る（4 つとも `&trans` の側はカーソル・スクロールのまま）。押している間のタップ・ジェスチャーは捨てる |
 | `zmk,behavior-tp-stroke` | `tp_draw` | 0 | `strokes`（必須。`TP_STROKE1`〜`4`。`dt-bindings/lalapad/tp_keys.h`）、`bindings`（必須。strokes と同じ数）、`stroke-step`（既定 300）、`tap-ms`（既定 10） | 押している間に 1 本指で描いた向きの並びを、指（またはキー）を離したときに binding に変える |

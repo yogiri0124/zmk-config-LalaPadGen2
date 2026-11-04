@@ -453,8 +453,10 @@ static void handle_keycode(const struct device *dev, const struct zmk_keycode_st
 static void handle_layer_state(const struct device *dev) {
     struct auto_mouse_data *data = dev->data;
     k_mutex_lock(&data->lock, K_FOREVER);
-    // ほかの操作（&tog や &to など）でレイヤーが解除されたら、こちらの状態も合わせる
-    if (data->active && !zmk_keymap_layer_active(data->layer)) {
+    // ほかの操作（&tog や &to など）でレイヤーが解除されたら、こちらの状態も合わせる。
+    // 固定しているレイヤーは、すぐに有効にし直されるので、有効のままとして扱う（behavior_layer_lock.c）
+    if (data->active && !zmk_keymap_layer_active(data->layer) &&
+        !layer_lock_is_locked(data->layer)) {
         data->active = false;
         k_work_cancel_delayable(&data->disable_work);
     }
