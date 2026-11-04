@@ -14,9 +14,15 @@
  * - 変えている間は、指を離した後の慣性による動きを捨てる（触れているかはドライバの INPUT_BTN_TOUCH で知る。
  *   一度も届いていないトラックパッドでは、慣性も動きとして数える）。
  *
+ * - 変えた動き・捨てた動きは、値を 0 にしてから止める（ZMK_INPUT_PROC_STOP）。リスナーのレイヤーごとの
+ *   上書き（lowspeedmode）の中では STOP が伝わらず、後ろの処理とカーソルの移動に進むため。
+ *
  * 入力処理は入力スレッドで呼ばれる。behavior はシステムワークキューで呼ぶ（自作の behavior は状態を
- * システムワークキューだけで触る前提のため）ので、送るものを列に預けてワークで送る。押した behavior は
- * モードのキーを押したときのレイヤーと位置で呼ぶ（&swap_next などが、そのレイヤーの解除で終わるように）。
+ * システムワークキューだけで触る前提のため）ので、送るものを列に預けてワークで送る。送るワークの予約も
+ * システムワークキューだけで行う（入力スレッドから予約し直すと、押してから離すまでの待ち時間が飛ぶため）。
+ * 押した behavior は、モードのキーを押したときのレイヤーと位置で呼ぶ（&swap_next などが、そのレイヤーの
+ * 解除で終わるように）。まだ押していない分は、そのモードのキーを離したか、そのレイヤーが解除されていたら捨てる
+ * （解除の後に &swap_next を押し直して、Alt が押されたままにならないように）。押した分は必ず離す。
  */
 
 #define DT_DRV_COMPAT zmk_input_processor_tp_keys
@@ -31,6 +37,7 @@
 
 #include <zmk/behavior.h>
 #include <zmk/events/position_state_changed.h>
+#include <zmk/keymap.h>
 
 #include <dt-bindings/lalapad/tp_keys.h>
 
@@ -84,6 +91,10 @@ struct slot {
 
 struct action {
     struct zmk_behavior_binding binding;
+    /* 送るきっかけになったモードのキー（まだ押していない分を捨てるかの判断に使う） */
+    const struct tp_keys_mode *mode;
+    /* そのキーを押している間だけ送る（動かした量で送る分。一筆書きはキーを離して決めるので false） */
+    bool while_held;
     int layer;
     uint32_t position;
     uint16_t tap_ms;
@@ -101,6 +112,26 @@ K_MSGQ_DEFINE(tp_keys_actions, sizeof(struct action), ACTION_QUEUE_SIZE, 4);
 
 static struct action current;
 static bool current_pressed;
+
+/* まだ押していない分を送ってよいか: そのレイヤーが有効で、while_held ならそのモードのキーを押したまま */
+static bool action_still_valid(const struct action *a) {
+    if (!zmk_keymap_layer_active(a->layer)) {
+        return false;
+    }
+    if (!a->while_held) {
+        return true;
+    }
+    bool held_now = false;
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    for (size_t i = 0; i < held_len; i++) {
+        if (held[i].mode == a->mode && held[i].position == a->position) {
+            held_now = true;
+            break;
+        }
+    }
+    k_spin_unlock(&lock, key);
+    return held_now;
+}
 
 static void invoke(const struct action *a, bool pressed) {
     struct zmk_behavior_binding_event event = {
@@ -127,13 +158,24 @@ static void runner_work_cb(struct k_work *work) {
         }
         return;
     }
-    if (k_msgq_get(&tp_keys_actions, &current, K_NO_WAIT) != 0) {
-        return;
-    }
+    do {
+        if (k_msgq_get(&tp_keys_actions, &current, K_NO_WAIT) != 0) {
+            return;
+        }
+    } while (!action_still_valid(&current));
     invoke(&current, true);
     current_pressed = true;
     k_work_schedule(&runner_work, K_MSEC(current.tap_ms));
 }
+
+/* 送っていなければ送り始める（システムワークキュー。送っている途中なら、その予約のまま続けて送る） */
+static void kick_work_cb(struct k_work *work) {
+    if (!current_pressed && !k_work_delayable_is_pending(&runner_work)) {
+        k_work_schedule(&runner_work, K_NO_WAIT);
+    }
+}
+
+static K_WORK_DEFINE(kick_work, kick_work_cb);
 
 /* 集めた送るものを列に預ける（ロックの外で呼ぶ） */
 static void submit(const struct action *actions, size_t n) {
@@ -146,8 +188,7 @@ static void submit(const struct action *actions, size_t n) {
             break;
         }
     }
-    // 送っている途中（待ち時間の予約がある）なら、その予約のまま続けて送る
-    k_work_schedule(&runner_work, K_NO_WAIT);
+    k_work_submit(&kick_work);
 }
 
 /* ---- 以下はロックを取った状態で呼ぶ ---- */
@@ -157,12 +198,14 @@ static bool is_trans(const struct zmk_behavior_binding *b) {
 }
 
 static bool add_action(struct action *out, size_t *n, size_t max, const struct held_mode *hm,
-                       const struct zmk_behavior_binding *b) {
+                       const struct zmk_behavior_binding *b, bool while_held) {
     if (is_trans(b) || *n >= max) {
         return false;
     }
     out[*n] = (struct action){
         .binding = *b,
+        .mode = hm->mode,
+        .while_held = while_held,
         .layer = hm->layer,
         .position = hm->position,
         .tap_ms = hm->mode->tap_ms,
@@ -191,7 +234,7 @@ static void finish_stroke(struct slot *s, struct action *out, size_t *n, size_t 
     if (mode != NULL && s->len > 0 && !s->overflow) {
         for (size_t i = 0; i < mode->num_strokes; i++) {
             if (mode->strokes[i] == s->code) {
-                add_action(out, n, max, &s->stroke, &mode->stroke_bindings[i]);
+                add_action(out, n, max, &s->stroke, &mode->stroke_bindings[i], false);
                 break;
             }
         }
@@ -283,11 +326,11 @@ static void convert_motion(struct axis_acc *acc, uint16_t code_x, uint16_t code,
     const size_t pos = acc->axis == AXIS_X ? 3 : (up_negative ? 1 : 0);
     for (int i = 0; i < MAX_STEPS_PER_EVENT && *v >= step; i++) {
         *v -= step;
-        add_action(out, n, max, hm, &b[pos]);
+        add_action(out, n, max, hm, &b[pos], true);
     }
     for (int i = 0; i < MAX_STEPS_PER_EVENT && *v <= -(int32_t)step; i++) {
         *v += step;
-        add_action(out, n, max, hm, &b[neg]);
+        add_action(out, n, max, hm, &b[neg], true);
     }
     // 上限で打ち切った残りは捨てる（後からまとめて出ないように）
     if (abs(*v) >= step) {
@@ -376,6 +419,7 @@ static int tp_keys_handle_event(const struct device *dev, struct input_event *ev
         if (!coasting) {
             track_stroke(s, hm, event->code, event->value);
         }
+        event->value = 0;
         ret = ZMK_INPUT_PROC_STOP;
     } else if (hm != NULL && hm->mode->bindings != NULL &&
                ((is_cursor && hm->mode->convert_cursor) || (is_scroll && hm->mode->convert_scroll))) {
@@ -390,6 +434,7 @@ static int tp_keys_handle_event(const struct device *dev, struct input_event *ev
                                ARRAY_SIZE(out));
             }
         }
+        event->value = 0;
         ret = ZMK_INPUT_PROC_STOP;
     }
     k_spin_unlock(&lock, key);
