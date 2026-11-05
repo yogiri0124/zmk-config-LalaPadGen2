@@ -141,9 +141,10 @@ struct kana_entry {
 
 static const struct kana_entry kana_table[KN_MAX_ID + 1] = {KANA_LIST(KANA_TABLE_ENTRY)};
 
-/* かな（1〜KN_VU）と、編集用のキー5つ。その間の番号は欠番（kana.h に ID を足したら KANA_LIST にも足す） */
+/* かな（1〜KN_VU）と、編集用のキー（KE_SPACE〜KE_TAB）。その間の番号は欠番（kana.h に ID を足したら KANA_LIST にも足す） */
 #define KANA_COUNT_ENTRY(id, name, keys) +1
-BUILD_ASSERT((0 KANA_LIST(KANA_COUNT_ENTRY)) == KN_VU + 5, "KANA_LIST must cover every kana ID");
+BUILD_ASSERT((0 KANA_LIST(KANA_COUNT_ENTRY)) == KN_VU + (KE_TAB - KE_SPACE + 1),
+             "KANA_LIST must cover every kana ID");
 
 struct behavior_kana_config {
     uint32_t tap_ms;

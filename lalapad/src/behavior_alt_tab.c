@@ -120,6 +120,7 @@ static int on_alt_tab_binding_released(struct zmk_behavior_binding *binding,
         raise_key(keycode, false);
         held_tab = 0;
     }
+    // 「離す」の処理の中でレイヤーを解除するものは今はないが、念のため押したときと同じく扱う
     if (end_after_raise) {
         end_after_raise = false;
         end_switch();
