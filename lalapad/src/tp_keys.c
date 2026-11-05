@@ -36,7 +36,8 @@
  *   （ZMK_INPUT_PROC_STOP）。リスナーのレイヤーごとの上書き（子ノード。今は使っていない）の中では、STOP しても
  *   リスナー本体の集計・送信に進むため。
  * - ドライバが 1 組で送る動き（X と Y など）は、組の途中でモードが変わっても、組の最初と同じ扱いにする。
- *   組の最初と同じ種類の動きが届いたら、前の組の続き（同期つき）が届かなかったとみなして、新しい組にする。
+ *   組の続き（X の後の Y、横ホイールの後の縦ホイール）でない動きが届いたら、前の組の続き（同期つき）が
+ *   届かなかったとみなして、新しい組にする。
  * - 2 本指のピンチ（BTN_7 と Ctrl＋ホイール）は考えていない（ドライバの設定でピンチを無効にしてある）。
  *
  * 入力処理は入力スレッドで呼ばれる。behavior はシステムワークキューで呼ぶ（自作の behavior は状態を
@@ -86,7 +87,8 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 /* 離れている間の動きがこれより長く途切れたら、慣性ではない（ドライバの慣性は、続けて送られる） */
 #define COAST_GAP_MS 300
 /* 離れてからこれより長くたった動きも、慣性ではない（ドライバの慣性は最長 3000 ms。*_INERTIA_MAX_DURATION_MS） */
-#define COAST_MAX_MS 3000
+/* （ドライバは慣性の時間を少し多めに数え、送るのも少し遅れるので、余裕を足す） */
+#define COAST_MAX_MS (3000 + COAST_GAP_MS)
 /* 1 回の入力で数える回数の上限（大きな値が届いても、待っておける数を超えて数えない） */
 #define MAX_STEPS_PER_EVENT MAX_PENDING_STEPS
 /* 捨てるタップ・ジェスチャー（INPUT_BTN_0〜7） */
@@ -365,6 +367,13 @@ static void mode_pressed(const struct tp_keys_mode *mode,
             hm->convert_scroll = any_converted(&mode->bindings[TP_KEYS_SCROLL_FIRST]);
         }
         gen++;
+        // 描きかけの一筆書きは捨てる（後から押したモードが働くので、前のモードで描いた分を、指を離したときに
+        // 送らないように）
+        for (size_t i = 0; i < MAX_SLOTS; i++) {
+            if (slots[i].stroke.mode != NULL) {
+                reset_stroke(&slots[i]);
+            }
+        }
     } else {
         full = true;
     }
@@ -663,8 +672,10 @@ static int tp_keys_handle_event(const struct device *dev, struct input_event *ev
     if (s != NULL && event->type == INPUT_EV_KEY) {
         drop = handle_key(s, event, &queued);
     } else if (s != NULL) {
-        // 組の最初と同じ種類が届いた: 前の組の続きが届かなかった。新しい組として扱う
-        if (s->in_frame && event->code == s->frame_code) {
+        // 組の続き（X の後の Y、横ホイールの後の縦ホイール）でなければ、前の組の続きが届かなかった。新しい組として扱う
+        if (s->in_frame &&
+            !((s->frame_code == INPUT_REL_X && event->code == INPUT_REL_Y) ||
+              (s->frame_code == INPUT_REL_HWHEEL && event->code == INPUT_REL_WHEEL))) {
             s->in_frame = false;
         }
         if (!s->in_frame) {

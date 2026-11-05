@@ -129,16 +129,11 @@ static int alt_tab_listener(const zmk_event_t *eh) {
     }
     const struct zmk_keycode_state_changed *kc = as_zmk_keycode_state_changed(eh);
     if (kc != NULL) {
-        // ほかのキーの「押す」: そのキーより先に Alt を離す（この listener は ZMK 本体の HID への反映より前に呼ばれる）
-        // 次のものでは終えない（送っている間に始めた切り替えが、すぐ確定しないように）:
-        // - Alt コードの送信が自分で送るキー（テンキーの数字・IME オン など）
-        // - Alt・Tab の「押す」: Alt コードの送信中に押すと、この behavior が送った Alt・Tab は Alt コードに預けられ、
-        //   送り終えてから（raising でないときに）この listener に届くため。Alt・Tab のキーを自分で押したときも、
-        //   切り替えは終わらない（Alt+Tab として、切り替えの画面で選ぶ先が進む）
-        const bool own_keys = kc->usage_page == HID_USAGE_KEY &&
-                              (kc->keycode == HID_USAGE_KEY_KEYBOARD_TAB ||
-                               kc->keycode == HID_USAGE_KEY_KEYBOARD_LEFTALT);
-        if (kc->state && !raising && !own_keys && !alt_code_is_own_event(kc)) {
+        // ほかのキーの「押す」: そのキーより先に Alt を離す（この listener は ZMK 本体の HID への反映より前に呼ばれる）。
+        // Alt コードの送信が自分で送るキー（テンキーの数字・IME オン など）では終えない（送っている間に始めた
+        // 切り替えが、送信の続きで確定しないように）。この listener は Alt コードの listener より前にある
+        // （CMakeLists.txt）ので、Alt コードが預けて後から通し直す入力は見ない（届いた時点で見ている）
+        if (kc->state && !raising && !alt_code_is_own_event(kc)) {
             end_switch();
         }
         return ZMK_EV_EVENT_BUBBLE;

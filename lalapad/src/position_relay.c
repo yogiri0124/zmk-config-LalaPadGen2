@@ -98,6 +98,11 @@ static void relay_work_handler(struct k_work *work) {
         ZMK_EVENT_RELEASE(ev);
     }
     for (uint32_t position = 0; position < ZMK_KEYMAP_LEN; position++) {
+        // 離す処理の中で behavior が止まっている間に、列に新しく並んだ分があれば、先にそれを処理する（並べた側が
+        // このワークを予約し直している。その位置の「押した」がまだ列にあるうちに、後で出す「離した」を使い切らない）
+        if (k_msgq_num_used_get(&relay_queue) != 0) {
+            break;
+        }
         if (atomic_test_and_clear_bit(deferred_release, position)) {
             LOG_DBG("Releasing deferred position %u", position);
             release_if_pressed(position);

@@ -407,9 +407,12 @@ void kana_output_on_sync(uint32_t token) {
     // ここに来た時点で、合図より前に並べた送信（かな・IME オフ）はすべて実行済み。
     // 親指シフト面などを押したまま抜けた場合に備えて、それらも解除する
     // （後で親指を離したときの &mo の解除は、すでに解除済みなので何も起きない）
+    // 固定していても抜ける（固定をやめてから解除する。固定したままだと、解除してもすぐ有効にし直される）
     for (size_t i = 0; i < off_sub_layers_len; i++) {
+        layer_lock_forget(off_sub_layers[i]);
         zmk_keymap_layer_deactivate(off_sub_layers[i]); // 有効でなければ何も起きない
     }
+    layer_lock_forget(kana_layer);
     zmk_keymap_layer_deactivate(kana_layer);
     kana_active = false;
     off_stage = KANA_OFF_NONE;
@@ -493,8 +496,10 @@ void kana_mode_off(const struct zmk_behavior_binding_event *event, zmk_keymap_la
         // かな配列モードではないのに、かなのレイヤーが（Studio で割り当てた &tog などで）有効になっている:
         // &kana_key は何も送らないので、レイヤーだけ解除して抜けられるようにする（有効でなければ何も起きない）
         for (size_t i = 0; i < sub_layers_len; i++) {
+            layer_lock_forget(sub_layers[i]);
             zmk_keymap_layer_deactivate(sub_layers[i]);
         }
+        layer_lock_forget(layer);
         zmk_keymap_layer_deactivate(layer);
         return;
     }

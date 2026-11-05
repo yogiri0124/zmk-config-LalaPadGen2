@@ -251,10 +251,12 @@ static void restart_timeout(const struct auto_mouse_config *cfg, struct auto_mou
     }
     if (data->held_count > 0) {
         // 押している間は解除しない（すでにキューに入った解除ワークは held_count を見て何もしない）
+        data->deadline = INT64_MAX;
         k_work_cancel_delayable(&data->disable_work);
     } else if (data->touch_mask != 0) {
         // 触れている間は解除しない。「離れた」の取りこぼしに備えて、最も早く古くなる時刻に確かめる
         if (cfg->touch_stale_ms == 0) {
+            data->deadline = INT64_MAX;
             k_work_cancel_delayable(&data->disable_work);
             return;
         }
@@ -270,7 +272,9 @@ static void restart_timeout(const struct auto_mouse_config *cfg, struct auto_mou
         data->deadline = k_uptime_get() + data->timeout_ms;
         k_work_reschedule(&data->disable_work, K_MSEC(data->timeout_ms));
     } else {
-        // 時間では解除しない（触れている間の確かめの予約が残っていたら取り消す）
+        // 時間では解除しない（触れている間の確かめの予約が残っていたら取り消す。取り消せずに動いた解除ワークは、
+        // 期限がないのを見て何もしない）
+        data->deadline = INT64_MAX;
         k_work_cancel_delayable(&data->disable_work);
     }
 }
@@ -319,8 +323,9 @@ static void disable_work_cb(struct k_work *work) {
         // 触れている間は解除しない。古くなった「触れている」を外し、残りの状態で時間切れを数え直す
         expire_stale_touches(cfg, data);
         restart_timeout(cfg, data);
-    } else if (data->active && data->held_count == 0) {
+    } else if (data->active && data->held_count == 0 && data->deadline != INT64_MAX) {
         // 延長の前に予約されていた解除ワークが遅れて動いた場合は、残り時間で予約し直す
+        // （期限がない（時間では解除しない）ときは何もしない）
         const int64_t remaining = data->deadline - k_uptime_get();
         if (remaining > 0) {
             k_work_reschedule(&data->disable_work, K_MSEC(remaining));

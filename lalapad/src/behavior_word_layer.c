@@ -16,7 +16,8 @@
  *   33 を押し続けたら、ほかのキーや記号レイヤーを押しても数字レイヤーのまま。33 と 38 でシステムレイヤーになる）。
  * - Alt コードのキーが自分で送るキー（IME オフ／オン・Alt・テンキーの数字など）では終えない（送っている間に
  *   始めた Num Word が、送信の最後の IME オンで終わらないように。Alt コードのキーを押したときは、
- *   word_layer_finish_all で終える）。
+ *   word_layer_finish_all で終える）。この listener は Alt コードの listener より前にある（CMakeLists.txt）ので、
+ *   送っている間に打ったキーも、届いた時点で見る（Alt コードが預けて後から通し直す入力は見ない）。
  * - ほかのモジュールから終えられる（word_layer_finish_all。Alt コードのキーを押したときなど。Alt コードは
  *   Alt とテンキーの数字を送るので、数字・修飾キーで続く設定だと、送っても終わらないため）。
  *
@@ -40,6 +41,7 @@
 #include <dt-bindings/zmk/modifiers.h>
 
 #include "alt_code.h"
+#include "layer_lock.h"
 #include "word_layer.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
@@ -213,9 +215,10 @@ static int word_layer_listener(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
     if (!ly->state) {
-        // ほかの操作でレイヤーが解除された: こちらも終える
+        // ほかの操作でレイヤーが解除された: こちらも終える（固定したレイヤーは、固定の listener が有効にし直す。
+        // この listener はそれより先に呼ばれるので、固定しているかも見る）
         struct active_word_layer *w = find_active(ly->layer);
-        if (w != NULL && !zmk_keymap_layer_active(ly->layer)) {
+        if (w != NULL && !zmk_keymap_layer_active(ly->layer) && !layer_lock_is_locked(ly->layer)) {
             w->active = false;
         }
         return ZMK_EV_EVENT_BUBBLE;
