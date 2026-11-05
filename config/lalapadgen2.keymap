@@ -296,7 +296,7 @@
         };
         // ダイヤル: 1 本指で上下が音量、左右がタブ（Ctrl+Shift+Tab・Ctrl+Tab）。
         // 2 本指で上下がウィンドウの切り替え（指を上へ swap_prev・下へ swap_next。このキーを押したレイヤーが切れるか
-        // （マウスレイヤーなら、キーとトラックパッドから手を離して 300ms 後）、ほかのキーを押すと、選んだウィンドウに
+        // （マウスレイヤーなら、キーとトラックパッドから手を離して 350ms 後）、ほかのキーを押すと、選んだウィンドウに
         // 切り替わる）、左右が仮想デスクトップ（Ctrl+Win+←・→）
         tp_dial: tp_dial {
             compatible = "zmk,behavior-tp-keys";
@@ -542,6 +542,7 @@
             key-positions = <10 11>;
             layers = <DEFAULT_LAYER CONTROL_LAYER SECONDARY_LAYER TERTIARY_LAYER SYSTEM_LAYER MOUSE_LAYER KANA_LAYER>;
         };
+        // Default レイヤーだけ: 12＋13 で IME オン、16＋17 で IME オフ
         COMBO_IME_ON {
             bindings = <&kp LANGUAGE_1>;
             key-positions = <12 13>;
@@ -552,6 +553,7 @@
             key-positions = <16 17>;
             layers = <DEFAULT_LAYER>;
         };
+        // 左手用レイヤー（10）へ: 数字レイヤーで 30＋31。左手用レイヤーで 30＋31 を押すと Default に戻る
         COMBO_LEFT_HAND_IN {
             bindings = <&to LEFT_HAND_LAYER>;
             key-positions = <30 31>;
@@ -706,7 +708,7 @@
             &kp Q  &kp W  &kp E  &kp R  &kp T  &none  &none  &none  &none  &none
             &kp A  &kp S  &kp D  &kp F  &kp G  &none  &none  &none  &none  &none
             &kp Z  &kp X  &kp C  &kp V  &kp B  &none  &none  &none  &none  &none
-            &none  &kp LANGUAGE_2  &kp LANGUAGE_1  &lt LEFT_HAND4_LAYER SPACE  &mo 11  &mo 12  &none  &none  &none  &none  &none  &none
+            &kp LWIN  &kp LANGUAGE_2  &kp LANGUAGE_1  &lt LEFT_HAND4_LAYER SPACE  &mo 11  &mo 12  &none  &none  &none  &none  &none  &none
             &none  &trans  &trans  &trans  &trans  &none  &none  &none  &none  &none
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
@@ -742,9 +744,9 @@
         LEFT_HAND4_LAYER {
             display-name = "left_hand_4";
             bindings = <
-            &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
-            &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
-            &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
+            &kp ESCAPE  &kp HOME  &kp UP  &kp END  &kp PAGE_UP  &none  &none  &none  &none  &none
+            &kp TAB  &kp LEFT  &kp DOWN  &kp RIGHT  &kp PAGE_DOWN  &none  &none  &none  &none  &none
+            &none  &none  &link_incognito  &kp PAUSE_BREAK  &none  &none  &none  &none  &none  &none
             &none  &none  &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
             &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
             &trans  &trans  &trans  &trans  &trans  &trans
