@@ -114,8 +114,8 @@ struct auto_mouse_data {
     const struct device *dev;
     struct k_mutex lock;
     struct k_work activity_work;
-    /* 「マウス操作」でないキーを押したときの解除（キーの出来事の処理が終わってから行う） */
-    struct k_work deactivate_work;
+    /* 「マウス操作」でないキーを押したので、その出来事をほかの listener に流し終えたら解除する */
+    bool deactivate_pending;
     struct k_work_delayable disable_work;
 
     /* レイヤーの状態 */
@@ -352,15 +352,6 @@ static void activity_work_cb(struct k_work *work) {
     k_mutex_unlock(&data->lock);
 }
 
-static void deactivate_work_cb(struct k_work *work) {
-    struct auto_mouse_data *data = CONTAINER_OF(work, struct auto_mouse_data, deactivate_work);
-    k_mutex_lock(&data->lock, K_FOREVER);
-    if (!is_locked(data)) {
-        deactivate(data);
-    }
-    k_mutex_unlock(&data->lock);
-}
-
 static void disable_work_cb(struct k_work *work) {
     struct k_work_delayable *d_work = k_work_delayable_from_work(work);
     struct auto_mouse_data *data = CONTAINER_OF(d_work, struct auto_mouse_data, disable_work);
@@ -497,11 +488,12 @@ static void handle_position(const struct device *dev,
                 }
                 restart_timeout(dev->config, data);
             } else if (!is_locked(data) && !is_passive_key(dev, ev->position)) {
-                // その場では解除せず、この出来事の処理（と ZMK の combo が預かっていたキーの処理）が終わってから
-                // 解除する。combo の判定中に預かっていた、マウスレイヤーで押したキーが、解除の後に処理されて
-                // 下のレイヤーのキーとして入力されないように。押したこのキーは、マウスレイヤーで &trans か、
-                // 上のレイヤーのキーが働くので、解除の前でも後でも同じキーとして入力される
-                k_work_submit(&data->deactivate_work);
+                // この出来事をほかの listener（ZMK の combo・keymap）に流し終えてから、すぐに解除する
+                // （auto_mouse_listener）。combo の判定中に預かっていた、マウスレイヤーで押したキーが、
+                // 解除の後に処理されて下のレイヤーのキーとして入力されないように。押したこのキーは、
+                // マウスレイヤーで &trans か、上のレイヤーのキーが働くので、解除の前でも後でも同じキーになる。
+                // ワークで後から解除すると、同じ処理でまとめて届いた次のキーがマウスレイヤーで処理されてしまう
+                data->deactivate_pending = true;
             }
         }
     } else if (data->held[ev->position]) {
@@ -574,11 +566,47 @@ static void dispatch(const struct device *dev, const zmk_event_t *eh) {
     }
 }
 
+/* 解除の予約を取り出す（予約を消す） */
+static bool take_deactivate_pending(const struct device *dev) {
+    struct auto_mouse_data *data = dev->data;
+    k_mutex_lock(&data->lock, K_FOREVER);
+    const bool pending = data->deactivate_pending;
+    data->deactivate_pending = false;
+    k_mutex_unlock(&data->lock);
+    return pending;
+}
+
+static void finish_deactivate(const struct device *dev) {
+    struct auto_mouse_data *data = dev->data;
+    k_mutex_lock(&data->lock, K_FOREVER);
+    if (!is_locked(data)) {
+        deactivate(data);
+    }
+    k_mutex_unlock(&data->lock);
+}
+
 #define AUTO_MOUSE_DISPATCH(n) dispatch(DEVICE_DT_INST_GET(n), eh);
+#define AUTO_MOUSE_TAKE_PENDING(n) pending_mask |= take_deactivate_pending(DEVICE_DT_INST_GET(n)) ? BIT(n) : 0;
+#define AUTO_MOUSE_FINISH(n)                                                                       \
+    if (pending_mask & BIT(n)) {                                                                   \
+        finish_deactivate(DEVICE_DT_INST_GET(n));                                                  \
+    }
 
 static int auto_mouse_listener(const zmk_event_t *eh) {
     DT_INST_FOREACH_STATUS_OKAY(AUTO_MOUSE_DISPATCH)
-    return ZMK_EV_EVENT_BUBBLE;
+    // 「マウス操作」でないキーを押した: この出来事を、この listener の次からほかの listener に流し終えてから
+    // 解除する（予約は先に取り出して消す。流している間に、ZMK の combo が預かっていたキーをこの listener に
+    // もう一度届けても、そのキーで二重に流さないように）
+    uint32_t pending_mask = 0;
+    DT_INST_FOREACH_STATUS_OKAY(AUTO_MOUSE_TAKE_PENDING)
+    const struct zmk_position_state_changed *pos = as_zmk_position_state_changed(eh);
+    if (pending_mask == 0 || pos == NULL) {
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+    struct zmk_position_state_changed_event copy = copy_raised_zmk_position_state_changed(pos);
+    ZMK_EVENT_RELEASE(copy);
+    DT_INST_FOREACH_STATUS_OKAY(AUTO_MOUSE_FINISH)
+    return ZMK_EV_EVENT_CAPTURED;
 }
 
 ZMK_LISTENER(auto_mouse_layer, auto_mouse_listener);
@@ -629,7 +657,6 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
         .dev = DEVICE_DT_INST_GET(n),                                                              \
         .lock = Z_MUTEX_INITIALIZER(auto_mouse_data_##n.lock),                                     \
         .activity_work = Z_WORK_INITIALIZER(activity_work_cb),                                     \
-        .deactivate_work = Z_WORK_INITIALIZER(deactivate_work_cb),                                 \
         .disable_work = Z_WORK_DELAYABLE_INITIALIZER(disable_work_cb),                             \
     };                                                                                             \
     static const uint16_t auto_mouse_excluded_##n[] = DT_INST_PROP(n, excluded_positions);         \

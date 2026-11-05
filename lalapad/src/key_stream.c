@@ -206,6 +206,8 @@ static int64_t flight_deadline;
 
 /* いま押されている位置（開始したときや、押されているキーの一覧で知らせるため） */
 static bool pressed[ZMK_KEYMAP_LEN];
+/* 位置ごとに、最後に受け取った出来事の時刻（出し直された古い出来事を見分ける） */
+static int64_t last_event_ts[ZMK_KEYMAP_LEN];
 
 /* 右（子機）との接続の数（Bluetooth の接続・切断の通知で数える。分割していなければ 0 のまま） */
 static atomic_t split_links;
@@ -787,13 +789,15 @@ static int key_stream_listener(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
     k_spinlock_key_t key = k_spin_lock(&lock);
-    // 押した状態が変わらない出来事は送らない（ZMK の combo は、判定のために預かったキーのうち 2 つ目以降を、
-    // listener の最初からもう一度出し直すので、同じキーの「押した」がもう一度届く）
-    if (pressed[pos->position] == pos->state) {
+    // 押した状態が変わらない出来事と、その位置で前に受け取った出来事より古い出来事は送らない（ZMK の combo は、
+    // 判定のために預かったキーを、元の時刻のまま listener の最初からもう一度出し直すので、同じキーの「押した」が
+    // もう一度届いたり、「離した」の後に古い「押した」が届いたりする）
+    if (pressed[pos->position] == pos->state || pos->timestamp < last_event_ts[pos->position]) {
         k_spin_unlock(&lock, key);
         return ZMK_EV_EVENT_BUBBLE;
     }
     pressed[pos->position] = pos->state;
+    last_event_ts[pos->position] = pos->timestamp;
     const bool queued = streaming && position_wanted(stream_mask, pos->position);
     if (queued) {
         push_event((uint8_t)pos->position, pos->state ? FLAG_PRESSED : 0, (uint32_t)pos->timestamp);
