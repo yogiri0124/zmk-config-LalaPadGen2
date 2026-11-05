@@ -577,7 +577,8 @@
             key-positions = <16 17>;
             layers = <DEFAULT_LAYER>;
         };
-        // 左手用レイヤー（10）へ: 数字レイヤーで 30＋31。左手用レイヤーで 30＋31 を押すと Default に戻る
+        // 左手用レイヤー（10）へ: 数字レイヤーで 30＋31。Default に戻るのは left_hand_4（left_hand で 33 を長押し）の
+        // 30＋31 だけ（ほかの左手用レイヤーの 30＋31 では戻らない）
         COMBO_LEFT_HAND_IN {
             bindings = <&to LEFT_HAND_LAYER>;
             key-positions = <30 31>;
@@ -586,7 +587,7 @@
         COMBO_LEFT_HAND_OUT {
             bindings = <&to DEFAULT_LAYER>;
             key-positions = <30 31>;
-            layers = <LEFT_HAND_LAYER>;
+            layers = <LEFT_HAND4_LAYER>;
         };
     };
 
