@@ -569,15 +569,16 @@
     combos {
         compatible = "zmk,combos";
 
+        // Esc・Tab は、数字レイヤー（SECONDARY）では働かない（1・2、6・7 を続けて素早く打ったときに出ないように）
         COMBO_ESC {
             bindings = <&kp ESCAPE>;
             key-positions = <0 1>;
-            layers = <DEFAULT_LAYER CONTROL_LAYER SECONDARY_LAYER TERTIARY_LAYER SYSTEM_LAYER MOUSE_LAYER>;
+            layers = <DEFAULT_LAYER CONTROL_LAYER TERTIARY_LAYER SYSTEM_LAYER MOUSE_LAYER>;
         };
         COMBO_TAB {
             bindings = <&kp TAB>;
             key-positions = <10 11>;
-            layers = <DEFAULT_LAYER CONTROL_LAYER SECONDARY_LAYER TERTIARY_LAYER SYSTEM_LAYER MOUSE_LAYER>;
+            layers = <DEFAULT_LAYER CONTROL_LAYER TERTIARY_LAYER SYSTEM_LAYER MOUSE_LAYER>;
         };
         // かなの単打の面の Esc・Tab は、かなと同じ送信キューで送る（まだ送り終えていないかなを追い越さないように）
         COMBO_KANA_ESC {
