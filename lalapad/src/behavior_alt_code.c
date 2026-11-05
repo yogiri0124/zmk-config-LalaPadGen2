@@ -261,15 +261,35 @@ static bool is_num_lock_press(const struct zmk_keycode_state_changed *ev) {
            ev->keycode == HID_USAGE_KEY_KEYPAD_NUM_LOCK_AND_CLEAR;
 }
 
-/* 自分の送るキー入力。預からずに PC へ通すよう印を付けて送る（押して離すので held には数えない） */
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_STICKY_KEY)
+extern const struct zmk_listener zmk_listener_behavior_sticky_key;
+#elif IS_ENABLED(CONFIG_ZMK_BEHAVIOR_HOLD_TAP)
+extern const struct zmk_listener zmk_listener_behavior_hold_tap;
+#endif
+
+/* 自分の送るキー入力。押して離すので held には数えない。
+ * ZMK 本体の hold-tap・sticky key の listener より後から流す（ZMK v0.3.0 はどちらもリンクの順で sticky key が後）。
+ * hold-tap は、まだ決まっていない間に届いた修飾キー（Alt）を預かり、sticky key は、次に届いたキーに一度だけ
+ * 修飾キーをかけて使い切るので、通すと、Alt だけが後から PC に届いたり（数字がそのまま入り、Alt だけの押下で
+ * メニューに移る）、送信中に押した &sk が Alt コードの数字に使われたりするため。
+ * そのため、このモジュールの listener（預かる処理）やほかの自作モジュールの listener も通らない
+ * （どれも ZMK 本体より前にリンクされる）。どちらもないビルドでは、ふつうに出して、印（raising_*）で見分ける */
 static void raise_own(uint32_t keycode, bool pressed, int64_t timestamp) {
-    const struct zmk_keycode_state_changed ev =
-        zmk_keycode_state_changed_from_encoded(keycode, pressed, timestamp);
-    raising_usage_page = ev.usage_page;
-    raising_keycode = ev.keycode;
-    raising_state = ev.state;
+    struct zmk_keycode_state_changed_event ev = {
+        .header = {.event = &zmk_event_zmk_keycode_state_changed},
+        .data = zmk_keycode_state_changed_from_encoded(keycode, pressed, timestamp),
+    };
+    raising_usage_page = ev.data.usage_page;
+    raising_keycode = ev.data.keycode;
+    raising_state = ev.data.state;
     raising_thread = k_current_get();
-    raise_zmk_keycode_state_changed(ev);
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_STICKY_KEY)
+    ZMK_EVENT_RAISE_AFTER(ev, behavior_sticky_key);
+#elif IS_ENABLED(CONFIG_ZMK_BEHAVIOR_HOLD_TAP)
+    ZMK_EVENT_RAISE_AFTER(ev, behavior_hold_tap);
+#else
+    ZMK_EVENT_RAISE(ev);
+#endif
     raising_thread = NULL;
 }
 
