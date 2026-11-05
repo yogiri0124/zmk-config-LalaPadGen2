@@ -27,7 +27,11 @@
  *   「離れた」が届かなかったときに備え、そのデバイスから touch-stale-ms の間なにも届かなければ離れたとみなす。
  *   この場合は触れているか「分からない」状態として、次に入力が届いたら触れているとみなし直す
  *   （指を置いたまま止めていただけなら、動かせばまた使えるように）。
- *   右が触れている間に切れた場合（「離れた」は届かない）も、この時間で離れたとみなす。
+ *   右（子機）との接続が切れたときは、子機からの中継（zmk,input-split）のデバイスを、すぐに離れたとみなす
+ *   （「離れた」は届かないので、touch-stale-ms を待つと、その間マウスレイヤーが残り、打った文字がマウスレイヤーの
+ *   キーになるため）。
+ *   「触れた」が届かなかったとき（子機からの中継は取りこぼすことがある）に備え、触れていないはずのデバイスから
+ *   TOUCH_GAP_MS より長く途切れた後に動きが届いたら、触れているとみなす（指を離した後の慣性は途切れずに届く）。
  * - 直前のキー入力から require-prior-idle-ms 以内のトラックパッド操作では有効にしない（打鍵中の誤動作防止）。
  *   キー入力は、キーコードの「押す」と、トラックパッド由来でない位置の「押す」（レイヤーのキー、Alt コードの
  *   キーなど、キーコードを出さないものも含める。Alt コードが自分で送るキーは、この listener に届かないため）。
@@ -52,6 +56,9 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/input/input.h>
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE) && IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
+#include <zephyr/bluetooth/conn.h>
+#endif
 #include <drivers/input_processor.h>
 
 #include <zmk/behavior.h>
@@ -73,6 +80,11 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 /* touch-devices に指定できる入力デバイスの数 */
 #define MAX_TOUCH_DEVICES 8
+/* 触れていないはずのデバイスからの入力が、これより長く途切れた後に届いたら、「触れた」を取りこぼしたとみなす
+ * （ドライバは、指を離した後の慣性を 10 ms ごとに途切れずに送る） */
+#define TOUCH_GAP_MS 300
+
+#define WATCH_SPLIT_LINK (IS_ENABLED(CONFIG_ZMK_SPLIT_BLE) && IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL))
 
 /* 初期化の優先度。touch-devices（トラックパッドのドライバ・左右の中継）より後にする必要がある
  * （Zephyr のビルド時チェック）。ロックとワークは静的に初期化しているので、これより前に入力が届いても動く */
@@ -89,6 +101,8 @@ struct auto_mouse_config {
     uint32_t touch_stale_ms;
     const struct device *const *touch_devs;
     size_t num_touch_devs;
+    /* touch_devs のうち、子機からの中継（zmk,input-split）のもの（touch-devices の順番のビット） */
+    uint8_t touch_split_mask;
 };
 
 struct auto_mouse_data {
@@ -121,6 +135,8 @@ struct auto_mouse_data {
     /* touch-stale-ms で離れたとみなしたデバイス。「離れた」を実際には受け取っていないので、次の入力で触れているに戻す */
     uint8_t touch_unknown_mask;
     int64_t touch_last_ms[MAX_TOUCH_DEVICES];
+    /* そのデバイスから最後に何かの入力が届いた時刻（触れているかに関係なく。「触れた」の取りこぼしを見る） */
+    int64_t touch_input_ms[MAX_TOUCH_DEVICES];
 };
 
 static bool position_is_excluded(const struct auto_mouse_config *cfg, uint32_t position) {
@@ -398,6 +414,9 @@ static void handle_touch_input(const struct device *dev, int idx, struct input_e
     struct auto_mouse_data *data = dev->data;
 
     k_mutex_lock(&data->lock, K_FOREVER);
+    const int64_t now = k_uptime_get();
+    const int64_t gap = now - data->touch_input_ms[idx];
+    data->touch_input_ms[idx] = now;
     if (evt->type == INPUT_EV_KEY && evt->code == INPUT_BTN_TOUCH) {
         if (evt->value) {
             data->touch_mask |= BIT(idx);
@@ -416,6 +435,13 @@ static void handle_touch_input(const struct device *dev, int idx, struct input_e
     } else if (data->touch_mask & BIT(idx)) {
         // 触れている間に届いた入力（カーソル移動など）で、まだ触れていることがわかる
         data->touch_last_ms[idx] = k_uptime_get();
+    } else if (evt->type == INPUT_EV_REL && evt->value != 0 && gap > TOUCH_GAP_MS) {
+        // 触れていないはずなのに、途切れた後に動きが届いた（慣性ではない）: 「触れた」を取りこぼした
+        LOG_DBG("Auto mouse: motion from touch device %d after %lld ms, treating as touched", idx,
+                gap);
+        data->touch_mask |= BIT(idx);
+        data->touch_last_ms[idx] = now;
+        restart_timeout(dev->config, data);
     }
     k_mutex_unlock(&data->lock);
 }
@@ -541,6 +567,8 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
                           auto_mouse_touch_cb_##n##_##idx);
 
 #define AUTO_MOUSE_TOUCH_DEV(node_id, prop, idx) DEVICE_DT_GET(DT_PHANDLE_BY_IDX(node_id, prop, idx)),
+#define AUTO_MOUSE_SPLIT_BIT(node_id, prop, idx)                                                   \
+    | (DT_NODE_HAS_COMPAT(DT_PHANDLE_BY_IDX(node_id, prop, idx), zmk_input_split) ? BIT(idx) : 0)
 
 /* excluded-layers・excluded-positions の値が範囲内か（設定の誤りをビルドで見つける） */
 #define AUTO_MOUSE_CHECK_LAYER(node_id, prop, idx)                                                 \
@@ -585,6 +613,9 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
         .touch_devs = COND_CODE_1(DT_INST_NODE_HAS_PROP(n, touch_devices),                         \
                                   (auto_mouse_touch_devs_##n), (NULL)),                            \
         .num_touch_devs = DT_INST_PROP_LEN_OR(n, touch_devices, 0),                                \
+        .touch_split_mask = 0 IF_ENABLED(DT_INST_NODE_HAS_PROP(n, touch_devices),                  \
+                                         (DT_INST_FOREACH_PROP_ELEM(n, touch_devices,              \
+                                                                    AUTO_MOUSE_SPLIT_BIT))),       \
     };                                                                                             \
     DEVICE_DT_INST_DEFINE(n, NULL, NULL, &auto_mouse_data_##n, &auto_mouse_config_##n,             \
                           POST_KERNEL, AUTO_MOUSE_INIT_PRIORITY, &auto_mouse_driver_api);          \
@@ -592,3 +623,40 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
                (DT_INST_FOREACH_PROP_ELEM_VARGS(n, touch_devices, AUTO_MOUSE_TOUCH_CB, n)))
 
 DT_INST_FOREACH_STATUS_OKAY(AUTO_MOUSE_INST)
+
+#if WATCH_SPLIT_LINK
+/* 右（子機）との接続が切れた: 子機からの中継のデバイスを、すぐに離れたとみなす（システムワークキュー） */
+#define AUTO_MOUSE_DATA_PTR(n) &auto_mouse_data_##n,
+static struct auto_mouse_data *const auto_mouse_instances[] = {
+    DT_INST_FOREACH_STATUS_OKAY(AUTO_MOUSE_DATA_PTR)};
+
+static void split_lost_work_cb(struct k_work *work) {
+    for (size_t i = 0; i < ARRAY_SIZE(auto_mouse_instances); i++) {
+        struct auto_mouse_data *data = auto_mouse_instances[i];
+        const struct auto_mouse_config *cfg = data->dev->config;
+        k_mutex_lock(&data->lock, K_FOREVER);
+        if (data->touch_mask & cfg->touch_split_mask) {
+            LOG_DBG("Auto mouse: split link lost, treating relayed touch devices as released");
+            data->touch_mask &= ~cfg->touch_split_mask;
+            restart_timeout(cfg, data);
+        }
+        data->touch_unknown_mask &= ~cfg->touch_split_mask;
+        k_mutex_unlock(&data->lock);
+    }
+}
+
+static K_WORK_DEFINE(split_lost_work, split_lost_work_cb);
+
+static void auto_mouse_split_disconnected(struct bt_conn *conn, uint8_t reason) {
+    ARG_UNUSED(reason);
+    struct bt_conn_info info;
+    // 親機は、右とは自分が central 側（接続を始める側）でつなぐ
+    if (bt_conn_get_info(conn, &info) == 0 && info.role == BT_CONN_ROLE_CENTRAL) {
+        k_work_submit(&split_lost_work);
+    }
+}
+
+BT_CONN_CB_DEFINE(auto_mouse_split_callbacks) = {
+    .disconnected = auto_mouse_split_disconnected,
+};
+#endif

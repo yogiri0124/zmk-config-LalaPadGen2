@@ -9,6 +9,7 @@
 #include <behaviors/mouse_button_toggle.dtsi>
 #include <dt-bindings/lalapad/cursor_slow.h>
 #include <dt-bindings/lalapad/tp_keys.h>
+#include <dt-bindings/lalapad/tp_positions.h>
 
 #define DEFAULT_LAYER   0
 #define CONTROL_LAYER   1
@@ -33,12 +34,17 @@
 
 // オートマウスレイヤー（lalapadgen2.dtsi）のうち、マウスレイヤーの配置に結びつく設定
 // - excluded-layers: 数字・記号レイヤーの間は、トラックパッドを操作してもマウスレイヤーにしない
-// - excluded-positions: マウスレイヤーで &trans でも、押しても解除しない位置（トラックパッドのクリック・ジェスチャー 52〜67）
+// - excluded-positions: マウスレイヤーで &trans でも、押しても解除せず、押している間は時間切れにしない位置
+//   （トラックパッドのクリック・ジェスチャー 52〜67。POS_TP_* は dt-bindings/lalapad/tp_positions.h。離してから数え直す）
 // - passive-positions: マウスレイヤーに割り当てがあっても、押しても解除も延長もしない位置（親指の段の 30〜41 のうち、
 //   33・34 以外。マウスレイヤーで &trans の位置（36〜38）は、ほかのキーと同じく押すと解除する）
 &zip_auto_mouse_layer {
     excluded-layers = <SECONDARY_LAYER TERTIARY_LAYER>;
-    excluded-positions = <52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67>;
+    excluded-positions = <
+        POS_TP_LCLK_L POS_TP_RCLK_L POS_TP_MCLK_L POS_TP_LCLK_R POS_TP_RCLK_R POS_TP_MCLK_R
+        POS_TP_SWIPE_RIGHT_L POS_TP_SWIPE_LEFT_L POS_TP_SWIPE_UP_L POS_TP_SWIPE_DOWN_L POS_TP_PINCH_L
+        POS_TP_SWIPE_RIGHT_R POS_TP_SWIPE_LEFT_R POS_TP_SWIPE_UP_R POS_TP_SWIPE_DOWN_R POS_TP_PINCH_R
+    >;
     passive-positions = <30 31 32 35 36 37 38 39 40 41>;
 };
 

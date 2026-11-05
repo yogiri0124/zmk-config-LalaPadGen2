@@ -95,6 +95,7 @@ static const struct behavior_driver_api behavior_kana_seq_driver_api = {
     KANA_CHECK_MS(n, tap_ms, 10000)                                                                \
     KANA_CHECK_MS(n, wait_ms, 10000)                                                               \
     KANA_CHECK_MS(n, ime_resync_ms, 60000)                                                         \
+    BUILD_ASSERT(DT_INST_PROP_LEN(n, keys) > 0, "kana seq: keys must not be empty");               \
     static const uint32_t behavior_kana_seq_keys_##n[] = DT_INST_PROP(n, keys);                    \
     static const struct behavior_kana_seq_config behavior_kana_seq_config_##n = {                 \
         .keys = behavior_kana_seq_keys_##n,                                                        \

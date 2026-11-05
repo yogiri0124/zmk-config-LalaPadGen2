@@ -95,11 +95,13 @@ static const struct behavior_driver_api behavior_kana_mode_driver_api = {
     BUILD_ASSERT(DT_INST_PROP(n, layer) >= 0 && DT_INST_PROP(n, layer) < ZMK_KEYMAP_LAYERS_LEN,    \
                  "kana_sw: layer is out of range");                                                \
     DT_INST_FOREACH_PROP_ELEM(n, sub_layers, KANA_MODE_CHECK_SUB_LAYER)                            \
-    static const zmk_keymap_layer_id_t behavior_kana_mode_sub_layers_##n[] = {                     \
-        DT_INST_FOREACH_PROP_ELEM_SEP(n, sub_layers, DT_PROP_BY_IDX, (, ))};                       \
+    COND_CODE_0(DT_INST_PROP_LEN(n, sub_layers), (),                                               \
+                (static const zmk_keymap_layer_id_t behavior_kana_mode_sub_layers_##n[] = {        \
+                     DT_INST_FOREACH_PROP_ELEM_SEP(n, sub_layers, DT_PROP_BY_IDX, (, ))};))        \
     static const struct behavior_kana_mode_config behavior_kana_mode_config_##n = {               \
         .layer = DT_INST_PROP(n, layer),                                                           \
-        .sub_layers = behavior_kana_mode_sub_layers_##n,                                           \
+        .sub_layers = COND_CODE_0(DT_INST_PROP_LEN(n, sub_layers), (NULL),                         \
+                                  (behavior_kana_mode_sub_layers_##n)),                            \
         .sub_layers_len = DT_INST_PROP_LEN(n, sub_layers),                                         \
         .tap_ms = DT_INST_PROP(n, tap_ms),                                                         \
         .wait_ms = DT_INST_PROP(n, wait_ms),                                                       \

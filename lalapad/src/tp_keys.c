@@ -370,6 +370,13 @@ static void mode_pressed(const struct tp_keys_mode *mode,
             hm->convert_scroll = any_converted(&mode->bindings[TP_KEYS_SCROLL_FIRST]);
         }
         gen++;
+        // 前のモードで動かした量で送るはずだった、まだ送っていない分は捨てる（後から押したモードが働いている間に、
+        // 前のモードの矢印などが送られ続けないように）
+        for (size_t i = queue_len; i > 0; i--) {
+            if (queue[i - 1].motion) {
+                remove_queued(i - 1);
+            }
+        }
         // 描きかけの一筆書きは捨てる（後から押したモードが働くので、前のモードで描いた分を、指を離したときに
         // 送らないように）
         for (size_t i = 0; i < MAX_SLOTS; i++) {

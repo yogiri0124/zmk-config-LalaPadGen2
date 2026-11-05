@@ -697,6 +697,7 @@ static int behavior_alt_code_init(const struct device *dev) {
                              2 * DT_INST_PROP(n, cursor_left) + MAX_STEPS_EXTRA <=                 \
                          MAX_STEPS,                                                                \
                  "alt code: too many codes or cursor-left");                                       \
+    BUILD_ASSERT(DT_INST_PROP_LEN(n, codes) > 0, "alt code: codes must not be empty");             \
     static const uint32_t behavior_alt_code_codes_##n[] = DT_INST_PROP(n, codes);                  \
     static const struct behavior_alt_code_config behavior_alt_code_config_##n = {                 \
         .codes = behavior_alt_code_codes_##n,                                                      \
