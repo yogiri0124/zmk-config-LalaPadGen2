@@ -40,6 +40,9 @@ struct behavior_kana_seq_config {
     bool ime_on;
 };
 
+// behavior のノードがないとき（入力処理など、同じモジュールのほかの部分だけを使うとき）に未使用の警告を出さない
+#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
+
 static int on_kana_seq_binding_pressed(struct zmk_behavior_binding *binding,
                                        struct zmk_behavior_binding_event event) {
     const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
@@ -105,3 +108,5 @@ static const struct behavior_driver_api behavior_kana_seq_driver_api = {
                             CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &behavior_kana_seq_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(KANA_SEQ_INST)
+
+#endif // DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)

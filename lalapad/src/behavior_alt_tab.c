@@ -14,6 +14,11 @@
  * 順方向と逆方向のキーを重ねて押したとき（4 を離す前に 3 を押した、など）は、押しているほうの Tab を先に離してから
  * 次を押す（同じ Tab を離さずに押し重ねると、PC には2回目の押下として届かないため）。
  *
+ * 制約: 送る Alt・Tab はふつうのキー入力として出すので、長押しの判定中のキー（&mt2・&num_mo など）があると、
+ * ZMK の hold-tap が修飾キーの Alt を預かり、判定が決まるまで PC に届かない（切り替えの終わりに Alt を離すのが
+ * 遅れて、その間に押したキーが切り替えの画面に届くことがある）。Alt コードの送信中の入力として預けられる必要が
+ * あるので、hold-tap より後から流すことはしない。
+ *
  * 状態はシステムワークキューで触る（behavior のコールバック、listener、接続先の切り替えのワーク）。
  */
 
@@ -29,8 +34,12 @@
 #include <zmk/events/endpoint_changed.h>
 #include <zmk/events/keycode_state_changed.h>
 #include <zmk/events/layer_state_changed.h>
+#include <zmk/keymap.h>
 
 #include <dt-bindings/zmk/keys.h>
+
+#include "alt_code.h"
+#include "layer_lock.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -45,8 +54,12 @@ static bool active;
 static int active_layer;
 /* 今押している Tab（TAB または LS(TAB)。押していなければ 0） */
 static uint32_t held_tab;
+/* held_tab を押したキーの位置（離したキーが、押したままのキーかを見分ける） */
+static uint32_t held_tab_position;
 /* 自分の送っているキー入力（ほかのキーの入力と見分ける） */
 static bool raising;
+/* 自分のキー入力を送っている最中に、押し始めたレイヤーが解除された（送り終えてから終える） */
+static bool end_after_raise;
 
 static void raise_key(uint32_t keycode, bool pressed) {
     raising = true;
@@ -86,17 +99,28 @@ static int on_alt_tab_binding_pressed(struct zmk_behavior_binding *binding,
         raise_key(held_tab, false);
     }
     held_tab = tab_keycode(binding);
+    held_tab_position = event.position;
     raise_key(held_tab, true);
+    // 送った Alt・Tab の処理の中でレイヤーが解除された（Num Word が Tab で終わったなど）: 送り終えてから終える
+    // （処理の中で終えると、Tab の「押す」が PC に届く前に「離す」を送ってしまい、Tab が押されたままになる）
+    if (end_after_raise) {
+        end_after_raise = false;
+        end_switch();
+    }
     return ZMK_BEHAVIOR_OPAQUE;
 }
 
 static int on_alt_tab_binding_released(struct zmk_behavior_binding *binding,
                                        struct zmk_behavior_binding_event event) {
-    // 後から押した別のキーに Tab を引き継いでいたら、そちらの分は離さない
+    // 後から押した別のキーに Tab を引き継いでいたら、そちらの分は離さない（同じ向きのキーでも、位置で見分ける）
     const uint32_t keycode = tab_keycode(binding);
-    if (held_tab == keycode) {
+    if (held_tab == keycode && held_tab_position == event.position) {
         raise_key(keycode, false);
         held_tab = 0;
+    }
+    if (end_after_raise) {
+        end_after_raise = false;
+        end_switch();
     }
     return ZMK_BEHAVIOR_OPAQUE;
 }
@@ -122,16 +146,27 @@ static int alt_tab_listener(const zmk_event_t *eh) {
     }
     const struct zmk_keycode_state_changed *kc = as_zmk_keycode_state_changed(eh);
     if (kc != NULL) {
-        // ほかのキーの「押す」: そのキーより先に Alt を離す（この listener は ZMK 本体の HID への反映より前に呼ばれる）
-        if (kc->state && !raising) {
+        // ほかのキーの「押す」: そのキーより先に Alt を離す（この listener は ZMK 本体の HID への反映より前に呼ばれる）。
+        // Alt コードの送信が自分で送るキー（テンキーの数字・IME オン など）では終えない（送っている間に始めた
+        // 切り替えが、送信の続きで確定しないように。ふつうは ZMK 本体の hold-tap・sticky key より後から流れて
+        // ここには届かない。届くビルドのために見分ける）。この listener は Alt コードの listener より前にある
+        // （CMakeLists.txt）ので、Alt コードが預けて後から通し直す入力は見ない（届いた時点で見ている）
+        if (kc->state && !raising && !alt_code_is_own_event(kc)) {
             end_switch();
         }
         return ZMK_EV_EVENT_BUBBLE;
     }
     const struct zmk_layer_state_changed *ly = as_zmk_layer_state_changed(eh);
     if (ly != NULL) {
-        if (!ly->state && ly->layer == active_layer) {
-            end_switch();
+        // 解除の出来事でも、まだ有効なら終えない（固定したレイヤーは、&to などで解除されても固定の listener が
+        // 有効にし直す。この listener はそれより先に呼ばれるので、固定しているかも見る）
+        if (!ly->state && ly->layer == active_layer && !zmk_keymap_layer_active(active_layer) &&
+            !layer_lock_is_locked(active_layer)) {
+            if (raising) {
+                end_after_raise = true;
+            } else {
+                end_switch();
+            }
         }
         return ZMK_EV_EVENT_BUBBLE;
     }

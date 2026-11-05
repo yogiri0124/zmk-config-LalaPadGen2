@@ -15,6 +15,9 @@
 
 #include "scroll_snap_gate.h"
 
+// behavior だけのとき（入力処理のノードがないとき）に未使用の警告を出さない
+#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
+
 /* 初期化の優先度。渡し先の入力処理（processor プロパティ）より後にする必要がある
  * （Zephyr のビルド時チェック）。初期化する状態は持たない */
 #define SCROLL_SNAP_GATE_INIT_PRIORITY 99
@@ -46,3 +49,5 @@ static struct zmk_input_processor_driver_api scroll_snap_gate_driver_api = {
                           SCROLL_SNAP_GATE_INIT_PRIORITY, &scroll_snap_gate_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(SCROLL_SNAP_GATE_INST)
+
+#endif // DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)

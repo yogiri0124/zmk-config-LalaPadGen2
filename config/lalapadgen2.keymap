@@ -25,6 +25,8 @@
 #define LEFT_HAND3_LAYER 12
 #define LEFT_HAND4_LAYER 13
 
+// &mt・&lt: 短く押してから 200ms 以内にもう一度押し続けると、長押しにせずタップを押し続ける（Space の連続入力など）。
+// &mt は今どこにも置いていない（エディタで置いたときの既定）
 &mt { quick-tap-ms = <200>; };
 
 &lt { quick-tap-ms = <200>; };
@@ -47,7 +49,9 @@
 
         // Num Word（自作モジュール lalapad/ の zmk,behavior-word-layer）: 数字レイヤーを、数字と continue-list のキー
         // （Backspace・Delete・. , + - * / =）を押している間だけ続け、ほかのキーを押すと自動で戻す。Shift などの修飾キーでは
-        // 戻さない（ignore-modifiers）。ほかの操作（33 の長押しを離したなど）で数字レイヤーが解除されたら、こちらも終わる。
+        // 戻さない（ignore-modifiers）。ほかの操作（30＋31 のコンボの &to など）で数字レイヤーが解除されたら、こちらも終わる。
+        // 記号レイヤー（38）を押したら終える（exit-layers）: 数字レイヤーと記号レイヤーが同時に有効になると
+        // システムレイヤー（bootloader・BT_CLR など）になるため。Num Word の間に 38 を押すと、記号レイヤーになる。
         // 使い方: &num_word SECONDARY_LAYER
         num_word: num_word {
             compatible = "zmk,behavior-word-layer";
@@ -55,17 +59,27 @@
             continue-list = <BACKSPACE DELETE DOT COMMA PLUS MINUS STAR FSLH EQUAL>;
             ignore-numbers;
             ignore-modifiers;
+            exit-layers = <TERTIARY_LAYER>;
+        };
+
+        // 33 の長押し: 押している間だけ数字レイヤー（&mo と同じ）。Num Word の間に押したら、Num Word を引き継ぐ
+        // （ほかのキーや 38 を押しても数字レイヤーのまま。33 と 38 でシステムレイヤーになる）。
+        // 使い方: &num_hold SECONDARY_LAYER
+        num_hold: num_hold {
+            compatible = "zmk,behavior-word-layer";
+            #binding-cells = <1>;
+            momentary;
         };
 
         // 33: タップで Num Word（数字レイヤーを、数字を打っている間だけ続ける）、長押しで今までどおり押している間だけ
-        // 数字レイヤー。長押しの間にほかのキーを押したら、すぐに長押しとして扱う（hold-preferred）。
+        // 数字レイヤー（num_hold）。長押しの間にほかのキーを押したら、すぐに長押しとして扱う（hold-preferred）。
         // 使い方: &num_mo SECONDARY_LAYER SECONDARY_LAYER
         num_mo: num_mo {
             compatible = "zmk,behavior-hold-tap";
             #binding-cells = <2>;
             flavor = "hold-preferred";
             tapping-term-ms = <200>;
-            bindings = <&mo>, <&num_word>;
+            bindings = <&num_hold>, <&num_word>;
         };
 
         mt2: mod_tap2 {
@@ -249,7 +263,7 @@
         // 固定する（&mo のキーを離しても、オートマウスレイヤーの時間切れでも切れない。マウスレイヤーでは、&trans のキーを
         // 押しても切れず、そのキーは下のレイヤーのキーとして入力される）。もう一度押すと固定をやめて、そのレイヤーを解除する
         // （オートマウスレイヤーなら、ふだんどおり手を離してから時間を数え直す）。Default と system_layer（数字＋記号で
-        // 有効になるレイヤー）以外のどのレイヤーにも置ける
+        // 有効になるレイヤー）以外のどのレイヤーにも置ける。かなのレイヤーの固定は、かなモードを抜けるとやめる
         lyr_lock: lyr_lock {
             compatible = "zmk,behavior-layer-lock";
             display-name = "Lyr Lock";
@@ -354,6 +368,9 @@
             #binding-cells = <0>;
             codes = <33116 33116>;
             commit-ime;
+            // 送る操作（押す・離す）が多い（最大 32）ので、pair_cquote と同じく間隔を広げる
+            tap-ms = <10>;
+            wait-ms = <10>;
         };
         // ～ （全角チルダ U+FF5E）を入力。日本語 Windows（cp932）の Alt+33120（Shift_JIS 0x8160）で送る。
         sym_tilde: sym_tilde {
@@ -363,29 +380,6 @@
             codes = <33120>;
             commit-ime;
         };
-        // --- kj_: 漢字 1 文字（ミニ漢直。Windows の Alt コードで送る。ローマ字テーブル・IME の状態に関係なく、確定した文字で入る） ---
-        // 押すと Num Word を終える（「3時」のように打ったら、元のレイヤーに戻る）。数字レイヤーの 20〜22 に置いている
-        // 時（Shift_JIS 0x8E9E）
-        kj_ji: kj_ji {
-            compatible = "zmk,behavior-alt-code";
-            display-name = "時";
-            #binding-cells = <0>;
-            codes = <36510>;
-        };
-        // 人（Shift_JIS 0x906C）
-        kj_hito: kj_hito {
-            compatible = "zmk,behavior-alt-code";
-            display-name = "人";
-            #binding-cells = <0>;
-            codes = <36972>;
-        };
-        // 日（Shift_JIS 0x93FA）
-        kj_hi: kj_hi {
-            compatible = "zmk,behavior-alt-code";
-            display-name = "日";
-            #binding-cells = <0>;
-            codes = <37882>;
-        };
         // “” を入力してカーソルを中に。Alt+33127 = “、Alt+33128 = ”（Shift_JIS 0x8167・0x8168）
         pair_cquote: pair_cquote {
             compatible = "zmk,behavior-alt-code";
@@ -394,9 +388,38 @@
             codes = <33127 33128>;
             cursor-left = <1>;
             commit-ime;
-            // 送る打鍵が多い（最大 34）ので、Bluetooth の送信待ちがあふれないよう間隔を広げる
+            // 送る操作（押す・離す）が多い（最大 34）ので、Bluetooth の送信待ちがあふれないよう間隔を広げる
             tap-ms = <10>;
             wait-ms = <10>;
+        };
+
+        // --- kj_: 漢字 1 文字（ミニ漢直。Windows の Alt コードで送る。ローマ字テーブルに関係なく、確定した文字で入る） ---
+        // 押すと Num Word を終える（「3時」のように打ったら、元のレイヤーに戻る）。数字レイヤーの 20〜22 に置いている。
+        // commit-ime: IME オンで打った確定前の数字（「3」）を先に確定させる（付けないと「時3」の順に入る）。
+        // 送り終えると IME オンになる（IME オフのときに押した場合も）
+        // 時（Shift_JIS 0x8E9E）
+        kj_ji: kj_ji {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "時";
+            #binding-cells = <0>;
+            codes = <36510>;
+            commit-ime;
+        };
+        // 人（Shift_JIS 0x906C）
+        kj_hito: kj_hito {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "人";
+            #binding-cells = <0>;
+            codes = <36972>;
+            commit-ime;
+        };
+        // 日（Shift_JIS 0x93FA）
+        kj_hi: kj_hi {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "日";
+            #binding-cells = <0>;
+            codes = <37882>;
+            commit-ime;
         };
 
         // --- かな入力（自作モジュール lalapad/）。Keymap Editor が認識できるよう、定義はこのファイルに置く ---
@@ -422,7 +445,8 @@
         // かなモードを抜ける処理の最中に押したときは捨て、送信待ちがあふれたときは順番を守って打ち切る
         // （ZMK 標準のマクロには、この処理がない）。新しい記号は、ここに同じ形で書き足すだけでよい。
         // ime-on: かなモードでないとき、打鍵の前に毎回 IME オン（LANGUAGE_1）を送る（入力後も IME はオンのまま）。
-        // かなモード中は、ime-on の有無に関係なく、しばらく打っていなかったときだけ IME オンを先に送る。
+        // かなモード中は、ime-on の有無に関係なく、しばらく打っていなかったとき（と、接続先の切り替えやトラックパッドの
+        // クリック・ジェスチャーの後）だけ IME オンを先に送る。
 
         // --- ks_: かなと一緒に打つ記号 ---
         ks_touten: ks_touten {
@@ -553,7 +577,8 @@
             key-positions = <16 17>;
             layers = <DEFAULT_LAYER>;
         };
-        // 左手用レイヤー（10）へ: 数字レイヤーで 30＋31。左手用レイヤーで 30＋31 を押すと Default に戻る
+        // 左手用レイヤー（10）へ: 数字レイヤーで 30＋31。Default に戻るのは left_hand_4（left_hand で 33 を長押し）の
+        // 30＋31 だけ（ほかの左手用レイヤーの 30＋31 では戻らない）
         COMBO_LEFT_HAND_IN {
             bindings = <&to LEFT_HAND_LAYER>;
             key-positions = <30 31>;
@@ -562,7 +587,7 @@
         COMBO_LEFT_HAND_OUT {
             bindings = <&to DEFAULT_LAYER>;
             key-positions = <30 31>;
-            layers = <LEFT_HAND_LAYER>;
+            layers = <LEFT_HAND4_LAYER>;
         };
     };
 
@@ -582,7 +607,7 @@
             >;
         };
 
-        // Control レイヤー（Default の 42 を押すたびに入る／戻る）。左右とも同じ並びで、矢印・Page Up／Down・数字・F11 を置く。
+        // Control レイヤー（Default の 42 を押すたびに入る／戻る）。左右に、矢印・Page Up／Down・数字・F11 を置く（上の段は左右対称、矢印の段は左右とも同じ並び）。
         // Default のすぐ上に置くので、数字・記号・マウス・かなのレイヤーは、この上に重なって今までどおり使える。
         CONTROL_LAYER {
             display-name = "Control";

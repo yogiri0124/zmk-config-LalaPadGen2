@@ -20,6 +20,17 @@
  * - 指を離した後の慣性による動き（触れているかはドライバの INPUT_BTN_TOUCH で知る）は、キーにしない。
  *   変えた触れ方の後の慣性は、モードのキーを先に離していても捨てる（カーソルやスクロールが残って動かないように）。
  *   INPUT_BTN_TOUCH が一度も届いていないトラックパッドでは、慣性も動きとして数える。
+ *   離れている間の動きが COAST_GAP_MS より長く途切れた後に届いたら、慣性ではなく、「触れた」が届かなかった
+ *   （右のトラックパッドは分割の通信で取りこぼすことがある）新しい触れ方とみなし、次の INPUT_BTN_TOUCH まで
+ *   触れているかわからない状態として扱う（その触れ方の間、ずっと慣性として扱って、動きを捨て続けないように）。
+ *   離れてから COAST_MAX_MS より後の動きも同じ（慣性が途切れないうちに触れ直して「触れた」が届かなかったとき、
+ *   ドライバの慣性の最長の時間で区切る。それまでの間は慣性として扱われる）。
+ * - 「離れた」が届かなかったとき（右のトラックパッド）は、次の INPUT_BTN_TOUCH まで触れているとみなすので、
+ *   離した後の慣性を指の動きとして扱う（モードのキーを押していると、キーに変わる。止まった指と慣性は見分けられない
+ *   ので、時間では区切らない）。
+ * - 2 本指でスクロールした後、1 本の指を残したまま止めると、ドライバはスクロールの慣性を送る（触れたままなので
+ *   慣性と見分けられず、モードのキーを押していると、キーに変わる）。指をすべて離せば、慣性はキーにしない。
+ *   カーソルとスクロールは別々に数える（一筆書きの後に 2 本指でスクロールしても、一筆書きの慣性は捨てる）。
  * - モードのキーを押したときのレイヤーが解除されたら（押したままでも）、そのモードは終わる（描きかけの
  *   一筆書きは送らずに捨てる）。トラックパッドが止まったままにならないように。
  * - INPUT_BTN_TOUCH は、見たあと常に止める（リスナーは使わず、通すと空のマウスのレポートを送るため。
@@ -28,6 +39,8 @@
  *   （ZMK_INPUT_PROC_STOP）。リスナーのレイヤーごとの上書き（子ノード。今は使っていない）の中では、STOP しても
  *   リスナー本体の集計・送信に進むため。
  * - ドライバが 1 組で送る動き（X と Y など）は、組の途中でモードが変わっても、組の最初と同じ扱いにする。
+ *   組の続き（X の後の Y、横ホイールの後の縦ホイール）でない動きが届いたら、前の組の続き（同期つき）が
+ *   届かなかったとみなして、新しい組にする。
  * - 2 本指のピンチ（BTN_7 と Ctrl＋ホイール）は考えていない（ドライバの設定でピンチを無効にしてある）。
  *
  * 入力処理は入力スレッドで呼ばれる。behavior はシステムワークキューで呼ぶ（自作の behavior は状態を
@@ -57,6 +70,7 @@
 
 #include <dt-bindings/lalapad/tp_keys.h>
 
+#include "layer_lock.h"
 #include "tp_keys.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
@@ -73,6 +87,11 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define QUEUE_LEN 16
 /* 動かした量で送る分のうち、待っておける数 */
 #define MAX_PENDING_STEPS 8
+/* 離れている間の動きがこれより長く途切れたら、慣性ではない（ドライバの慣性は、続けて送られる） */
+#define COAST_GAP_MS 300
+/* 離れてからこれより長くたった動きも、慣性ではない（ドライバの慣性は最長 3000 ms。*_INERTIA_MAX_DURATION_MS） */
+/* （ドライバは慣性の時間を少し多めに数え、送るのも少し遅れるので、余裕を足す） */
+#define COAST_MAX_MS (3000 + COAST_GAP_MS)
 /* 1 回の入力で数える回数の上限（大きな値が届いても、待っておける数を超えて数えない） */
 #define MAX_STEPS_PER_EVENT MAX_PENDING_STEPS
 /* 捨てるタップ・ジェスチャー（INPUT_BTN_0〜7） */
@@ -102,14 +121,20 @@ struct slot {
     /* INPUT_BTN_TOUCH が届いたことがあるか、いま触れているか */
     bool touch_known;
     bool touching;
-    /* 今の触れ方（指を離した後の慣性を含む）で、動きをキーに変えたか */
-    bool converted_this_touch;
+    /* 今の触れ方（指を離した後の慣性を含む）で、カーソル・スクロールの動きをキーに変えたか */
+    bool converted_cursor;
+    bool converted_scroll;
+    /* 離れている間に最後に動きを受け取った時刻（慣性が途切れたかを見る）と、離れた時刻 */
+    uint32_t last_coast_ms;
+    uint32_t released_ms;
     /* 捨てたタップ・ジェスチャーのボタン（「離した」も捨てる。押すたびに決め直す） */
     uint8_t buttons_dropped;
     /* 同期（sync）のない動きを受け取った後で、同じ組の続きを待っているか、その組を捨てているか
      * （ドライバは X と Y、横と縦のホイールを 1 組で送る。組の途中でモードが変わっても、組ごとに同じ扱いにする） */
     bool in_frame;
     bool frame_dropped;
+    /* 組の最初の動きの種類（INPUT_REL_*） */
+    uint16_t frame_code;
     /* 最後に見たモードの切り替えの回数（変わったら、たまった量を捨てる） */
     uint32_t gen;
     struct axis_acc cursor;
@@ -188,10 +213,11 @@ static void remove_queued(size_t i) {
 
 /* 送る列に足す。足したら true */
 static bool enqueue(const struct held_mode *hm, const struct zmk_behavior_binding *b, bool motion) {
-    if (is_trans(b)) {
+    if (!motion && is_trans(b)) {
         return false;
     }
     if (motion) {
+        // &trans の向きに動かしたときも、ほかの向きの待っている分は捨てる（下で、足さずに戻る）
         // 違う向き（または違う押し方）の分が待っていたら捨てる。同じ向きの分は MAX_PENDING_STEPS まで
         size_t pending = 0;
         bool other = false;
@@ -209,7 +235,7 @@ static bool enqueue(const struct held_mode *hm, const struct zmk_behavior_bindin
             }
             pending = 0;
         }
-        if (pending >= MAX_PENDING_STEPS) {
+        if (is_trans(b) || pending >= MAX_PENDING_STEPS) {
             return false;
         }
     }
@@ -235,11 +261,6 @@ static void reset_stroke(struct slot *s) {
     s->len = 0;
     s->last_dir = 0;
     s->overflow = false;
-}
-
-static void reset_motion(struct slot *s) {
-    s->cursor = (struct axis_acc){0};
-    s->scroll = (struct axis_acc){0};
 }
 
 /* 描いた並びに一致するものを送り、一筆書きを終える。送るものを足したら true */
@@ -349,6 +370,13 @@ static void mode_pressed(const struct tp_keys_mode *mode,
             hm->convert_scroll = any_converted(&mode->bindings[TP_KEYS_SCROLL_FIRST]);
         }
         gen++;
+        // 描きかけの一筆書きは捨てる（後から押したモードが働くので、前のモードで描いた分を、指を離したときに
+        // 送らないように）
+        for (size_t i = 0; i < MAX_SLOTS; i++) {
+            if (slots[i].stroke.mode != NULL) {
+                reset_stroke(&slots[i]);
+            }
+        }
     } else {
         full = true;
     }
@@ -405,7 +433,9 @@ static int tp_keys_layer_listener(const zmk_event_t *eh) {
     }
     k_spinlock_key_t key = k_spin_lock(&lock);
     for (size_t i = held_len; i > 0; i--) {
-        if (!zmk_keymap_layer_active(held[i - 1].layer)) {
+        // 固定したレイヤーは、&to などで解除されても固定の listener が有効にし直す（listener の呼ばれる順番に
+        // 頼らないように、固定しているかも見る）
+        if (!zmk_keymap_layer_active(held[i - 1].layer) && !layer_lock_is_locked(held[i - 1].layer)) {
             const uint32_t seq = held[i - 1].seq;
             remove_held(i - 1);
             for (size_t j = 0; j < MAX_SLOTS; j++) {
@@ -426,6 +456,11 @@ ZMK_SUBSCRIPTION(tp_keys, zmk_layer_state_changed);
 #if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
 
 /* ---- 入力処理（入力スレッド。以下もロックを取った状態で呼ぶ） ---- */
+
+static void reset_motion(struct slot *s) {
+    s->cursor = (struct axis_acc){0};
+    s->scroll = (struct axis_acc){0};
+}
 
 static struct slot *find_slot(const struct device *dev) {
     for (size_t i = 0; i < MAX_SLOTS; i++) {
@@ -545,14 +580,26 @@ static bool handle_rel(struct slot *s, const struct input_event *event, bool *qu
         reset_motion(s);
     }
 
-    // 慣性（触れていない間の動き）か
+    // 慣性（触れていない間の動き）か。途切れた後の動きは、「触れた」が届かなかった新しい触れ方とみなす
+    if (s->touch_known && !s->touching) {
+        const uint32_t now = k_uptime_get_32();
+        if (now - s->last_coast_ms > COAST_GAP_MS || now - s->released_ms > COAST_MAX_MS) {
+            // 触れているかわからない状態に戻す（次の INPUT_BTN_TOUCH で知り直す）。動きとして数える
+            s->touch_known = false;
+            s->converted_cursor = false;
+            s->converted_scroll = false;
+        } else {
+            s->last_coast_ms = now;
+        }
+    }
     const bool coasting = s->touch_known && !s->touching;
+    bool *converted = is_cursor ? &s->converted_cursor : &s->converted_scroll;
     const struct held_mode *hm = active_mode();
 
     if (hm != NULL && hm->mode->kind == TP_KEYS_KIND_STROKE && is_cursor) {
         if (!coasting) {
             track_stroke(s, hm, dx, dy);
-            s->converted_this_touch = true;
+            *converted = true;
         }
         return true;
     }
@@ -563,17 +610,17 @@ static bool handle_rel(struct slot *s, const struct input_event *event, bool *qu
                                                   TP_KEYS_CURSOR_FIRST)
                                  : convert_motion(&s->scroll, dx, dy, hm->mode->scroll_step, hm,
                                                   TP_KEYS_SCROLL_FIRST);
-            s->converted_this_touch = true;
+            *converted = true;
         }
         return true;
     }
     if (!coasting) {
         // モードのキーを離した後に、触れたままふつうに動かしたら、その後の慣性はふつうに通す
-        s->converted_this_touch = false;
+        *converted = false;
         return false;
     }
     // 変えた触れ方の後の慣性は、モードのキーを離していても捨てる
-    return s->converted_this_touch;
+    return *converted;
 }
 
 /* KEY の入力（触れている／離れた、タップ・ジェスチャー）。捨てるなら true */
@@ -587,8 +634,11 @@ static bool handle_key(struct slot *s, const struct input_event *event, bool *qu
         // 触れ始め・離れたときに、たまった量と縦横の決定を捨てる。離れたら一筆書きを決める
         reset_motion(s);
         if (s->touching) {
-            s->converted_this_touch = false;
+            s->converted_cursor = false;
+            s->converted_scroll = false;
         } else {
+            s->last_coast_ms = k_uptime_get_32();
+            s->released_ms = s->last_coast_ms;
             *queued |= finish_stroke(s);
         }
         // リスナーは INPUT_BTN_TOUCH を使わない（同期つきなので、通すと空のマウスのレポートを毎回送る）。
@@ -625,6 +675,15 @@ static int tp_keys_handle_event(const struct device *dev, struct input_event *ev
     if (s != NULL && event->type == INPUT_EV_KEY) {
         drop = handle_key(s, event, &queued);
     } else if (s != NULL) {
+        // 組の続き（X の後の Y、横ホイールの後の縦ホイール）でなければ、前の組の続きが届かなかった。新しい組として扱う
+        if (s->in_frame &&
+            !((s->frame_code == INPUT_REL_X && event->code == INPUT_REL_Y) ||
+              (s->frame_code == INPUT_REL_HWHEEL && event->code == INPUT_REL_WHEEL))) {
+            s->in_frame = false;
+        }
+        if (!s->in_frame) {
+            s->frame_code = event->code;
+        }
         // 組の途中なら、組の最初の扱いに合わせる（通した組は続きも通し、捨てた組は続きも捨てる）
         if (s->in_frame && !s->frame_dropped) {
             drop = false;

@@ -47,6 +47,8 @@
 #include <dt-bindings/zmk/keys.h>
 
 #include "kana_output.h"
+#include "layer_lock.h"
+#include "tp_positions.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -66,13 +68,6 @@ BUILD_ASSERT(DT_NODE_EXISTS(DT_NODELABEL(kana_sync)),
 #define SYNC_MARKER 2
 #define SYNC_MASK_ON 3
 #define SYNC_MASK_OFF 4
-
-/* トラックパッドのクリック・ジェスチャーのキー位置（config/boards/shields/lalapadgen2/lalapadgen2.dtsi の
- * POS_TP_*。52〜57 がクリック、58〜67 がジェスチャー）。押した後は、ほかのウィンドウや入力欄に移って
- * IME がオフになっているかもしれないので、次のかな・記号の前に IME オンを送り直す */
-#define TP_POS_FIRST 52
-#define TP_POS_LAST 67
-BUILD_ASSERT(TP_POS_LAST < ZMK_KEYMAP_LEN, "kana: trackpad positions are out of range");
 
 /* ---- 送信キュー ---- */
 
@@ -412,9 +407,12 @@ void kana_output_on_sync(uint32_t token) {
     // ここに来た時点で、合図より前に並べた送信（かな・IME オフ）はすべて実行済み。
     // 親指シフト面などを押したまま抜けた場合に備えて、それらも解除する
     // （後で親指を離したときの &mo の解除は、すでに解除済みなので何も起きない）
+    // 固定していても抜ける（固定をやめてから解除する。固定したままだと、解除してもすぐ有効にし直される）
     for (size_t i = 0; i < off_sub_layers_len; i++) {
+        layer_lock_forget(off_sub_layers[i]);
         zmk_keymap_layer_deactivate(off_sub_layers[i]); // 有効でなければ何も起きない
     }
+    layer_lock_forget(kana_layer);
     zmk_keymap_layer_deactivate(kana_layer);
     kana_active = false;
     off_stage = KANA_OFF_NONE;
@@ -432,7 +430,10 @@ bool kana_mode_exiting(void) { return off_stage != KANA_OFF_NONE; }
  * （ほかの PC・ウィンドウ・入力欄に移って、IME がオフになっているかもしれないため） */
 static int kana_output_listener(const zmk_event_t *eh) {
     if (as_zmk_layer_state_changed(eh) != NULL) {
-        if (kana_active && off_stage == KANA_OFF_NONE && !zmk_keymap_layer_active(kana_layer)) {
+        // 固定したかなレイヤーは、&to などで解除されても固定の listener が有効にし直す（この listener はそれより
+        // 先に呼ばれるので、固定しているかも見る）
+        if (kana_active && off_stage == KANA_OFF_NONE && !zmk_keymap_layer_active(kana_layer) &&
+            !layer_lock_is_locked(kana_layer)) {
             kana_active = false;
             LOG_DBG("Kana layer deactivated elsewhere, kana mode off");
         }
@@ -495,8 +496,10 @@ void kana_mode_off(const struct zmk_behavior_binding_event *event, zmk_keymap_la
         // かな配列モードではないのに、かなのレイヤーが（Studio で割り当てた &tog などで）有効になっている:
         // &kana_key は何も送らないので、レイヤーだけ解除して抜けられるようにする（有効でなければ何も起きない）
         for (size_t i = 0; i < sub_layers_len; i++) {
+            layer_lock_forget(sub_layers[i]);
             zmk_keymap_layer_deactivate(sub_layers[i]);
         }
+        layer_lock_forget(layer);
         zmk_keymap_layer_deactivate(layer);
         return;
     }

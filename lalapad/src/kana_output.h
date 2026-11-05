@@ -97,7 +97,9 @@ void kana_mode_off(const struct zmk_behavior_binding_event *event, zmk_keymap_la
                    const zmk_keymap_layer_id_t *sub_layers, size_t sub_layers_len, uint32_t tap_ms,
                    uint32_t wait_ms);
 
-/* 目印が処理されたときに呼ばれる関数（目印は並べた順に処理される） */
+/* 目印が処理されたときに呼ばれる関数（目印は並べた順に処理される）。behavior queue の処理の中で呼ばれるので、
+ * この中で behavior queue に足さないこと（ZMK の behavior queue は、処理の中で足されると、内側で残りを流し、
+ * 外側は内側が予約した待ち時間を無視して次へ進む） */
 typedef void (*kana_output_marker_cb_t)(void);
 
 /* 目印が処理されたときに呼ぶ関数を登録する（1つだけ。Alt コードが初期化のときに登録する） */

@@ -28,4 +28,4 @@ properties:
   tap-ms:
     type: int
     default: 10
-    description: 押してから離すまで、離してから次を押すまでの時間 (ms)
+    description: 押してから離すまで、離してから次を押すまでの時間 (ms。0〜65535)

@@ -56,6 +56,11 @@
  *     修飾キーなど）を見る。預かった入力はまだ反映されていないので、mod-morph や &kt のように押した
  *     時点の修飾キーの状態で動きを変える behavior は、送信中に押すと違う動きになることがある
  *     （このキーマップでは使っていない。自作の key-lock は自分で状態を持つので影響を受けない）。
+ *   - 自分で送るキーは、ZMK の hold-tap・sticky key と自作モジュールのキー入力の listener に届かない（hold-tap の
+ *     quick-tap の判定や、auto mouse の「直前のキー入力」には数えられない。auto mouse は、送信中かを
+ *     alt_code_is_sending で見る）。
+ *   - 自分で送るキーは sticky key（&sk）を通らないので、&sk を押した直後に Alt コードのキーを押すと、&sk は
+ *     Alt コードには使われず、送り終えた後に打つキーにかかる（kana_key・kana-seq は使い切る）。
  * - 送信の途中で接続先（USB・BLE プロファイル）が変わったら、残りは送らずに中止する
  *   （別の PC に数字や Num Lock の復元を送らないため。操作を1つ送るたびに、始めたときの接続先と比べる）。
  *   送信中に押されて待っていた分も、押したときと接続先が違えば送らない。
@@ -95,6 +100,7 @@
 
 /* KANA_CHECK_MS は、かな入力のモジュールがないビルドでも使う（関数はかな入力のモジュールがあるときだけ呼ぶ） */
 #include "kana_output.h"
+#include "alt_code.h"
 #include "word_layer.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
@@ -165,9 +171,10 @@ static uint32_t captured_pushed;
 static struct key_count held[MAX_HELD];
 
 /* 自分のキー入力を送っているスレッド（送っている間だけ。それ以外は NULL）と、送っているキー入力。
+ * 自分のキー入力は、ふつうは ZMK 本体の hold-tap・sticky key より後から流すので、自作モジュールの listener には
+ * 届かない（raise_own）。どちらもないビルドでは、ここで見分ける（alt_code_is_own_event）。
  * スレッドだけでなくキーと「押す／離す」も比べる（自分のキー入力の処理の中で、ほかの behavior が同じスレッドで
- * 別のキー入力を出すことがある。例: &sk は次のキーを離したときに、その中で修飾キーを離す。それは自分のものとして
- * 扱わず、ほかの入力と同じく預かるか数える） */
+ * 別のキー入力を出すことがある。それは自分のものとして扱わず、ほかの入力と同じく預かるか数える） */
 static k_tid_t raising_thread;
 static uint16_t raising_usage_page;
 static uint32_t raising_keycode;
@@ -260,15 +267,35 @@ static bool is_num_lock_press(const struct zmk_keycode_state_changed *ev) {
            ev->keycode == HID_USAGE_KEY_KEYPAD_NUM_LOCK_AND_CLEAR;
 }
 
-/* 自分の送るキー入力。預からずに PC へ通すよう印を付けて送る（押して離すので held には数えない） */
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_STICKY_KEY)
+extern const struct zmk_listener zmk_listener_behavior_sticky_key;
+#elif IS_ENABLED(CONFIG_ZMK_BEHAVIOR_HOLD_TAP)
+extern const struct zmk_listener zmk_listener_behavior_hold_tap;
+#endif
+
+/* 自分の送るキー入力。押して離すので held には数えない。
+ * ZMK 本体の hold-tap・sticky key の listener より後から流す（ZMK v0.3.0 はどちらもリンクの順で sticky key が後）。
+ * hold-tap は、まだ決まっていない間に届いた修飾キー（Alt）を預かり、sticky key は、次に届いたキーに一度だけ
+ * 修飾キーをかけて使い切るので、通すと、Alt だけが後から PC に届いたり（数字がそのまま入り、Alt だけの押下で
+ * メニューに移る）、送信中に押した &sk が Alt コードの数字に使われたりするため。
+ * そのため、このモジュールの listener（預かる処理）やほかの自作モジュールの listener も通らない
+ * （どれも ZMK 本体より前にリンクされる）。どちらもないビルドでは、ふつうに出して、印（raising_*）で見分ける */
 static void raise_own(uint32_t keycode, bool pressed, int64_t timestamp) {
-    const struct zmk_keycode_state_changed ev =
-        zmk_keycode_state_changed_from_encoded(keycode, pressed, timestamp);
-    raising_usage_page = ev.usage_page;
-    raising_keycode = ev.keycode;
-    raising_state = ev.state;
+    struct zmk_keycode_state_changed_event ev = {
+        .header = {.event = &zmk_event_zmk_keycode_state_changed},
+        .data = zmk_keycode_state_changed_from_encoded(keycode, pressed, timestamp),
+    };
+    raising_usage_page = ev.data.usage_page;
+    raising_keycode = ev.data.keycode;
+    raising_state = ev.data.state;
     raising_thread = k_current_get();
-    raise_zmk_keycode_state_changed(ev);
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_STICKY_KEY)
+    ZMK_EVENT_RAISE_AFTER(ev, behavior_sticky_key);
+#elif IS_ENABLED(CONFIG_ZMK_BEHAVIOR_HOLD_TAP)
+    ZMK_EVENT_RAISE_AFTER(ev, behavior_hold_tap);
+#else
+    ZMK_EVENT_RAISE(ev);
+#endif
     raising_thread = NULL;
 }
 
@@ -277,6 +304,10 @@ static bool is_own(const struct zmk_keycode_state_changed *ev) {
     return raising_thread == k_current_get() && ev->usage_page == raising_usage_page &&
            ev->keycode == raising_keycode && ev->state == raising_state;
 }
+
+bool alt_code_is_own_event(const struct zmk_keycode_state_changed *ev) { return is_own(ev); }
+
+bool alt_code_is_sending(void) { return busy; }
 
 /* 送信を始める: ここからのほかのキー入力を預かる */
 static void start_capturing(void) {
@@ -415,8 +446,9 @@ static void build_steps(const struct behavior_alt_code_config *cfg) {
         add_tap(KP_NUM);
     }
     if (cfg->commit_ime) {
-        // 続きを日本語で打てるように IME オンに戻す
-        add_tap(LANGUAGE_1);
+        // 続きを日本語で打てるように IME オンに戻す。IME が切り替わるまで待ってから、預かった入力や続きの
+        // かなを通す（切り替わる前に届いた打鍵は、ローマ字のまま入るため）
+        add_tap_then_wait(LANGUAGE_1, cfg->ime_wait_ms);
     }
 }
 
@@ -607,8 +639,6 @@ static int on_alt_code_binding_pressed(struct zmk_behavior_binding *binding,
         LOG_WRN("Too many pending alt code presses, ignoring");
         return ZMK_BEHAVIOR_OPAQUE;
     }
-    // Num Word などを終える（送る Alt とテンキーの数字では終わらないため。「3時」のように打ったら、元のレイヤーに戻す）
-    word_layer_finish_all();
     pending[pending_count++] = (struct pending_press){
         .cfg = cfg,
         .endpoint = zmk_endpoints_selected(),
@@ -621,11 +651,16 @@ static int on_alt_code_binding_pressed(struct zmk_behavior_binding *binding,
     if (kana_output_add_marker(&event) < 0) {
         pending_count--;
         LOG_WRN("Behavior queue busy/full, dropped alt code press");
+        return ZMK_BEHAVIOR_OPAQUE;
     }
 #else
     // かな入力のモジュールがない: 待つ送信もないので、すぐに送り始めてよい
     alt_code_on_marker();
 #endif
+    // Num Word などを終える（送る Alt とテンキーの数字では終わらないため。「3時」のように打ったら、元のレイヤーに
+    // 戻す）。押下を受け付けて並べられたときだけ（受け付けなかった押下では、レイヤーをそのままにする。
+    // 並べた後に、Alt・Win が押されていたり接続先が変わったりして送らずに捨てた場合は、もう終えている）
+    word_layer_finish_all();
     return ZMK_BEHAVIOR_OPAQUE;
 }
 

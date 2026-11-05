@@ -1,7 +1,7 @@
 /*
  * オートマウスレイヤーの入力処理 (zmk,input-processor-auto-mouse-layer)。
  *
- * トラックパッドのリスナーに <&zip_auto_mouse_layer 5 300> のように入れると、
+ * トラックパッドのリスナーに <&zip_auto_mouse_layer 5 350> のように入れると、
  * トラックパッドの操作でレイヤー param1 を有効にし、操作が止まって param2 ms たったら解除する。
  * ZMK 標準の zmk,input-processor-temp-layer と同じ使い方で、次の点が違う。
  *
@@ -15,7 +15,7 @@
  *   押しても解除せず、時間切れも延ばさない（押している間も時間切れを数え続ける）。マウスレイヤーで &trans など、
  *   下や上のレイヤーのキーが働く場合は、ほかのキーと同じく、押すとすぐに解除する。
  * - 「マウス操作」でないキーを押すと、すぐに解除する（&trans のキーは下のレイヤーのキーとして入力される）。
- * - 有効にする前から押していたキーは、excluded-positions のキー（Ctrl など）だけを「マウス操作」として数える
+ * - 有効にする前から押していたキーは、excluded-positions のキー（トラックパッドのクリックなど）だけを「マウス操作」として数える
  *   （ほかのキーは下のレイヤーのキーとして押されているので、押したままでもレイヤーを保たない）。
  * - 有効にするきっかけは、カーソル移動・スクロール（値が 0 でない REL）だけ。タップ・ジェスチャー
  *   （クリックの直後に打ち始めても文字がマウスレイヤーのキーにならないように）や、触れただけでは有効にしない。
@@ -29,9 +29,11 @@
  *   （指を置いたまま止めていただけなら、動かせばまた使えるように）。
  *   右が触れている間に切れた場合（「離れた」は届かない）も、この時間で離れたとみなす。
  * - 直前のキー入力から require-prior-idle-ms 以内のトラックパッド操作では有効にしない（打鍵中の誤動作防止）。
- * - excluded-layers のレイヤーが有効な間は、有効にしない（入力リスナーの layers の上書きで、その間は
- *   この処理を通さないようにしていても、上書きに切り替わる前に届いた操作で有効になることがあるため。
- *   有効化を予約したときと、実際に有効にするときの両方で確かめる）。
+ *   キー入力は、キーコードの「押す」と、トラックパッド由来でない位置の「押す」（レイヤーのキー、Alt コードの
+ *   キーなど、キーコードを出さないものも含める。Alt コードが自分で送るキーは、この listener に届かないため）。
+ *   Alt コードを送っている間も有効にしない（alt_code_is_sending）。
+ * - excluded-layers のレイヤーが有効な間は、有効にしない（数字・記号レイヤーの間にトラックパッドを触っても、
+ *   マウスレイヤーにしない。有効化を予約したときと、実際に有効にするときの両方で確かめる）。
  * - 状態はインスタンスごとに持つので、左右のリスナーに別々のインスタンスを入れれば別々に動く。
  *   1つのインスタンスで扱うレイヤーは1つだけ。別のレイヤーを使うリスナーには別のインスタンスを入れること
  *   （有効中に違う param1 が来ても、有効にしたレイヤーのまま扱う）。
@@ -60,8 +62,10 @@
 #include <zmk/keymap.h>
 #include <zmk/matrix.h>
 
+#include "alt_code.h"
 #include "auto_mouse_layer.h"
 #include "layer_lock.h"
+#include "tp_positions.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -79,7 +83,7 @@ struct auto_mouse_config {
     const zmk_keymap_layer_id_t *excluded_layers;
     size_t num_excluded_layers;
     const uint16_t *excluded_positions;
-    size_t num_positions;
+    size_t num_excluded_positions;
     const uint16_t *passive_positions;
     size_t num_passive_positions;
     uint32_t touch_stale_ms;
@@ -120,7 +124,7 @@ struct auto_mouse_data {
 };
 
 static bool position_is_excluded(const struct auto_mouse_config *cfg, uint32_t position) {
-    for (size_t i = 0; i < cfg->num_positions; i++) {
+    for (size_t i = 0; i < cfg->num_excluded_positions; i++) {
         if (cfg->excluded_positions[i] == position) {
             return true;
         }
@@ -210,7 +214,7 @@ static void deactivate(struct auto_mouse_data *data) {
     LOG_DBG("Auto mouse layer %d deactivated", data->layer);
 }
 
-/* 有効にしたときに、それより前から押しているキーのうち excluded-positions のもの（Ctrl など）を数え直す
+/* 有効にしたときに、それより前から押しているキーのうち excluded-positions のもの（トラックパッドのクリックなど）を数え直す
  * （ほかのキーは下のレイヤーのキーとして押されているので数えない） */
 static void recount_held(const struct device *dev, struct auto_mouse_data *data) {
     const struct auto_mouse_config *cfg = dev->config;
@@ -234,7 +238,7 @@ static void expire_stale_touches(const struct auto_mouse_config *cfg,
         if ((data->touch_mask & BIT(i)) && now - data->touch_last_ms[i] >= cfg->touch_stale_ms) {
             data->touch_mask &= ~BIT(i);
             data->touch_unknown_mask |= BIT(i);
-            LOG_WRN("Auto mouse: no input from touch device %d for %d ms, treating as released", i,
+            LOG_WRN("Auto mouse: no input from touch device %d for %u ms, treating as released", i,
                     cfg->touch_stale_ms);
         }
     }
@@ -252,10 +256,12 @@ static void restart_timeout(const struct auto_mouse_config *cfg, struct auto_mou
     }
     if (data->held_count > 0) {
         // 押している間は解除しない（すでにキューに入った解除ワークは held_count を見て何もしない）
+        data->deadline = INT64_MAX;
         k_work_cancel_delayable(&data->disable_work);
     } else if (data->touch_mask != 0) {
         // 触れている間は解除しない。「離れた」の取りこぼしに備えて、最も早く古くなる時刻に確かめる
         if (cfg->touch_stale_ms == 0) {
+            data->deadline = INT64_MAX;
             k_work_cancel_delayable(&data->disable_work);
             return;
         }
@@ -271,7 +277,9 @@ static void restart_timeout(const struct auto_mouse_config *cfg, struct auto_mou
         data->deadline = k_uptime_get() + data->timeout_ms;
         k_work_reschedule(&data->disable_work, K_MSEC(data->timeout_ms));
     } else {
-        // 時間では解除しない（触れている間の確かめの予約が残っていたら取り消す）
+        // 時間では解除しない（触れている間の確かめの予約が残っていたら取り消す。取り消せずに動いた解除ワークは、
+        // 期限がないのを見て何もしない）
+        data->deadline = INT64_MAX;
         k_work_cancel_delayable(&data->disable_work);
     }
 }
@@ -289,9 +297,11 @@ static void activity_work_cb(struct k_work *work) {
             k_mutex_unlock(&data->lock);
             return;
         }
-        // 直前にキーを打っていたら有効にしない
-        if (cfg->require_prior_idle_ms > 0 &&
-            data->last_tapped + cfg->require_prior_idle_ms > k_uptime_get()) {
+        // 直前にキーを打っていたら有効にしない。Alt コードを送っている間も、打っている最中とみなす（自分で送る
+        // キーはこの listener に届かず、送信は require-prior-idle-ms より長くかかることがあるため）
+        if ((cfg->require_prior_idle_ms > 0 &&
+             data->last_tapped + cfg->require_prior_idle_ms > k_uptime_get()) ||
+            alt_code_is_sending()) {
             k_mutex_unlock(&data->lock);
             return;
         }
@@ -320,8 +330,9 @@ static void disable_work_cb(struct k_work *work) {
         // 触れている間は解除しない。古くなった「触れている」を外し、残りの状態で時間切れを数え直す
         expire_stale_touches(cfg, data);
         restart_timeout(cfg, data);
-    } else if (data->active && data->held_count == 0) {
+    } else if (data->active && data->held_count == 0 && data->deadline != INT64_MAX) {
         // 延長の前に予約されていた解除ワークが遅れて動いた場合は、残り時間で予約し直す
+        // （期限がない（時間では解除しない）ときは何もしない）
         const int64_t remaining = data->deadline - k_uptime_get();
         if (remaining > 0) {
             k_work_reschedule(&data->disable_work, K_MSEC(remaining));
@@ -348,7 +359,7 @@ static int auto_mouse_handle_event(const struct device *dev, struct input_event 
                                    uint32_t param1, uint32_t param2,
                                    struct zmk_input_processor_state *state) {
     if (param1 >= ZMK_KEYMAP_LAYERS_LEN) {
-        LOG_ERR("Invalid layer index: %d", param1);
+        LOG_ERR("Invalid layer index: %u", param1);
         return -EINVAL;
     }
 
@@ -421,6 +432,10 @@ static void handle_position(const struct device *dev,
     k_mutex_lock(&data->lock, K_FOREVER);
     data->pressed[ev->position] = ev->state;
     if (ev->state) {
+        if ((ev->position < TP_POS_FIRST || ev->position > TP_POS_LAST) &&
+            ev->timestamp > data->last_tapped) {
+            data->last_tapped = ev->timestamp;
+        }
         if (data->active) {
             if (is_mouse_key(dev, ev->position)) {
                 if (!data->held[ev->position]) {
@@ -445,8 +460,11 @@ static void handle_keycode(const struct device *dev, const struct zmk_keycode_st
     if (!ev->state) {
         return;
     }
+    // 新しいほうだけを残す（hold-tap が決まったときのキーは、押した時刻で届くので、後から押した位置より古いことがある）
     k_mutex_lock(&data->lock, K_FOREVER);
-    data->last_tapped = ev->timestamp;
+    if (ev->timestamp > data->last_tapped) {
+        data->last_tapped = ev->timestamp;
+    }
     k_mutex_unlock(&data->lock);
 }
 
@@ -533,6 +551,9 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
                  "auto mouse layer: excluded-positions / passive-positions is out of range");
 
 #define AUTO_MOUSE_INST(n)                                                                         \
+    BUILD_ASSERT(DT_INST_PROP(n, require_prior_idle_ms) >= 0 &&                                    \
+                     DT_INST_PROP(n, touch_stale_ms) >= 0,                                         \
+                 "auto mouse layer: require-prior-idle-ms and touch-stale-ms must be >= 0");       \
     BUILD_ASSERT(DT_INST_PROP_LEN_OR(n, touch_devices, 0) <= MAX_TOUCH_DEVICES,                    \
                  "too many touch-devices");                                                        \
     DT_INST_FOREACH_PROP_ELEM(n, excluded_layers, AUTO_MOUSE_CHECK_LAYER)                          \
@@ -557,7 +578,7 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
         .excluded_layers = auto_mouse_excluded_layers_##n,                                         \
         .num_excluded_layers = DT_INST_PROP_LEN(n, excluded_layers),                               \
         .excluded_positions = auto_mouse_excluded_##n,                                             \
-        .num_positions = DT_INST_PROP_LEN(n, excluded_positions),                                  \
+        .num_excluded_positions = DT_INST_PROP_LEN(n, excluded_positions),                         \
         .passive_positions = auto_mouse_passive_##n,                                               \
         .num_passive_positions = DT_INST_PROP_LEN(n, passive_positions),                           \
         .touch_stale_ms = DT_INST_PROP(n, touch_stale_ms),                                         \

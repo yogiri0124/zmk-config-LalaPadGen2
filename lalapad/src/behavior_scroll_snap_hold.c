@@ -12,7 +12,6 @@
 #define DT_DRV_COMPAT zmk_behavior_scroll_snap_hold
 
 #include <zephyr/device.h>
-#include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
 #include <drivers/behavior.h>
 
@@ -20,12 +19,13 @@
 
 #include "scroll_snap_gate.h"
 
-LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
-
 /* 押されている数（複数のキーに置いても正しく数える） */
 static atomic_t hold_count;
 
 bool scroll_snap_gate_is_active(void) { return atomic_get(&hold_count) > 0; }
+
+// behavior のノードがないとき（入力処理など、同じモジュールのほかの部分だけを使うとき）に未使用の警告を出さない
+#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
 
 static int on_scroll_snap_hold_binding_pressed(struct zmk_behavior_binding *binding,
                                                struct zmk_behavior_binding_event event) {
@@ -57,3 +57,5 @@ static const struct behavior_driver_api behavior_scroll_snap_hold_driver_api = {
                             &behavior_scroll_snap_hold_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(SCROLL_SNAP_HOLD_INST)
+
+#endif // DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)

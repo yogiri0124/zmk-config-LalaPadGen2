@@ -46,6 +46,12 @@ bool layer_lock_is_locked(zmk_keymap_layer_id_t layer) {
     return layer < 32 && (atomic_get(&locked) & BIT(layer)) != 0;
 }
 
+void layer_lock_forget(zmk_keymap_layer_id_t layer) {
+    if (layer < 32) {
+        atomic_and(&locked, ~BIT(layer));
+    }
+}
+
 #if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
 
 static int on_layer_lock_binding_pressed(struct zmk_behavior_binding *binding,

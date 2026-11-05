@@ -15,6 +15,9 @@
 
 #include "cursor_slow.h"
 
+// behavior だけのとき（入力処理のノードがないとき）に未使用の警告を出さない
+#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
+
 static int cursor_slow_handle_event(const struct device *dev, struct input_event *event,
                                     uint32_t param1, uint32_t param2,
                                     struct zmk_input_processor_state *state) {
@@ -55,3 +58,5 @@ static struct zmk_input_processor_driver_api cursor_slow_driver_api = {
                           CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &cursor_slow_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(CURSOR_SLOW_IP_INST)
+
+#endif // DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)

@@ -6,6 +6,19 @@
  * urob/zmk-auto-layer（MIT。ZMK Contributors）の auto-layer と同じ動きに、次を足したもの:
  * - ほかの操作（&mo のキーを離した、&to など）でそのレイヤーが解除されたら、こちらも終わる
  *   （終わったことを知らないまま、次に押したときに「解除」として扱わないように）。
+ * - exit-layers のレイヤーが有効になったら終える（Num Word の間に記号レイヤーを押したとき、数字レイヤーと
+ *   記号レイヤーが同時に有効になって、conditional layer でシステムレイヤー（bootloader・BT_CLR など）に
+ *   ならないように。33 の長押しのように両方を押していると自覚できる場合と違い、Num Word は見えないため）。
+ * - exit-layers のレイヤーがすでに有効なときは始めない（記号レイヤーを押したまま 33 をタップしたときに、
+ *   システムレイヤーにならないように）。
+ * - momentary を付けたインスタンスは、押している間だけレイヤーを有効にする（&mo と同じ。hold-tap の長押しに使う）。
+ *   同じレイヤーの Num Word が有効なときに押したら、Num Word を終えずにレイヤーを引き継ぐ（Num Word の間に
+ *   33 を押し続けたら、ほかのキーや記号レイヤーを押しても数字レイヤーのまま。33 と 38 でシステムレイヤーになる）。
+ * - Alt コードのキーが自分で送るキー（IME オフ／オン・Alt・テンキーの数字など）では終えない（送っている間に
+ *   始めた Num Word が、送信の最後の IME オンで終わらないように。Alt コードのキーを押したときは、
+ *   word_layer_finish_all で終える。ふつうは ZMK 本体の hold-tap・sticky key より後から流れてここには届かない。
+ *   届くビルドのために見分ける）。この listener は Alt コードの listener より前にある（CMakeLists.txt）ので、
+ *   送っている間に打ったキーも、届いた時点で見る（Alt コードが預けて後から通し直す入力は見ない）。
  * - ほかのモジュールから終えられる（word_layer_finish_all。Alt コードのキーを押したときなど。Alt コードは
  *   Alt とテンキーの数字を送るので、数字・修飾キーで続く設定だと、送っても終わらないため）。
  *
@@ -28,6 +41,8 @@
 
 #include <dt-bindings/zmk/modifiers.h>
 
+#include "alt_code.h"
+#include "layer_lock.h"
 #include "word_layer.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
@@ -49,6 +64,9 @@ struct behavior_word_layer_config {
     bool ignore_alphas;
     bool ignore_numbers;
     bool ignore_modifiers;
+    bool momentary;
+    const zmk_keymap_layer_id_t *exit_layers;
+    size_t num_exit_layers;
 };
 
 struct active_word_layer {
@@ -82,14 +100,36 @@ void word_layer_finish_all(void) {
     }
 }
 
+static bool exit_layer_active(const struct behavior_word_layer_config *cfg) {
+    for (size_t i = 0; i < cfg->num_exit_layers; i++) {
+        if (zmk_keymap_layer_active(cfg->exit_layers[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static int on_word_layer_binding_pressed(struct zmk_behavior_binding *binding,
                                          struct zmk_behavior_binding_event event) {
     const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
+    const struct behavior_word_layer_config *cfg = dev->config;
     const zmk_keymap_layer_id_t layer = binding->param1;
 
     struct active_word_layer *w = find_active(layer);
+    if (cfg->momentary) {
+        // 押している間だけ（&mo と同じ）。Num Word が有効なら、終えずに引き継ぐ（レイヤーは有効のまま）
+        if (w != NULL) {
+            w->active = false;
+        }
+        zmk_keymap_layer_activate(layer);
+        return ZMK_BEHAVIOR_OPAQUE;
+    }
     if (w != NULL) {
         finish(w);
+        return ZMK_BEHAVIOR_OPAQUE;
+    }
+    if (exit_layer_active(cfg)) {
+        LOG_DBG("Word layer: exit layer active, not starting layer %d", layer);
         return ZMK_BEHAVIOR_OPAQUE;
     }
     for (int i = 0; i < MAX_ACTIVE; i++) {
@@ -109,6 +149,11 @@ static int on_word_layer_binding_pressed(struct zmk_behavior_binding *binding,
 
 static int on_word_layer_binding_released(struct zmk_behavior_binding *binding,
                                           struct zmk_behavior_binding_event event) {
+    const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
+    const struct behavior_word_layer_config *cfg = dev->config;
+    if (cfg->momentary) {
+        zmk_keymap_layer_deactivate(binding->param1);
+    }
     return ZMK_BEHAVIOR_OPAQUE;
 }
 
@@ -156,7 +201,7 @@ static bool should_continue(const struct behavior_word_layer_config *cfg,
 static int word_layer_listener(const zmk_event_t *eh) {
     const struct zmk_keycode_state_changed *kc = as_zmk_keycode_state_changed(eh);
     if (kc != NULL) {
-        if (!kc->state) {
+        if (!kc->state || alt_code_is_own_event(kc)) {
             return ZMK_EV_EVENT_BUBBLE;
         }
         for (int i = 0; i < MAX_ACTIVE; i++) {
@@ -167,11 +212,33 @@ static int word_layer_listener(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
     const struct zmk_layer_state_changed *ly = as_zmk_layer_state_changed(eh);
-    if (ly != NULL && !ly->state) {
-        // ほかの操作でレイヤーが解除された: こちらも終える
+    if (ly == NULL) {
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+    if (!ly->state) {
+        // ほかの操作でレイヤーが解除された: こちらも終える（固定したレイヤーは、固定の listener が有効にし直す。
+        // この listener はそれより先に呼ばれるので、固定しているかも見る）
         struct active_word_layer *w = find_active(ly->layer);
-        if (w != NULL && !zmk_keymap_layer_active(ly->layer)) {
+        if (w != NULL && !zmk_keymap_layer_active(ly->layer) && !layer_lock_is_locked(ly->layer)) {
             w->active = false;
+        }
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+    // exit-layers のレイヤーが有効になった: 終える（有効になった時点のその出来事の中で解除するので、
+    // 後に続く conditional layer の listener は、両方が有効な状態を見ない）
+    if (!zmk_keymap_layer_active(ly->layer)) {
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+    for (int i = 0; i < MAX_ACTIVE; i++) {
+        if (!actives[i].active) {
+            continue;
+        }
+        const struct behavior_word_layer_config *cfg = actives[i].config;
+        for (size_t j = 0; j < cfg->num_exit_layers; j++) {
+            if (cfg->exit_layers[j] == ly->layer) {
+                finish(&actives[i]);
+                break;
+            }
         }
     }
     return ZMK_EV_EVENT_BUBBLE;
@@ -188,15 +255,32 @@ ZMK_SUBSCRIPTION(behavior_word_layer, zmk_layer_state_changed);
         .id = ZMK_HID_USAGE_ID(DT_INST_PROP_BY_IDX(n, continue_list, i)),                          \
     }
 
+#define WORD_LAYER_EXIT_OK(i, n)                                                                   \
+    &&(DT_INST_PROP_BY_IDX(n, exit_layers, i) >= 0 &&                                              \
+       DT_INST_PROP_BY_IDX(n, exit_layers, i) < ZMK_KEYMAP_LAYERS_LEN)
+
 #define WORD_LAYER_INST(n)                                                                         \
-    static const struct word_layer_key word_layer_keys_##n[] = {                                  \
-        LISTIFY(DT_INST_PROP_LEN(n, continue_list), WORD_LAYER_KEY, (, ), n)};                     \
+    BUILD_ASSERT(1 LISTIFY(DT_INST_PROP_LEN_OR(n, exit_layers, 0), WORD_LAYER_EXIT_OK, (), n),     \
+                 "word-layer: exit-layers must be layer numbers in the keymap");                   \
+    COND_CODE_1(DT_INST_NODE_HAS_PROP(n, continue_list),                                           \
+                (static const struct word_layer_key word_layer_keys_##n[] = {LISTIFY(              \
+                     DT_INST_PROP_LEN(n, continue_list), WORD_LAYER_KEY, (, ), n)};),              \
+                ())                                                                                \
+    COND_CODE_1(DT_INST_NODE_HAS_PROP(n, exit_layers),                                             \
+                (static const zmk_keymap_layer_id_t word_layer_exit_##n[] =                        \
+                     DT_INST_PROP(n, exit_layers);),                                               \
+                ())                                                                                \
     static const struct behavior_word_layer_config behavior_word_layer_config_##n = {              \
-        .continue_keys = word_layer_keys_##n,                                                      \
-        .num_continue_keys = ARRAY_SIZE(word_layer_keys_##n),                                      \
+        .continue_keys = COND_CODE_1(DT_INST_NODE_HAS_PROP(n, continue_list),                      \
+                                     (word_layer_keys_##n), (NULL)),                               \
+        .num_continue_keys = DT_INST_PROP_LEN_OR(n, continue_list, 0),                             \
         .ignore_alphas = DT_INST_PROP(n, ignore_alphas),                                           \
         .ignore_numbers = DT_INST_PROP(n, ignore_numbers),                                         \
         .ignore_modifiers = DT_INST_PROP(n, ignore_modifiers),                                     \
+        .momentary = DT_INST_PROP(n, momentary),                                                   \
+        .exit_layers = COND_CODE_1(DT_INST_NODE_HAS_PROP(n, exit_layers), (word_layer_exit_##n),   \
+                                   (NULL)),                                                        \
+        .num_exit_layers = DT_INST_PROP_LEN_OR(n, exit_layers, 0),                                 \
     };                                                                                             \
     BEHAVIOR_DT_INST_DEFINE(n, NULL, NULL, NULL, &behavior_word_layer_config_##n, POST_KERNEL,     \
                             CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &behavior_word_layer_driver_api);

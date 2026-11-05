@@ -1,7 +1,8 @@
 # 打っている間だけ続くレイヤー（引数 1 つ: レイヤー番号。Num Word に使う）。押すとレイヤーを有効にし、
 # continue-list のキー（と ignore-* の種類のキー）を押している間は続け、それ以外のキーを押したら解除する。
 # 有効な間にもう一度押すと解除する。ほかの操作でレイヤーが解除されたら、こちらも終わる。
-# urob/zmk-auto-layer の auto-layer と同じプロパティ。
+# exit-layers のレイヤーが有効になったときも終わる（ほかのプロパティは urob の auto-layer と同じ）。
+# momentary を付けると、押している間だけ有効にする（&mo と同じ。同じレイヤーの Num Word が有効なら、終えずに引き継ぐ）。
 
 description: Layer that stays active while continue-list keys are typed (Num Word)
 
@@ -12,8 +13,7 @@ include: one_param.yaml
 properties:
   continue-list:
     type: array
-    required: true
-    description: 押してもレイヤーを解除しないキー（dt-bindings/zmk/keys.h の名前）
+    description: 押してもレイヤーを解除しないキー（dt-bindings/zmk/keys.h の名前。momentary では使わない）
   ignore-alphas:
     type: boolean
     description: 英字（A〜Z）でも解除しない
@@ -23,3 +23,9 @@ properties:
   ignore-modifiers:
     type: boolean
     description: 修飾キー（Shift・Ctrl・Alt・Win）でも解除しない
+  exit-layers:
+    type: array
+    description: このレイヤーが有効になったら解除する。有効な間は始めない（conditional layer の条件になるレイヤーなど）
+  momentary:
+    type: boolean
+    description: 押している間だけ有効にする（&mo と同じ）。同じレイヤーの Num Word が有効なら、終えずに引き継ぐ
