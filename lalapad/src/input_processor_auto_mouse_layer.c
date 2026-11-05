@@ -407,9 +407,11 @@ static int auto_mouse_handle_event(const struct device *dev, struct input_event 
     struct auto_mouse_data *data = dev->data;
     k_mutex_lock(&data->lock, K_FOREVER);
 
-    // 触れているかを送ってくるデバイスで、いま触れていなければ（指を離した後の慣性など）きっかけにしない
+    // 触れているかを送ってくるデバイスで、いま触れていなければ（指を離した後の慣性など）きっかけにしない。
+    // 右との接続が切れている間の、子機からの中継の入力（切れる前に届いていたもの）もきっかけにしない
     const int touch_idx = touch_device_index(dev->config, event->dev);
-    if (touch_idx >= 0 && !(data->touch_mask & BIT(touch_idx))) {
+    if (touch_idx >= 0 &&
+        (!(data->touch_mask & BIT(touch_idx)) || split_input_lost(dev->config, touch_idx))) {
         k_mutex_unlock(&data->lock);
         return ZMK_INPUT_PROC_CONTINUE;
     }
@@ -422,8 +424,28 @@ static int auto_mouse_handle_event(const struct device *dev, struct input_event 
 
 /* ---- トラックパッドに触れているか（入力デバイスから直接受け取る。入力スレッド） ---- */
 
+#if WATCH_SPLIT_LINK
+/* 右（子機）との接続が切れているか（切断のコールバックで立て、接続し直したらワークで消す。入力スレッドで読む） */
+static atomic_t split_lost;
+#endif
+
+/* 子機からの中継の、touch-devices の idx 番目のデバイスで、右との接続が切れている間か
+ * （切れる前に届いていて、後から処理される入力で、触れている状態やマウスレイヤーを戻さないように） */
+static bool split_input_lost(const struct auto_mouse_config *cfg, int idx) {
+#if WATCH_SPLIT_LINK
+    return idx >= 0 && (cfg->touch_split_mask & BIT(idx)) && atomic_get(&split_lost);
+#else
+    ARG_UNUSED(cfg);
+    ARG_UNUSED(idx);
+    return false;
+#endif
+}
+
 static void handle_touch_input(const struct device *dev, int idx, struct input_event *evt) {
     struct auto_mouse_data *data = dev->data;
+    if (split_input_lost(dev->config, idx)) {
+        return;
+    }
 
     k_mutex_lock(&data->lock, K_FOREVER);
     const int64_t now = k_uptime_get();
@@ -722,14 +744,31 @@ static void split_lost_work_cb(struct k_work *work) {
 
 static K_WORK_DEFINE(split_lost_work, split_lost_work_cb);
 
+/* 印を消すのはシステムワークキューで行う（印を立てた後に予約した、触れている状態を消すワークより後に） */
+static void split_found_work_cb(struct k_work *work) {
+    ARG_UNUSED(work);
+    atomic_set(&split_lost, 0);
+}
+
+static K_WORK_DEFINE(split_found_work, split_found_work_cb);
+
+static void auto_mouse_split_connected(struct bt_conn *conn, uint8_t err) {
+    if (err == 0 && is_split_link(conn)) {
+        k_work_submit(&split_found_work);
+    }
+}
+
 static void auto_mouse_split_disconnected(struct bt_conn *conn, uint8_t reason) {
     ARG_UNUSED(reason);
     if (is_split_link(conn)) {
+        // その場で印を立てる（入力スレッドで後から処理される、切れる前の右の入力を捨てる）
+        atomic_set(&split_lost, 1);
         k_work_submit(&split_lost_work);
     }
 }
 
 BT_CONN_CB_DEFINE(auto_mouse_split_callbacks) = {
+    .connected = auto_mouse_split_connected,
     .disconnected = auto_mouse_split_disconnected,
 };
 #endif

@@ -584,8 +584,16 @@ static void track_stroke(struct slot *s, const struct held_mode *hm, int32_t dx,
     s->len++;
 }
 
+static bool split_slot_lost(const struct slot *s);
+
 /* REL の入力。捨てるなら true。*queued は送るものを足したら true にする */
 static bool handle_rel(struct slot *s, const struct input_event *event, bool *queued) {
+    // 右との接続が切れている間に処理される右の動き（切れる前に届いていたもの）は、キーに変えない。
+    // モードのキーを押していれば捨て、押していなければカーソル・スクロールとして通す
+    // （切断より後に初めて使われる右の slot でも同じ。tp_keys_split_disconnected が触れていない状態にできないため）
+    if (split_slot_lost(s)) {
+        return active_mode() != NULL;
+    }
     // 指を動かした向き（右・下が正）。ドライバは、ホイールを指を下へ動かした量、
     // 横ホイールを指を左へ動かした量で送る
     int32_t dx = 0, dy = 0;
