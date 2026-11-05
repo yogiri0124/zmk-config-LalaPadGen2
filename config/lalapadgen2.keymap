@@ -587,17 +587,17 @@
         // Default レイヤーだけ: 16＋17 で IME オン、12＋13 で IME オフ。打っている途中で起きないよう、30ms 以内に
         // 両方を押したときだけ（timeout-ms）、直前のキーから 150ms 以上あけて押したときだけ（require-prior-idle-ms）
         COMBO_IME_ON {
+            timeout-ms = <30>;
             bindings = <&kp LANGUAGE_1>;
             key-positions = <16 17>;
             layers = <DEFAULT_LAYER>;
-            timeout-ms = <30>;
             require-prior-idle-ms = <150>;
         };
         COMBO_IME_OFF {
+            timeout-ms = <30>;
             bindings = <&kp LANGUAGE_2>;
             key-positions = <12 13>;
             layers = <DEFAULT_LAYER>;
-            timeout-ms = <30>;
             require-prior-idle-ms = <150>;
         };
         // 左手用レイヤー（10）へ: 数字レイヤーの 20＋21 だけ。Default に戻るのは left_hand_4（left_hand で 33 を長押し）の
