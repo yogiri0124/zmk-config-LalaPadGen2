@@ -11,7 +11,8 @@
 
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_ALT_CODE)
 /* Alt コードの送信が自分で送っているキー入力（IME オフ／オン・Alt・テンキーの数字など）の出来事か
- * （その出来事の listener の中で呼ぶ） */
+ * （その出来事の listener の中で呼ぶ。ふつうは自分のキー入力を ZMK 本体の hold-tap・sticky key より後から流すので、
+ * 自作モジュールの listener には届かない。どちらもないビルドで届いたときに見分けるためのもの） */
 bool alt_code_is_own_event(const struct zmk_keycode_state_changed *ev);
 #else
 static inline bool alt_code_is_own_event(const struct zmk_keycode_state_changed *ev) {

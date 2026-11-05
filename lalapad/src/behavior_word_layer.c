@@ -16,7 +16,8 @@
  *   33 を押し続けたら、ほかのキーや記号レイヤーを押しても数字レイヤーのまま。33 と 38 でシステムレイヤーになる）。
  * - Alt コードのキーが自分で送るキー（IME オフ／オン・Alt・テンキーの数字など）では終えない（送っている間に
  *   始めた Num Word が、送信の最後の IME オンで終わらないように。Alt コードのキーを押したときは、
- *   word_layer_finish_all で終える）。この listener は Alt コードの listener より前にある（CMakeLists.txt）ので、
+ *   word_layer_finish_all で終える。ふつうは ZMK 本体の hold-tap・sticky key より後から流れてここには届かない。
+ *   届くビルドのために見分ける）。この listener は Alt コードの listener より前にある（CMakeLists.txt）ので、
  *   送っている間に打ったキーも、届いた時点で見る（Alt コードが預けて後から通し直す入力は見ない）。
  * - ほかのモジュールから終えられる（word_layer_finish_all。Alt コードのキーを押したときなど。Alt コードは
  *   Alt とテンキーの数字を送るので、数字・修飾キーで続く設定だと、送っても終わらないため）。

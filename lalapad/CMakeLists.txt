@@ -26,7 +26,8 @@ target_sources_ifdef(CONFIG_ZMK_BEHAVIOR_KEY_LOCK app PRIVATE
 )
 # ウィンドウの切り替え・Num Word は、Alt コードより前に足す: Alt コードは送っている間のキー入力を預かり、送り終えて
 # から自分の listener の次から通し直すので、後ろにあると、預けられた入力を（自分が送ったものも含めて）後から見て、
-# 届いた時点と違う状態で判定してしまう。前にあれば、どの入力も届いた時点で見る（Alt コードが自分で送るキーは
+# 届いた時点と違う状態で判定してしまう。前にあれば、どの入力も届いた時点で見る（Alt コードが自分で送るキーは、
+# ZMK 本体の hold-tap・sticky key より後から流すので、自作モジュールの listener には届かない。どちらもないビルドでは
 # alt_code_is_own_event で見分ける）
 target_sources_ifdef(CONFIG_ZMK_BEHAVIOR_ALT_TAB app PRIVATE
   src/behavior_alt_tab.c

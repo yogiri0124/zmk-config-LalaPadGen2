@@ -131,7 +131,8 @@ static int alt_tab_listener(const zmk_event_t *eh) {
     if (kc != NULL) {
         // ほかのキーの「押す」: そのキーより先に Alt を離す（この listener は ZMK 本体の HID への反映より前に呼ばれる）。
         // Alt コードの送信が自分で送るキー（テンキーの数字・IME オン など）では終えない（送っている間に始めた
-        // 切り替えが、送信の続きで確定しないように）。この listener は Alt コードの listener より前にある
+        // 切り替えが、送信の続きで確定しないように。ふつうは ZMK 本体の hold-tap・sticky key より後から流れて
+        // ここには届かない。届くビルドのために見分ける）。この listener は Alt コードの listener より前にある
         // （CMakeLists.txt）ので、Alt コードが預けて後から通し直す入力は見ない（届いた時点で見ている）
         if (kc->state && !raising && !alt_code_is_own_event(kc)) {
             end_switch();
@@ -141,7 +142,7 @@ static int alt_tab_listener(const zmk_event_t *eh) {
     const struct zmk_layer_state_changed *ly = as_zmk_layer_state_changed(eh);
     if (ly != NULL) {
         // 解除の出来事でも、まだ有効なら終えない（固定したレイヤーは、&to などで解除されても固定の listener が
-        // 有効にし直す。この listener はそれより先に呼ばれることがあるので、固定しているかも見る）
+        // 有効にし直す。この listener はそれより先に呼ばれるので、固定しているかも見る）
         if (!ly->state && ly->layer == active_layer && !zmk_keymap_layer_active(active_layer) &&
             !layer_lock_is_locked(active_layer)) {
             end_switch();
