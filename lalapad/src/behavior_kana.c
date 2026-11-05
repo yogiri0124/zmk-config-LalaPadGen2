@@ -7,11 +7,11 @@
  * ホストのキーボード配列は英語配列 (US) を前提にしている。
  * 送るのは、かな（KN_）と、編集用のキー（KE_）。
  * 記号（、。… など）は、keymap で定義する zmk,behavior-kana-seq のキー（behavior_kana_seq.c）で送る。
- * スペース・エンター・バックスペース（KE_）も同じキューで送り、かな列を追い越さないようにする
- * （この3つは、押している間は押しっぱなしにして、キーリピートができるようにする）。
+ * 編集用のキー（KE_。スペース・エンター・バックスペース・Esc・Tab）も同じキューで送り、かな列を追い越さない
+ * ようにする（押している間は押しっぱなしにして、キーリピートができるようにする。combos に置いても同じ）。
  * かなを送る間は、押している Shift・Ctrl（&sk の Shift も）を隠す（"Ka" や Ctrl+K にならないように。
  * Alt・Win は隠さない。理由と制約は kana_output.c の先頭）。
- * スペース・エンター・バックスペースは隠さない（Shift+Enter・Ctrl+Backspace などとして使えるように）。
+ * 編集用のキーでは隠さない（Shift+Enter・Ctrl+Backspace・Shift+Tab などとして使えるように）。
  * キューへの登録・押しっぱなし防止・修飾キーを隠す処理・かな配列モードの状態は kana_output.c にまとめている。
  */
 
@@ -152,8 +152,37 @@ struct behavior_kana_config {
 };
 
 /* 編集用のキー（スペース・エンター・バックスペース・Esc・Tab）は押しっぱなし（キーリピート）ができるよう、押したとき「押す」、
- * 離したとき「離す」を送る。キー位置ごとに押しているキーコードを覚えておく（0 = 押していない） */
+ * 離したとき「離す」を送る。キー位置ごとに押しているキーコードを覚えておく（0 = 押していない）。
+ * キーマップのキー位置は位置の番号で、それ以外（combos の位置など）は held_extra で覚える */
 static uint32_t held_keycode[ZMK_KEYMAP_LEN];
+
+static struct {
+    uint32_t position;
+    uint32_t keycode;
+} held_extra[KANA_HOLD_EXTRA_MAX];
+
+/* キー位置の「押しているキーコード」の置き場所。alloc = true なら、空いている置き場所を割り当てる。
+ * 見つからなければ NULL（alloc = true で NULL なら、置き場所が足りない） */
+static uint32_t *held_slot(uint32_t position, bool alloc) {
+    if (position < ZMK_KEYMAP_LEN) {
+        return &held_keycode[position];
+    }
+    for (size_t i = 0; i < ARRAY_SIZE(held_extra); i++) {
+        if (held_extra[i].keycode != 0 && held_extra[i].position == position) {
+            return &held_extra[i].keycode;
+        }
+    }
+    if (!alloc) {
+        return NULL;
+    }
+    for (size_t i = 0; i < ARRAY_SIZE(held_extra); i++) {
+        if (held_extra[i].keycode == 0) {
+            held_extra[i].position = position;
+            return &held_extra[i].keycode;
+        }
+    }
+    return NULL;
+}
 
 static bool is_hold_key(uint32_t id) { return id >= KE_SPACE && id <= KE_TAB; }
 
@@ -196,17 +225,18 @@ static int on_kana_binding_pressed(struct zmk_behavior_binding *binding,
 
     if (is_hold_key(id)) {
         const uint32_t keycode = kana_table[id].keys[0];
-        if (event.position >= ZMK_KEYMAP_LEN) {
-            // キー位置ごとの押しっぱなしを覚えられない位置（combos など）: 押しっぱなしにせず、1回タップする
+        uint32_t *slot = held_slot(event.position, true);
+        if (slot == NULL) {
+            // 押しっぱなしを覚える置き場所が足りない（combos などを同時にたくさん押した）: 1回タップする
             const int ret = kana_output_tap(&event, keycode, cfg->tap_ms, cfg->wait_ms);
             if (ret < 0) {
                 // -EAGAIN は「押す」だけ登録済み（「離す」は自動で再試行される）
                 LOG_WRN("Behavior queue busy/full (err %d), kana id %u", ret, id);
             }
-        } else if (held_keycode[event.position] == 0) {
+        } else if (*slot == 0) {
             const int ret = kana_output_press(&event, keycode, cfg->tap_ms);
             if (ret == 0) {
-                held_keycode[event.position] = keycode;
+                *slot = keycode;
             } else {
                 LOG_WRN("Behavior queue busy/full (err %d), dropped kana id %u", ret, id);
             }
@@ -216,7 +246,7 @@ static int on_kana_binding_pressed(struct zmk_behavior_binding *binding,
 
     // かなの前だけ、しばらく打っていなかったら IME オンを先に送る（LANGUAGE_1 はトグルではないので重ねても害がない。
     // ime-resync-ms が 0 なら送らない）。
-    // スペース・エンター・バックスペースの前には送らない（IME オフのときに全角スペースなどにならないように）。
+    // 編集用のキーの前には送らない（IME オフのときに全角スペースなどにならないように）。
     // IME オンを登録できなかったときは、順番を守るため、この文字は送らない（次の入力で改めて IME オンを試す）
     const struct kana_entry *entry = &kana_table[id];
     const int ret = kana_output_send_keys(&event, entry->keys, entry->len, cfg->tap_ms,
@@ -234,11 +264,12 @@ static int on_kana_binding_pressed(struct zmk_behavior_binding *binding,
 static int on_kana_binding_released(struct zmk_behavior_binding *binding,
                                     struct zmk_behavior_binding_event event) {
     // 押しっぱなしのキーは、かな配列モードの解除中でも必ず離す
-    if (event.position < ZMK_KEYMAP_LEN && held_keycode[event.position] != 0) {
+    uint32_t *slot = held_slot(event.position, false);
+    if (slot != NULL && *slot != 0) {
         const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
         const struct behavior_kana_config *cfg = dev->config;
-        kana_output_release(&event, held_keycode[event.position], cfg->wait_ms);
-        held_keycode[event.position] = 0;
+        kana_output_release(&event, *slot, cfg->wait_ms);
+        *slot = 0;
     }
     return ZMK_BEHAVIOR_OPAQUE;
 }

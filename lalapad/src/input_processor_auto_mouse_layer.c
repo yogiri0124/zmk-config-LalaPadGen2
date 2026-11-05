@@ -50,6 +50,7 @@
  *   入力される）。固定をやめると、ふだんどおり時間を数え直す（auto_mouse_layer_unlocked）。
  *
  * 入力処理は入力スレッドで呼ばれるので、レイヤーの切り替えはワーク（システムワークキュー）で行う。
+ * 「マウス操作」でないキーでの解除は、キーの出来事の listener（auto_mouse_listener。システムワークキュー）の中で行う。
  */
 
 #define DT_DRV_COMPAT zmk_input_processor_auto_mouse_layer

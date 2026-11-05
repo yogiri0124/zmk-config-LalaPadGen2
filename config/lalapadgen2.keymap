@@ -442,7 +442,7 @@
 
         // --- かな入力（自作モジュール lalapad/）。Keymap Editor が認識できるよう、定義はこのファイルに置く ---
         // かな・編集用のキーを送る（&kana_key KN_A など。ID は lalapad/include/dt-bindings/kana/kana.h。
-        // KN_ = かな、KE_ = スペース・エンター・バックスペース）。記号は、下の zmk,behavior-kana-seq のキーで送る
+        // KN_ = かな、KE_ = スペース・エンター・バックスペース・Esc・Tab）。記号は、下の zmk,behavior-kana-seq のキーで送る
         kana_key: kana_key {
             compatible = "zmk,behavior-kana";
             #binding-cells = <1>;

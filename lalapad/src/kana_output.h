@@ -38,6 +38,9 @@
 int kana_output_tap(const struct zmk_behavior_binding_event *event, uint32_t keycode,
                     uint32_t tap_ms, uint32_t wait_ms);
 
+/* キーマップのキー位置のほかに（combos の位置など）、編集用のキーを同時に押しっぱなしにできる数 */
+#define KANA_HOLD_EXTRA_MAX 4
+
 /* keycode の「押す」だけをキューに並べる（押しっぱなしにするキー用）。
  * 戻り値: 0 = 登録できた / -EBUSY = 「離す」か修飾キーを戻す合図を再試行中なので登録していない /
  *         -ENOSPC = キューが満杯 */

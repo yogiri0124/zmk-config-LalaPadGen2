@@ -15,7 +15,7 @@
 | `config/lalapadgen2.conf` | 左右両方 |
 | `config/boards/shields/lalapadgen2/lalapadgen2_left.conf` | 左のみ |
 | `config/boards/shields/lalapadgen2/lalapadgen2_right.conf` | 右のみ |
-| `config/lalapadgen2_left.conf` | 左のみ（親機専用の設定を置く。LaLapad-Gen2-Editor の管理外） |
+| `config/lalapadgen2_left.conf` | 左のみ（親機専用の設定を置く。LaLapad-Gen2-Editor の General タブは、このファイルにある項目をこのファイルに書く） |
 
 - 現状は、左右の `.conf` に同じ値を明示的に書いている。片側だけ変える依頼なら該当側だけを編集する。
   両側を変える依頼なら左右両方を同じように編集する（共通 `.conf` へ移すのは依頼があるときだけ）。

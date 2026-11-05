@@ -75,9 +75,9 @@ BUILD_ASSERT(DT_NODE_EXISTS(DT_NODELABEL(kana_sync)),
  * 登録できるまで順に再試行する。
  * 押しっぱなしのキー（スペースなど）の「離す」はキー位置ごとに1つまで。タップの「離す」と修飾キーを戻す
  * 合図は、再試行中に次のタップや列を受け付けない（-EBUSY）ので、1つの列の分（それぞれ1つ）まで。
- * 全キー位置に押しっぱなしのキーを置いても足りる数にする
+ * 全キー位置（と combos などの位置 KANA_HOLD_EXTRA_MAX 個）に押しっぱなしのキーを置いても足りる数にする
  * （足りないと、下の「その場で実行」が、まだキューにある「押す」より先に実行されてしまう） */
-#define PENDING_RELEASE_MAX (ZMK_KEYMAP_LEN + 2)
+#define PENDING_RELEASE_MAX (ZMK_KEYMAP_LEN + KANA_HOLD_EXTRA_MAX + 2)
 
 struct pending_release {
     struct zmk_behavior_binding binding;
