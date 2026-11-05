@@ -66,8 +66,7 @@
 #include <zmk/events/ble_active_profile_changed.h>
 #endif
 
-/* 右（子機）とのつながりを見るか（Bluetooth で分割している親機） */
-#define WATCH_SPLIT_LINK (IS_ENABLED(CONFIG_ZMK_SPLIT_BLE) && IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL))
+#include "split_link.h"
 
 #if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_BLE) || WATCH_SPLIT_LINK
 #include <zephyr/bluetooth/conn.h>
@@ -809,10 +808,6 @@ ZMK_SUBSCRIPTION(key_stream, zmk_position_state_changed);
  * （zmk_split_peripheral_status_changed は子機の側でだけ出る）ため、自分で見る */
 
 #if WATCH_SPLIT_LINK
-static bool is_split_link(struct bt_conn *conn) {
-    struct bt_conn_info info;
-    return bt_conn_get_info(conn, &info) == 0 && info.role == BT_CONN_ROLE_CENTRAL;
-}
 
 /* つながりが変わった: 送っている間なら状態を送り直す（値は送るときに調べる）。Bluetooth の接続・切断の通知
  * （つながったときは Bluetooth の受信のスレッド、切れたときはシステムワークキュー）から呼ばれる。

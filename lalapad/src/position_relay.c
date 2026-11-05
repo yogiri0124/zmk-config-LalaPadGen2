@@ -32,13 +32,8 @@
 #include <zmk/events/position_state_changed.h>
 #include <zmk/matrix.h>
 
+#include "split_link.h"
 #include "tp_positions.h"
-
-#define WATCH_SPLIT_LINK (IS_ENABLED(CONFIG_ZMK_SPLIT_BLE) && IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL))
-
-#if WATCH_SPLIT_LINK
-#include <zephyr/bluetooth/conn.h>
-#endif
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -162,11 +157,6 @@ ZMK_LISTENER(position_relay, position_relay_listener);
 ZMK_SUBSCRIPTION(position_relay, zmk_position_state_changed);
 
 #if WATCH_SPLIT_LINK
-/* 親機は、右とは自分が central 側（接続を始める側）、PC とは peripheral 側でつなぐので、接続の役割で見分ける */
-static bool is_split_link(struct bt_conn *conn) {
-    struct bt_conn_info info;
-    return bt_conn_get_info(conn, &info) == 0 && info.role == BT_CONN_ROLE_CENTRAL;
-}
 
 static void relay_split_connected(struct bt_conn *conn, uint8_t err) {
     if (err == 0 && is_split_link(conn)) {

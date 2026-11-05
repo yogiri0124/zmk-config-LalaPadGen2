@@ -1,5 +1,6 @@
 # ZMK v0.3.0 の .github/workflows/build-user-config.yml の写し。違いは、ビルドに使う Docker イメージを
-# zmkfirmware/zmk-build-arm:3.5-branch（ZMK v0.3 の Zephyr 3.5 用）に固定したところだけ。
+# ZMK v0.3 の Zephyr 3.5 用（3.5.0・SDK 0.16.3）の、日付の入ったタグに固定したところだけ
+# （3.5-branch のタグは作り直されることがあるので、作り直されない日付のタグにする）。
 # 元は :stable を使い、ZMK の新しい版に合わせて中身が変わる（2026-11 時点で Zephyr 4.1 用）ため、
 # このリポジトリの変更なしにビルドが変わったり壊れたりしないようにする。ZMK の版を上げるときは、その版の写しに替える。
 name: Reusable user config build
@@ -46,7 +47,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: zmkfirmware/zmk-build-arm:3.5-branch
+      image: zmkfirmware/zmk-build-arm:3.5-branch-20250930025731-3.5.0-0.16.3-f93290b3ab1a-18117245422
     needs: matrix
     name: Build
     strategy:

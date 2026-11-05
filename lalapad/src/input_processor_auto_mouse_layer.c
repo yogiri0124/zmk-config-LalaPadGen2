@@ -31,8 +31,10 @@
  *   右（子機）との接続が切れたときは、子機からの中継（zmk,input-split）のデバイスを、すぐに離れたとみなす
  *   （「離れた」は届かないので、touch-stale-ms を待つと、その間マウスレイヤーが残り、打った文字がマウスレイヤーの
  *   キーになるため）。
- *   「触れた」が届かなかったとき（子機からの中継は取りこぼすことがある）に備え、触れていないはずのデバイスから
+ *   「触れた」が届かなかったとき（子機からの中継は取りこぼすことがある）に備え、触れていないはずの中継のデバイスから
  *   TOUCH_GAP_MS より長く途切れた後に動きが届いたら、触れているとみなす（指を離した後の慣性は途切れずに届く）。
+ *   推測なので、TOUCH_INFERRED_STALE_MS の間なにも届かなければ離れたとみなす（止まっていた慣性の再開を取り違えても、
+ *   マウスレイヤーが長く残らないように）。
  * - 直前のキー入力から require-prior-idle-ms 以内のトラックパッド操作では有効にしない（打鍵中の誤動作防止）。
  *   キー入力は、キーコードの「押す」と、トラックパッド由来でない位置の「押す」（レイヤーのキー、Alt コードの
  *   キーなど、キーコードを出さないものも含める。Alt コードが自分で送るキーは、この listener に届かないため）。
@@ -40,8 +42,8 @@
  * - excluded-layers のレイヤーが有効な間は、有効にしない（数字・記号レイヤーの間にトラックパッドを触っても、
  *   マウスレイヤーにしない。有効化を予約したときと、実際に有効にするときの両方で確かめる）。
  * - 状態はインスタンスごとに持つので、左右のリスナーに別々のインスタンスを入れれば別々に動く。
- *   1つのインスタンスで扱うレイヤーは1つだけ。別のレイヤーを使うリスナーには別のインスタンスを入れること
- *   （1つのインスタンスで扱うレイヤーは、layer の1つだけ）。
+ *   1つのインスタンスで扱うレイヤーは、layer の1つだけ。別のレイヤーを使うリスナーには別のインスタンスを入れること。
+ * - ほかの操作（&mo・&tog など）ですでに有効なレイヤーは、引き取らない（自分の時間切れで解除しない）。
  *
  * - マウスレイヤーを固定しているとき（zmk,behavior-layer-lock のキー。layer_lock.h）は、時間切れでも、
  *   「マウス操作」でないキーを押しても解除しない（&trans のキーは、レイヤーを残したまま下のレイヤーのキーとして
@@ -57,9 +59,6 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/input/input.h>
-#if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE) && IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
-#include <zephyr/bluetooth/conn.h>
-#endif
 #include <drivers/input_processor.h>
 
 #include <zmk/behavior.h>
@@ -73,6 +72,7 @@
 #include "alt_code.h"
 #include "auto_mouse_layer.h"
 #include "layer_lock.h"
+#include "split_link.h"
 #include "tp_positions.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
@@ -84,8 +84,9 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 /* 触れていないはずのデバイスからの入力が、これより長く途切れた後に届いたら、「触れた」を取りこぼしたとみなす
  * （ドライバは、指を離した後の慣性を 10 ms ごとに途切れずに送る） */
 #define TOUCH_GAP_MS 300
-
-#define WATCH_SPLIT_LINK (IS_ENABLED(CONFIG_ZMK_SPLIT_BLE) && IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL))
+/* 「触れた」の取りこぼしとみなして触れていることにしたデバイスは、この時間なにも届かなければ離れたとみなす
+ * （止まっていた慣性が再開したのを、新しい触れ方と取り違えたときに、マウスレイヤーが長く残らないように） */
+#define TOUCH_INFERRED_STALE_MS 500
 
 /* 初期化の優先度。touch-devices（トラックパッドのドライバ・左右の中継）より後にする必要がある
  * （Zephyr のビルド時チェック）。ロックとワークは静的に初期化しているので、これより前に入力が届いても動く */
@@ -134,6 +135,8 @@ struct auto_mouse_data {
     uint8_t touch_mask;
     /* touch-stale-ms で離れたとみなしたデバイス。「離れた」を実際には受け取っていないので、次の入力で触れているに戻す */
     uint8_t touch_unknown_mask;
+    /* 「触れた」を受け取らずに、途切れた後の動きから触れているとみなしたデバイス（TOUCH_INFERRED_STALE_MS で切れる） */
+    uint8_t touch_inferred_mask;
     int64_t touch_last_ms[MAX_TOUCH_DEVICES];
     /* そのデバイスから最後に何かの入力が届いた時刻（触れているかに関係なく。「触れた」の取りこぼしを見る） */
     int64_t touch_input_ms[MAX_TOUCH_DEVICES];
@@ -243,19 +246,30 @@ static void recount_held(const struct device *dev, struct auto_mouse_data *data)
     }
 }
 
-/* touch_stale_ms の間なにも届いていない「触れている」デバイスを、離れたとみなす */
+/* 「触れている」が古くなるまでの時間（0 なら古くならない）。推測で触れていることにしたデバイスは短い */
+static uint32_t touch_stale_limit(const struct auto_mouse_config *cfg,
+                                  const struct auto_mouse_data *data, int idx) {
+    return (data->touch_inferred_mask & BIT(idx)) ? TOUCH_INFERRED_STALE_MS : cfg->touch_stale_ms;
+}
+
+/* 古くなった（その時間なにも届いていない）「触れている」デバイスを、離れたとみなす。
+ * 「離れた」を受け取っていたデバイスは、触れているかわからない状態にして、次の入力で触れているに戻す。
+ * 推測で触れていることにしたデバイスは、ただ離れたとみなす（慣性を取り違えていたら、慣性では戻さない） */
 static void expire_stale_touches(const struct auto_mouse_config *cfg,
                                  struct auto_mouse_data *data) {
-    if (cfg->touch_stale_ms == 0) {
-        return;
-    }
     const int64_t now = k_uptime_get();
     for (int i = 0; i < MAX_TOUCH_DEVICES; i++) {
-        if ((data->touch_mask & BIT(i)) && now - data->touch_last_ms[i] >= cfg->touch_stale_ms) {
+        const uint32_t limit = touch_stale_limit(cfg, data, i);
+        if ((data->touch_mask & BIT(i)) && limit > 0 && now - data->touch_last_ms[i] >= limit) {
             data->touch_mask &= ~BIT(i);
-            data->touch_unknown_mask |= BIT(i);
-            LOG_WRN("Auto mouse: no input from touch device %d for %u ms, treating as released", i,
-                    cfg->touch_stale_ms);
+            if (data->touch_inferred_mask & BIT(i)) {
+                data->touch_inferred_mask &= ~BIT(i);
+                LOG_DBG("Auto mouse: inferred touch on device %d expired", i);
+            } else {
+                data->touch_unknown_mask |= BIT(i);
+                LOG_WRN("Auto mouse: no input from touch device %d for %u ms, treating as released",
+                        i, limit);
+            }
         }
     }
 }
@@ -276,19 +290,19 @@ static void restart_timeout(const struct auto_mouse_config *cfg, struct auto_mou
         k_work_cancel_delayable(&data->disable_work);
     } else if (data->touch_mask != 0) {
         // 触れている間は解除しない。「離れた」の取りこぼしに備えて、最も早く古くなる時刻に確かめる
-        if (cfg->touch_stale_ms == 0) {
-            data->deadline = INT64_MAX;
-            k_work_cancel_delayable(&data->disable_work);
-            return;
-        }
         int64_t check_at = INT64_MAX;
         for (int i = 0; i < MAX_TOUCH_DEVICES; i++) {
-            if (data->touch_mask & BIT(i)) {
-                check_at = MIN(check_at, data->touch_last_ms[i] + cfg->touch_stale_ms);
+            const uint32_t limit = touch_stale_limit(cfg, data, i);
+            if ((data->touch_mask & BIT(i)) && limit > 0) {
+                check_at = MIN(check_at, data->touch_last_ms[i] + limit);
             }
         }
         data->deadline = check_at;
-        k_work_reschedule(&data->disable_work, K_MSEC(MAX(check_at - k_uptime_get(), 0)));
+        if (check_at == INT64_MAX) {
+            k_work_cancel_delayable(&data->disable_work);
+        } else {
+            k_work_reschedule(&data->disable_work, K_MSEC(MAX(check_at - k_uptime_get(), 0)));
+        }
     } else if (cfg->timeout_ms > 0) {
         data->deadline = k_uptime_get() + cfg->timeout_ms;
         k_work_reschedule(&data->disable_work, K_MSEC(cfg->timeout_ms));
@@ -318,6 +332,11 @@ static void activity_work_cb(struct k_work *work) {
         if ((cfg->require_prior_idle_ms > 0 &&
              data->last_tapped + cfg->require_prior_idle_ms > k_uptime_get()) ||
             alt_code_is_sending()) {
+            k_mutex_unlock(&data->lock);
+            return;
+        }
+        // ほかの操作（&mo・&tog など）ですでに有効なら、引き取らない（自分の時間切れで、そのレイヤーを解除しない）
+        if (zmk_keymap_layer_active(cfg->layer)) {
             k_mutex_unlock(&data->lock);
             return;
         }
@@ -417,6 +436,7 @@ static void handle_touch_input(const struct device *dev, int idx, struct input_e
             data->touch_mask &= ~BIT(idx);
         }
         data->touch_unknown_mask &= ~BIT(idx);
+        data->touch_inferred_mask &= ~BIT(idx);
         data->touch_last_ms[idx] = k_uptime_get();
         restart_timeout(dev->config, data);
     } else if (data->touch_unknown_mask & BIT(idx)) {
@@ -428,11 +448,14 @@ static void handle_touch_input(const struct device *dev, int idx, struct input_e
     } else if (data->touch_mask & BIT(idx)) {
         // 触れている間に届いた入力（カーソル移動など）で、まだ触れていることがわかる
         data->touch_last_ms[idx] = k_uptime_get();
-    } else if (evt->type == INPUT_EV_REL && evt->value != 0 && gap > TOUCH_GAP_MS) {
-        // 触れていないはずなのに、途切れた後に動きが届いた（慣性ではない）: 「触れた」を取りこぼした
+    } else if (evt->type == INPUT_EV_REL && evt->value != 0 && gap > TOUCH_GAP_MS &&
+               (((const struct auto_mouse_config *)dev->config)->touch_split_mask & BIT(idx))) {
+        // 子機からの中継で、触れていないはずなのに、途切れた後に動きが届いた: 「触れた」を取りこぼしたとみなす
+        // （直接つながったトラックパッドは「触れた」を取りこぼさない）。推測なので、短い時間で切れるようにする
         LOG_DBG("Auto mouse: motion from touch device %d after %lld ms, treating as touched", idx,
                 gap);
         data->touch_mask |= BIT(idx);
+        data->touch_inferred_mask |= BIT(idx);
         data->touch_last_ms[idx] = now;
         restart_timeout(dev->config, data);
     }
@@ -639,6 +662,7 @@ static void split_lost_work_cb(struct k_work *work) {
             restart_timeout(cfg, data);
         }
         data->touch_unknown_mask &= ~cfg->touch_split_mask;
+        data->touch_inferred_mask &= ~cfg->touch_split_mask;
         k_mutex_unlock(&data->lock);
     }
 }
@@ -647,9 +671,7 @@ static K_WORK_DEFINE(split_lost_work, split_lost_work_cb);
 
 static void auto_mouse_split_disconnected(struct bt_conn *conn, uint8_t reason) {
     ARG_UNUSED(reason);
-    struct bt_conn_info info;
-    // 親機は、右とは自分が central 側（接続を始める側）でつなぐ
-    if (bt_conn_get_info(conn, &info) == 0 && info.role == BT_CONN_ROLE_CENTRAL) {
+    if (is_split_link(conn)) {
         k_work_submit(&split_lost_work);
     }
 }
