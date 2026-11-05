@@ -378,6 +378,25 @@ static void disable_work_cb(struct k_work *work) {
 /* ---- 入力処理（入力スレッド） ---- */
 
 /* touch-devices の何番目か。含まれなければ -1 */
+#if WATCH_SPLIT_LINK
+/* 右（子機）との接続が切れているか（切断のコールバックで立て、接続し直したらワークで消す。入力スレッドで、ロックを取った状態で読む）。
+ * 立てるのはロックを取らずに行うが、触れている状態を消すのは、その後にロックを取って行う（split_lost_work_cb）ので、
+ * ロックを取った後に印が立っていなければ、その入力の後に消される */
+static atomic_t split_lost;
+#endif
+
+/* 子機からの中継の、touch-devices の idx 番目のデバイスで、右との接続が切れている間か
+ * （切れる前に届いていて、後から処理される入力で、触れている状態やマウスレイヤーを戻さないように） */
+static bool split_input_lost(const struct auto_mouse_config *cfg, int idx) {
+#if WATCH_SPLIT_LINK
+    return idx >= 0 && (cfg->touch_split_mask & BIT(idx)) && atomic_get(&split_lost);
+#else
+    ARG_UNUSED(cfg);
+    ARG_UNUSED(idx);
+    return false;
+#endif
+}
+
 static int touch_device_index(const struct auto_mouse_config *cfg, const struct device *input_dev) {
     for (size_t i = 0; i < cfg->num_touch_devs; i++) {
         if (cfg->touch_devs[i] == input_dev) {
@@ -424,30 +443,16 @@ static int auto_mouse_handle_event(const struct device *dev, struct input_event 
 
 /* ---- トラックパッドに触れているか（入力デバイスから直接受け取る。入力スレッド） ---- */
 
-#if WATCH_SPLIT_LINK
-/* 右（子機）との接続が切れているか（切断のコールバックで立て、接続し直したらワークで消す。入力スレッドで読む） */
-static atomic_t split_lost;
-#endif
-
-/* 子機からの中継の、touch-devices の idx 番目のデバイスで、右との接続が切れている間か
- * （切れる前に届いていて、後から処理される入力で、触れている状態やマウスレイヤーを戻さないように） */
-static bool split_input_lost(const struct auto_mouse_config *cfg, int idx) {
-#if WATCH_SPLIT_LINK
-    return idx >= 0 && (cfg->touch_split_mask & BIT(idx)) && atomic_get(&split_lost);
-#else
-    ARG_UNUSED(cfg);
-    ARG_UNUSED(idx);
-    return false;
-#endif
-}
-
 static void handle_touch_input(const struct device *dev, int idx, struct input_event *evt) {
     struct auto_mouse_data *data = dev->data;
-    if (split_input_lost(dev->config, idx)) {
-        return;
-    }
 
     k_mutex_lock(&data->lock, K_FOREVER);
+    // 右との接続が切れた後に処理される、子機からの中継の入力（切れる前に届いていたもの）は使わない。
+    // ロックを取ってから見る（切断の後の、触れている状態を消す処理と順番を守るため）
+    if (split_input_lost(dev->config, idx)) {
+        k_mutex_unlock(&data->lock);
+        return;
+    }
     const int64_t now = k_uptime_get();
     const int64_t gap = now - data->touch_input_ms[idx];
     data->touch_input_ms[idx] = now;
