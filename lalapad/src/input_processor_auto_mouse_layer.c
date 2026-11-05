@@ -121,9 +121,6 @@ struct auto_mouse_data {
 
     /* レイヤーの状態 */
     bool active;
-    /* 有効にしたレイヤーの ID（keymap の宣言順の番号。&mo などと同じく ID として扱うので、
-     * ZMK Studio でレイヤーの順番を入れ替えても同じレイヤーを指す） */
-    zmk_keymap_layer_id_t layer;
     int64_t last_tapped;
     /* 解除する時刻。解除ワークが遅れて動いても、この時刻まではまだ解除しない */
     int64_t deadline;
@@ -165,6 +162,12 @@ static bool position_is_passive(const struct auto_mouse_config *cfg, uint32_t po
 
 /* そのレイヤーで &trans 以外が割り当ててあるキーか（&none も割り当てありとみなす。
  * keymap で &none にした位置は、マウスレイヤーの間は押しても何もせず、レイヤーも解除しない） */
+/* 有効にするレイヤーの ID（layer。keymap の宣言順の番号。&mo などと同じく ID として扱うので、
+ * ZMK Studio でレイヤーの順番を入れ替えても同じレイヤーを指す） */
+static zmk_keymap_layer_id_t mouse_layer_id(const struct auto_mouse_data *data) {
+    return ((const struct auto_mouse_config *)data->dev->config)->layer;
+}
+
 static bool position_is_bound(zmk_keymap_layer_id_t layer, uint32_t position) {
     const struct zmk_behavior_binding *binding =
         zmk_keymap_get_layer_binding_at_idx(layer, position);
@@ -202,8 +205,8 @@ static bool excluded_layer_active(const struct auto_mouse_config *cfg) {
 
 /* マウスレイヤーの割り当てが働くキーか（&trans でなく、上の有効なレイヤーに隠されていない） */
 static bool mouse_binding_works(const struct device *dev, uint32_t position) {
-    const struct auto_mouse_data *data = dev->data;
-    return position_is_bound(data->layer, position) && mouse_layer_wins(data->layer, position);
+    const struct auto_mouse_config *cfg = dev->config;
+    return position_is_bound(cfg->layer, position) && mouse_layer_wins(cfg->layer, position);
 }
 
 static bool is_mouse_key(const struct device *dev, uint32_t position) {
@@ -221,7 +224,7 @@ static bool is_passive_key(const struct device *dev, uint32_t position) {
 
 /* 有効にしたレイヤーを固定しているか（zmk,behavior-layer-lock） */
 static bool is_locked(const struct auto_mouse_data *data) {
-    return data->active && layer_lock_is_locked(data->layer);
+    return data->active && layer_lock_is_locked(mouse_layer_id(data));
 }
 
 /* 以下はロックを取った状態で呼ぶ */
@@ -232,8 +235,8 @@ static void deactivate(struct auto_mouse_data *data) {
     }
     data->active = false;
     k_work_cancel_delayable(&data->disable_work);
-    zmk_keymap_layer_deactivate(data->layer);
-    LOG_DBG("Auto mouse layer %d deactivated", data->layer);
+    zmk_keymap_layer_deactivate(mouse_layer_id(data));
+    LOG_DBG("Auto mouse layer %d deactivated", mouse_layer_id(data));
 }
 
 /* 有効にしたときに、それより前から押しているキーのうち excluded-positions のもの（トラックパッドのクリックなど）を数え直す
@@ -343,11 +346,10 @@ static void activity_work_cb(struct k_work *work) {
             k_mutex_unlock(&data->lock);
             return;
         }
-        data->layer = cfg->layer;
         data->active = true;
         recount_held(data->dev, data);
-        zmk_keymap_layer_activate(data->layer);
-        LOG_DBG("Auto mouse layer %d activated", data->layer);
+        zmk_keymap_layer_activate(cfg->layer);
+        LOG_DBG("Auto mouse layer %d activated", cfg->layer);
     }
     restart_timeout(cfg, data);
     k_mutex_unlock(&data->lock);
@@ -440,17 +442,17 @@ static void handle_touch_input(const struct device *dev, int idx, struct input_e
         }
         data->touch_unknown_mask &= ~BIT(idx);
         data->touch_inferred_mask &= ~BIT(idx);
-        data->touch_last_ms[idx] = k_uptime_get();
+        data->touch_last_ms[idx] = now;
         restart_timeout(dev->config, data);
     } else if (data->touch_unknown_mask & BIT(idx)) {
         // 古くなって離れたとみなしていたが、「離れた」は届いていない。入力が来たので触れているに戻す
         data->touch_unknown_mask &= ~BIT(idx);
         data->touch_mask |= BIT(idx);
-        data->touch_last_ms[idx] = k_uptime_get();
+        data->touch_last_ms[idx] = now;
         restart_timeout(dev->config, data);
     } else if (data->touch_mask & BIT(idx)) {
         // 触れている間に届いた入力（カーソル移動など）で、まだ触れていることがわかる
-        data->touch_last_ms[idx] = k_uptime_get();
+        data->touch_last_ms[idx] = now;
     } else if (evt->type == INPUT_EV_REL && evt->value != 0 && gap > TOUCH_GAP_MS &&
                (((const struct auto_mouse_config *)dev->config)->touch_split_mask & BIT(idx))) {
         // 子機からの中継で、触れていないはずなのに、途切れた後に動きが届いた: 「触れた」を取りこぼしたとみなす
@@ -523,8 +525,8 @@ static void handle_layer_state(const struct device *dev) {
     k_mutex_lock(&data->lock, K_FOREVER);
     // ほかの操作（&tog や &to など）でレイヤーが解除されたら、こちらの状態も合わせる。
     // 固定しているレイヤーは、すぐに有効にし直されるので、有効のままとして扱う（behavior_layer_lock.c）
-    if (data->active && !zmk_keymap_layer_active(data->layer) &&
-        !layer_lock_is_locked(data->layer)) {
+    if (data->active && !zmk_keymap_layer_active(mouse_layer_id(data)) &&
+        !layer_lock_is_locked(mouse_layer_id(data))) {
         data->active = false;
         k_work_cancel_delayable(&data->disable_work);
     }
@@ -535,7 +537,7 @@ static void handle_layer_state(const struct device *dev) {
 static bool unlocked(const struct device *dev, zmk_keymap_layer_id_t layer) {
     struct auto_mouse_data *data = dev->data;
     k_mutex_lock(&data->lock, K_FOREVER);
-    const bool mine = data->active && data->layer == layer;
+    const bool mine = data->active && mouse_layer_id(data) == layer;
     if (mine) {
         restart_timeout(dev->config, data);
     }

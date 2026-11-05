@@ -29,6 +29,9 @@
  * メニューバーやスタートメニューが開いて、続く打鍵がそちらに入ってしまうため */
 #define KANA_MASKED_MODS (MOD_LSFT | MOD_RSFT | MOD_LCTL | MOD_RCTL)
 
+/* キーマップのキー位置のほかに（combos の位置など）、編集用のキーを同時に押しっぱなしにできる数 */
+#define KANA_HOLD_EXTRA_MAX 4
+
 /* keycode を1回タップする操作（押す→離す）を behavior queue に並べる。
  * 戻り値: 0 = 登録できた
  *         -EBUSY  = 前のキーの「離す」か、修飾キーを戻す合図を再試行中なので何も登録していない
@@ -37,9 +40,6 @@
  *                   （呼び出し側は、同じ文字の残りのキーを送らずに打ち切ること） */
 int kana_output_tap(const struct zmk_behavior_binding_event *event, uint32_t keycode,
                     uint32_t tap_ms, uint32_t wait_ms);
-
-/* キーマップのキー位置のほかに（combos の位置など）、編集用のキーを同時に押しっぱなしにできる数 */
-#define KANA_HOLD_EXTRA_MAX 4
 
 /* keycode の「押す」だけをキューに並べる（押しっぱなしにするキー用）。
  * 戻り値: 0 = 登録できた / -EBUSY = 「離す」か修飾キーを戻す合図を再試行中なので登録していない /
