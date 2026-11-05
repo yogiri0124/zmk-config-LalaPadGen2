@@ -35,7 +35,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 BUILD_ASSERT(ZMK_KEYMAP_LAYERS_LEN <= 32, "layer lock: up to 32 layers");
 
-/* conditional_layers の then-layer（固定しないレイヤー）。keymap の宣言順の番号（起動時はレイヤー ID と同じ） */
+/* conditional_layers の then-layer（固定しないレイヤー）。レイヤー ID（keymap の宣言順の番号。ZMK Studio で並べ替えても変わらない） */
 #define LAYER_LOCK_CL_THEN(child) | BIT(DT_PROP(child, then_layer))
 #define LAYER_LOCK_CL_NODE(node) DT_FOREACH_CHILD(node, LAYER_LOCK_CL_THEN)
 static const uint32_t conditional_layers =
