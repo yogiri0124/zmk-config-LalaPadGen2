@@ -42,7 +42,11 @@ child-binding:
       description: 左右共通の出すもの
     left-bindings:
       type: phandle-array
+      # 引数の数は、bindings と同じく、割り当てる behavior の #binding-cells で決める
+      specifier-space: binding
       description: 左のトラックパッドで出すもの（bindings の代わり）
     right-bindings:
       type: phandle-array
+      # 引数の数は、bindings と同じく、割り当てる behavior の #binding-cells で決める
+      specifier-space: binding
       description: 右のトラックパッド（分割の通信で届くもの）で出すもの（bindings の代わり）
