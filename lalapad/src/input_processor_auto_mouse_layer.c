@@ -116,6 +116,11 @@ struct auto_mouse_data {
     const struct device *dev;
     struct k_mutex lock;
     struct k_work activity_work;
+    /* activity_work の予約のきっかけ: 親機のデバイスの動き、子機からの中継の動き（と、そのとき読んだ右との接続が
+     * 切れた回数。実行するときに今の回数と違えば、予約の後に切れたので、その動きでは有効にしない） */
+    bool activity_local;
+    bool activity_split;
+    uint32_t activity_split_losses;
     /* 「マウス操作」でないキーを押したので、その出来事をほかの listener に流し終えたら解除する */
     bool deactivate_pending;
     struct k_work_delayable disable_work;
@@ -322,6 +327,19 @@ static void activity_work_cb(struct k_work *work) {
     const struct auto_mouse_config *cfg = data->dev->config;
 
     k_mutex_lock(&data->lock, K_FOREVER);
+    // 予約の後に右との接続が切れたら、子機からの中継の動きでは有効にも延長にもしない（親機の動きの予約は残す）
+    bool valid = data->activity_local;
+#if WATCH_SPLIT_LINK
+    valid |= data->activity_split && data->activity_split_losses == split_link_losses();
+#else
+    valid |= data->activity_split;
+#endif
+    data->activity_local = false;
+    data->activity_split = false;
+    if (!valid) {
+        k_mutex_unlock(&data->lock);
+        return;
+    }
     if (!data->active) {
         // 有効にしないレイヤーにいたら有効にしない（予約の後に、そのレイヤーに入ったときのため）
         if (excluded_layer_active(cfg)) {
@@ -419,6 +437,11 @@ static int auto_mouse_handle_event(const struct device *dev, struct input_event 
     }
 
     struct auto_mouse_data *data = dev->data;
+    const struct auto_mouse_config *cfg = dev->config;
+#if WATCH_SPLIT_LINK
+    // 右との接続が切れた回数は、切断の確認より前に読む（確認の後に切れたら、予約を実行するときに回数の違いでわかる）
+    const uint32_t losses = split_link_losses();
+#endif
     k_mutex_lock(&data->lock, K_FOREVER);
 
     // 触れているかを送ってくるデバイスで、いま触れていなければ（指を離した後の慣性など）きっかけにしない。
@@ -429,7 +452,14 @@ static int auto_mouse_handle_event(const struct device *dev, struct input_event 
         k_mutex_unlock(&data->lock);
         return ZMK_INPUT_PROC_CONTINUE;
     }
-
+    if (touch_idx >= 0 && (cfg->touch_split_mask & BIT(touch_idx))) {
+        data->activity_split = true;
+#if WATCH_SPLIT_LINK
+        data->activity_split_losses = losses;
+#endif
+    } else {
+        data->activity_local = true;
+    }
     k_mutex_unlock(&data->lock);
 
     k_work_submit(&data->activity_work);

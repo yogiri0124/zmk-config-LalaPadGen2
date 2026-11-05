@@ -8,7 +8,9 @@
  *   切れていないとき）だけ、印を消す。
  * 合図は、ZMK の入力のリスナー・自作の入力処理のどれも使わない種類（MSC）で、同期（sync）なしで流す。
  *
- * 接続・切断のコールバックはシステムワークキューで呼ばれる。印と番号は atomic で持つ（入力スレッドから読む）。
+ * 接続・切断のコールバックはシステムワークキュー、合図の処理は入力スレッドで呼ばれる。状態の書き換え（と、確かめてから
+ * 書き換えるところ）は lock で一続きにする（合図の番号を確かめた直後に切れたとき、立ったばかりの印を消さないように）。
+ * 印と回数は atomic でも持ち、読むだけなら lock を取らない。
  */
 
 #include <zephyr/device.h>
@@ -24,27 +26,31 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #if WATCH_SPLIT_LINK
 
-/* 区切りの合図（入力の種類・コード）。値は epoch（0 にはならない） */
+/* 区切りの合図（入力の種類・コード）。値は epoch（接続のたびに増えるので 0 にはならない） */
 #define SPLIT_LINK_MARKER_TYPE INPUT_EV_MSC
 #define SPLIT_LINK_MARKER_CODE INPUT_MSC_SCAN
 /* 入力の列が満杯で合図を流せなかったときに、流し直すまでの時間 */
 #define SPLIT_LINK_MARKER_RETRY_MS 10
 
-/* つながっているか */
-static atomic_t connected;
+static struct k_spinlock lock;
+/* つながっているか（lock の中で読み書きする） */
+static bool connected;
 /* 切断から、合図が処理されるまで */
 static atomic_t input_lost;
 /* 切れた回数 */
 static atomic_t losses;
-/* 接続・切断のたびに増える番号（合図の値） */
-static atomic_t epoch;
+/* 接続・切断のたびに増える番号（合図の値。lock の中で読み書きする） */
+static uint32_t epoch;
 
 void split_link_mark_lost(void) {
-    if (atomic_cas(&connected, 1, 0)) {
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    if (connected) {
+        connected = false;
         atomic_set(&input_lost, 1);
         atomic_inc(&losses);
-        atomic_inc(&epoch);
+        epoch++;
     }
+    k_spin_unlock(&lock, key);
 }
 
 bool split_link_input_lost(void) { return atomic_get(&input_lost) != 0; }
@@ -64,11 +70,16 @@ static K_WORK_DELAYABLE_DEFINE(marker_work, marker_work_cb);
 /* 合図を流す（システムワークキュー）。流せなければ少し後に流し直す（その間に切れたら流さない） */
 static void marker_work_cb(struct k_work *work) {
     ARG_UNUSED(work);
-    if (!atomic_get(&connected)) {
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    const bool now_connected = connected;
+    const uint32_t value = epoch;
+    k_spin_unlock(&lock, key);
+    if (!now_connected) {
         return;
     }
+    // その後に切れたら、合図の値が今の番号と違うので、印は消えない
     const int ret = input_report(SPLIT_LINK_INPUT_DEV, SPLIT_LINK_MARKER_TYPE,
-                                 SPLIT_LINK_MARKER_CODE, atomic_get(&epoch), false, K_NO_WAIT);
+                                 SPLIT_LINK_MARKER_CODE, (int32_t)value, false, K_NO_WAIT);
     if (ret < 0) {
         LOG_DBG("Split link: could not queue the input marker (%d), retrying", ret);
         k_work_reschedule(&marker_work, K_MSEC(SPLIT_LINK_MARKER_RETRY_MS));
@@ -81,25 +92,35 @@ static void marker_input_cb(struct input_event *evt) {
         evt->value == 0) {
         return;
     }
-    if (atomic_get(&connected) && evt->value == atomic_get(&epoch)) {
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    if (connected && (uint32_t)evt->value == epoch) {
         atomic_set(&input_lost, 0);
-        LOG_DBG("Split link: input marker %d processed", evt->value);
     }
+    k_spin_unlock(&lock, key);
 }
 
 INPUT_CALLBACK_DEFINE(SPLIT_LINK_INPUT_DEV, marker_input_cb);
 #endif // SPLIT_LINK_HAS_INPUT
 
 static void split_link_connected(struct bt_conn *conn, uint8_t err) {
-    if (err != 0 || !is_split_link(conn) || !atomic_cas(&connected, 0, 1)) {
+    if (err != 0 || !is_split_link(conn)) {
         return;
     }
-    atomic_inc(&epoch);
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    const bool changed = !connected;
+    if (changed) {
+        connected = true;
+        epoch++;
+#if !SPLIT_LINK_HAS_INPUT
+        // 右からの入力がない: 待つものはない
+        atomic_set(&input_lost, 0);
+#endif
+    }
+    k_spin_unlock(&lock, key);
 #if SPLIT_LINK_HAS_INPUT
-    k_work_reschedule(&marker_work, K_NO_WAIT);
-#else
-    // 右からの入力がない: 待つものはない
-    atomic_set(&input_lost, 0);
+    if (changed) {
+        k_work_reschedule(&marker_work, K_NO_WAIT);
+    }
 #endif
 }
 

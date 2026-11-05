@@ -118,6 +118,9 @@ static int position_relay_listener(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
 #if WATCH_SPLIT_LINK
+    // 切れた回数は、切断の確認より前に読む（確認の後に切れたら、処理するときに回数の違いで捨てられる。確認の前に
+    // 切れていたら、下の確認で捨てる）
+    const uint32_t losses = split_link_losses();
     // 切れてから、つながり直した後の区切りの合図が処理されるまでに届いた右のトラックパッドの「押した」
     // （切れる前に入力の列に並んでいた分）は捨てる（split_link.h）
     if (pos->state && split_link_input_lost() && tp_position_is_right(pos->position)) {
@@ -137,7 +140,7 @@ static int position_relay_listener(const zmk_event_t *eh) {
     const struct relayed_event item = {
         .ev = copy_raised_zmk_position_state_changed(pos),
 #if WATCH_SPLIT_LINK
-        .losses = split_link_losses(),
+        .losses = losses,
 #endif
     };
     // 満杯なら、空くのを少しだけ待つ（入力スレッドを止めるので長くは待たない。K_FOREVER にすると、システム
