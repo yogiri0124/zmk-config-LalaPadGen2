@@ -71,6 +71,7 @@
 #include <dt-bindings/lalapad/tp_keys.h>
 
 #include "layer_lock.h"
+#include "split_link.h"
 #include "tp_keys.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
@@ -226,8 +227,8 @@ static bool enqueue(const struct held_mode *hm, const struct zmk_behavior_bindin
         return false;
     }
     if (motion) {
+        // 違う向き（または違う押し方）の分が待っていたら捨てる。同じ向きの分は MAX_PENDING_STEPS まで。
         // &trans の向きに動かしたときも、ほかの向きの待っている分は捨てる（下で、足さずに戻る）
-        // 違う向き（または違う押し方）の分が待っていたら捨てる。同じ向きの分は MAX_PENDING_STEPS まで
         size_t pending = 0;
         bool other = false;
         for (size_t i = 0; i < queue_len; i++) {
@@ -720,6 +721,49 @@ static int tp_keys_handle_event(const struct device *dev, struct input_event *ev
     }
     return ZMK_INPUT_PROC_STOP;
 }
+
+#if WATCH_SPLIT_LINK
+/* 右（子機）との接続が切れた: 右のトラックパッド（zmk,input-split で中継される入力デバイス）の分は、
+ * 「離れた」が届かないまま止まるので、離れたとみなし、描きかけの一筆書きは捨てる（後でモードのキーを離したときに、
+ * 描きかけの並びで送らないように） */
+#define TP_KEYS_IS_SPLIT_DEV(node_id) || dev == DEVICE_DT_GET(node_id)
+
+static bool is_split_dev(const struct device *dev) {
+    return false DT_FOREACH_STATUS_OKAY(zmk_input_split, TP_KEYS_IS_SPLIT_DEV);
+}
+
+static void split_lost_work_cb(struct k_work *work) {
+    ARG_UNUSED(work);
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    for (size_t i = 0; i < MAX_SLOTS; i++) {
+        struct slot *s = &slots[i];
+        if (s->dev == NULL || !is_split_dev(s->dev)) {
+            continue;
+        }
+        reset_stroke(s);
+        if (s->touching) {
+            s->touching = false;
+            s->released_ms = k_uptime_get_32();
+        }
+        s->in_frame = false;
+        s->frame_dropped = false;
+    }
+    k_spin_unlock(&lock, key);
+}
+
+static K_WORK_DEFINE(split_lost_work, split_lost_work_cb);
+
+static void tp_keys_split_disconnected(struct bt_conn *conn, uint8_t reason) {
+    ARG_UNUSED(reason);
+    if (is_split_link(conn)) {
+        k_work_submit(&split_lost_work);
+    }
+}
+
+BT_CONN_CB_DEFINE(tp_keys_split_callbacks) = {
+    .disconnected = tp_keys_split_disconnected,
+};
+#endif // WATCH_SPLIT_LINK
 
 static struct zmk_input_processor_driver_api tp_keys_driver_api = {
     .handle_event = tp_keys_handle_event,

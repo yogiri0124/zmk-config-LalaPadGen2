@@ -1,7 +1,7 @@
 /*
  * トラックパッドのタップ・ジェスチャーを割り当てるキーの位置（_L・_R は左右のトラックパッド）。
- * shield の lalapadgen2.dtsi（trackpad_key_behaviors_*）と、自作モジュールの C（lalapad/src/tp_positions.h）の
- * 両方から読む（値はここだけに書く）。keymap の 52〜67 番目に書いたものが、それぞれの動作になる。
+ * shield の lalapadgen2.dtsi（trackpad_key_behaviors_*）、keymap（オートマウスの excluded-positions など）、
+ * 自作モジュールの C（lalapad/src/tp_positions.h）から読む（値はここだけに書く）。keymap の 52〜67 番目に書いたものが、それぞれの動作になる。
  * SWIPE_* は 3 本指で指を動かした向き（ドライバは右へのスワイプを INPUT_BTN_3、左へを BTN_4、
  * 上へを BTN_5、下へを BTN_6 で送る）。PINCH は 2 本指のピンチ中に押される修飾キー（ピンチは無効にしてある）。
  */
