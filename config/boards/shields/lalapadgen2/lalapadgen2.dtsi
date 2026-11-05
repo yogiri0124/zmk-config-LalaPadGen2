@@ -1,6 +1,4 @@
-#include <dt-bindings/zmk/keys.h>
 #include <dt-bindings/zmk/matrix_transform.h>
-#include <dt-bindings/zmk/input_transform.h>
 #include <dt-bindings/zmk/zip_dynamic_scale.h>
 #include <zephyr/dt-bindings/input/input-event-codes.h>
 #include <input/processors.dtsi>
@@ -132,19 +130,19 @@
         track-remainders;
     };
 
-    // オートマウスレイヤー: トラックパッド操作でレイヤー5 (MOUSE_LAYER) を一時的に有効化する（自作: lalapad/src/input_processor_auto_mouse_layer.c）。
+    // オートマウスレイヤー: トラックパッド操作でマウスレイヤーを一時的に有効化する（自作: lalapad/src/input_processor_auto_mouse_layer.c）。
     // マウスレイヤーで &trans 以外のキー（&none を含む）と excluded-positions のキーは「マウス操作」として扱い、
     // 押しても解除せず、押している間は時間切れにしない（離してから数え直す）。「マウス操作」でないキーを押すと
     // 即解除し、&trans の位置のキーは下のレイヤー（Default など）のキーとして入力される。
     // 有効にするきっかけはカーソル移動・スクロールだけ（タップ・ジェスチャー、触れただけでは有効にしない）。
     // リスナーの入力処理の最後に入れるので、速度の調整の後の、実際にカーソルが動く量で有効にする。
-    // トラックパッドに触れている間も時間切れにしない（離れてから 350ms で解除）。触れている合図は
+    // トラックパッドに触れている間も時間切れにしない（離れてから timeout-ms で解除）。触れている合図は
     // ドライバの INPUT_BTN_TOUCH（CONFIG_INPUT_IQS9151_REPORT_TOUCH）で、受け取るデバイスは親機の overlay の touch-devices で指定する。
-    // マウスレイヤーの配置に結びつく設定（excluded-layers・excluded-positions・passive-positions）は keymap に書く。
-    // レイヤー番号（5）は keymap の MOUSE_LAYER と合わせる（keymap の #define はここからは見えないため数字で書く）。
+    // マウスレイヤーに結びつく設定（layer・timeout-ms・excluded-layers・excluded-positions・passive-positions）は
+    // keymap に書く（レイヤーの #define は keymap にあり、ここからは見えないため）。
     zip_auto_mouse_layer: zip_auto_mouse_layer {
         compatible = "zmk,input-processor-auto-mouse-layer";
-        #input-processor-cells = <2>;
+        #input-processor-cells = <0>;
         require-prior-idle-ms = <150>;
     };
 
@@ -159,33 +157,23 @@
     // 変えた動きでマウスレイヤーをオンにしないためオートマウスレイヤーより前に、つまり先頭に入れる。
     // INPUT_BTN_TOUCH（触れている／離れた）もここで止める（リスナーは使わない。オートマウスレイヤーは
     // 入力デバイスから直接受け取る）。
+    // 左右のリスナーの入力処理の並び（左右で同じにする。違うのはタップ・ジェスチャーの位置と、スクロールスナップの入り口）。
+    // key_behaviors: タップ・ジェスチャーをキー位置に変える処理、snap: スクロールスナップ（ふだんは入り口の gate）
+    #define LALAPAD_TP_PROCESSORS(key_behaviors, snap)                                                 \
+        <&zip_tp_keys>, <&key_behaviors>, <&zip_xy_scaler 1 5>, <&zip_scroll_scaler 1 12>,             \
+            <&zip_dynamic_xy_scaler>, <&zip_cursor_slow 1 3>, <&zip_dynamic_scroll_scaler>, <&snap>,   \
+            <&zip_auto_mouse_layer>
     trackpad_listener_R: trackpad_listener_R {
         compatible = "zmk,input-listener";
         status = "disabled";
         device = <&trackpad_split_R>;
-        input-processors = <&zip_tp_keys>,
-                           <&trackpad_key_behaviors_R>,
-                           <&zip_xy_scaler 1 5>,
-                           <&zip_scroll_scaler 1 12>,
-                           <&zip_dynamic_xy_scaler>,
-                           <&zip_cursor_slow 1 3>,
-                           <&zip_dynamic_scroll_scaler>,
-                           <&zip_scroll_snap_gate_R>,
-                           <&zip_auto_mouse_layer 5 350>;
+        input-processors = LALAPAD_TP_PROCESSORS(trackpad_key_behaviors_R, zip_scroll_snap_gate_R);
     };
     trackpad_listener_L: trackpad_listener_L {
         compatible = "zmk,input-listener";
         status = "disabled";
         device = <&iqs9151>;
-        input-processors = <&zip_tp_keys>,
-                           <&trackpad_key_behaviors_L>,
-                           <&zip_xy_scaler 1 5>,
-                           <&zip_scroll_scaler 1 12>,
-                           <&zip_dynamic_xy_scaler>,
-                           <&zip_cursor_slow 1 3>,
-                           <&zip_dynamic_scroll_scaler>,
-                           <&zip_scroll_snap_gate_L>,
-                           <&zip_auto_mouse_layer 5 350>;
+        input-processors = LALAPAD_TP_PROCESSORS(trackpad_key_behaviors_L, zip_scroll_snap_gate_L);
     };
 
     aliases {
@@ -239,18 +227,10 @@
 // 各リスナー（trackpad_listener_R / _L）に入れた &zip_scroll_snap_gate_R / _L がここへイベントを渡す
 // （レイヤーは使わない。自作: lalapad/src/input_processor_scroll_snap_gate.c）。
 // 特定のレイヤーで常に有効にしたいときは、各リスナーに次のような子ノードを追加する
-// （<N> はレイヤー番号、_R / _L は左右で合わせる）:
+// （<N> はレイヤー番号、_R / _L は左右で合わせる。入り口の gate の代わりに、スクロールスナップを直接入れる）:
 //     snapmode {
 //         layers = <N>;
-//         input-processors = <&zip_tp_keys>,
-//                            <&trackpad_key_behaviors_R>,
-//                            <&zip_xy_scaler 1 5>,
-//                            <&zip_scroll_scaler 1 12>,
-//                            <&zip_dynamic_xy_scaler>,
-//                            <&zip_cursor_slow 1 3>,
-//                            <&zip_dynamic_scroll_scaler>,
-//                            <&zip_scroll_snap_R>,
-//                            <&zip_auto_mouse_layer 5 350>;
+//         input-processors = LALAPAD_TP_PROCESSORS(trackpad_key_behaviors_R, zip_scroll_snap_R);
 //     };
 // 判定状態（サンプル・軸ロック）は左右のトラックパッドで独立させるため、インスタンスを分ける。
 // y-threshold <1 1>: |y| > |x| なら Y 軸。x-threshold <101 100>: |y| < 1.01|x| なら X 軸

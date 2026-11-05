@@ -32,13 +32,16 @@
 
 &lt { quick-tap-ms = <200>; };
 
-// オートマウスレイヤー（lalapadgen2.dtsi）のうち、マウスレイヤーの配置に結びつく設定
+// オートマウスレイヤー（lalapadgen2.dtsi）のうち、マウスレイヤーに結びつく設定
+// - layer: トラックパッドを操作したときに有効にするレイヤー。timeout-ms: 指とキーを離してから解除するまでの時間
 // - excluded-layers: 数字・記号レイヤーの間は、トラックパッドを操作してもマウスレイヤーにしない
 // - excluded-positions: マウスレイヤーで &trans でも、押しても解除せず、押している間は時間切れにしない位置
 //   （トラックパッドのクリック・ジェスチャー 52〜67。POS_TP_* は dt-bindings/lalapad/tp_positions.h。離してから数え直す）
 // - passive-positions: マウスレイヤーに割り当てがあっても、押しても解除も延長もしない位置（親指の段の 30〜41 のうち、
 //   33・34 以外。マウスレイヤーで &trans の位置（36〜38）は、ほかのキーと同じく押すと解除する）
 &zip_auto_mouse_layer {
+    layer = <MOUSE_LAYER>;
+    timeout-ms = <350>;
     excluded-layers = <SECONDARY_LAYER TERTIARY_LAYER>;
     excluded-positions = <
         POS_TP_LCLK_L POS_TP_RCLK_L POS_TP_MCLK_L POS_TP_LCLK_R POS_TP_RCLK_R POS_TP_MCLK_R

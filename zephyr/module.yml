@@ -1,3 +1,4 @@
+name: lalapad
 build:
   cmake: lalapad
   kconfig: lalapad/Kconfig

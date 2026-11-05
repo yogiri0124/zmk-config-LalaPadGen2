@@ -23,7 +23,7 @@ manifest:
       revision: v1.0.0
     - name: zmk-rgbled-widget
       remote: caksoylar
-      # v0.3 は更新され続けるブランチなので、タグで固定する（2026-11 時点で v0.3 と同じ）
+      # v0.3 は付け替えられるタグなので、v0.3.0 で固定する（2026-11 時点で v0.3 と同じ）
       revision: v0.3.0
     - name: zmk-scroll-snap
       remote: kot149

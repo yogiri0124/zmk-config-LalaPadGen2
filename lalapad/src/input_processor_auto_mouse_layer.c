@@ -1,13 +1,14 @@
 /*
  * オートマウスレイヤーの入力処理 (zmk,input-processor-auto-mouse-layer)。
  *
- * トラックパッドのリスナーに <&zip_auto_mouse_layer 5 350> のように入れると、
- * トラックパッドの操作でレイヤー param1 を有効にし、操作が止まって param2 ms たったら解除する。
- * ZMK 標準の zmk,input-processor-temp-layer と同じ使い方で、次の点が違う。
+ * トラックパッドのリスナーに <&zip_auto_mouse_layer> のように入れると、トラックパッドの操作でレイヤー layer を
+ * 有効にし、操作が止まって timeout-ms たったら解除する（layer・timeout-ms はノードのプロパティ。keymap で、
+ * マウスレイヤーの #define と一緒に書けるように、引数にはしない）。
+ * ZMK 標準の zmk,input-processor-temp-layer と同じ考え方で、次の点が違う。
  *
  * - マウスレイヤー上で &trans 以外のキー（&none を含む）と excluded-positions のキーは
  *   「マウス操作」として扱う。押してもレイヤーを解除せず、押している間は時間切れにしない。
- *   離したときから param2 ms を数え直す（クリック → ダブルクリックの間に解除されないように）。
+ *   離したときから timeout-ms を数え直す（クリック → ダブルクリックの間に解除されないように）。
  *   &none のキーは「マウスレイヤーの間は何もしないキー」になる。
  *   ただし、マウスレイヤーより上の有効なレイヤー（かなのレイヤーなど）に &trans 以外があるキーは、
  *   そちらが働くので「マウス操作」ではない（excluded-positions のキーを除く）。
@@ -20,7 +21,7 @@
  * - 有効にするきっかけは、カーソル移動・スクロール（値が 0 でない REL）だけ。タップ・ジェスチャー
  *   （クリックの直後に打ち始めても文字がマウスレイヤーのキーにならないように）や、触れただけでは有効にしない。
  * - touch-devices に指定した入力デバイスから INPUT_BTN_TOUCH（トラックパッドに触れている／離れた）が届く場合、
- *   触れている間は時間切れにしない。離れてから param2 ms で解除する（触れただけでは有効にしない）。
+ *   触れている間は時間切れにしない。離れてから timeout-ms で解除する（触れただけでは有効にしない）。
  *   そのデバイスからの入力は、触れている間のものだけを有効化・延長のきっかけにする
  *   （指を離した後の慣性による移動では延長しない。離してすぐの打鍵がクリックにならないように）。
  *   触れている合図はリスナーを通さず入力デバイスから直接受け取るので、どのレイヤーでも取りこぼさない。
@@ -40,7 +41,7 @@
  *   マウスレイヤーにしない。有効化を予約したときと、実際に有効にするときの両方で確かめる）。
  * - 状態はインスタンスごとに持つので、左右のリスナーに別々のインスタンスを入れれば別々に動く。
  *   1つのインスタンスで扱うレイヤーは1つだけ。別のレイヤーを使うリスナーには別のインスタンスを入れること
- *   （有効中に違う param1 が来ても、有効にしたレイヤーのまま扱う）。
+ *   （1つのインスタンスで扱うレイヤーは、layer の1つだけ）。
  *
  * - マウスレイヤーを固定しているとき（zmk,behavior-layer-lock のキー。layer_lock.h）は、時間切れでも、
  *   「マウス操作」でないキーを押しても解除しない（&trans のキーは、レイヤーを残したまま下のレイヤーのキーとして
@@ -91,6 +92,9 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define AUTO_MOUSE_INIT_PRIORITY 99
 
 struct auto_mouse_config {
+    /* 有効にするレイヤーの ID（keymap の宣言順の番号）と、解除までの時間（0 なら時間では解除しない） */
+    zmk_keymap_layer_id_t layer;
+    uint32_t timeout_ms;
     int32_t require_prior_idle_ms;
     const zmk_keymap_layer_id_t *excluded_layers;
     size_t num_excluded_layers;
@@ -110,10 +114,6 @@ struct auto_mouse_data {
     struct k_mutex lock;
     struct k_work activity_work;
     struct k_work_delayable disable_work;
-
-    /* トラックパッドの操作で指定された値（入力スレッドから書く） */
-    zmk_keymap_layer_id_t requested_layer;
-    uint32_t timeout_ms;
 
     /* レイヤーの状態 */
     bool active;
@@ -289,9 +289,9 @@ static void restart_timeout(const struct auto_mouse_config *cfg, struct auto_mou
         }
         data->deadline = check_at;
         k_work_reschedule(&data->disable_work, K_MSEC(MAX(check_at - k_uptime_get(), 0)));
-    } else if (data->timeout_ms > 0) {
-        data->deadline = k_uptime_get() + data->timeout_ms;
-        k_work_reschedule(&data->disable_work, K_MSEC(data->timeout_ms));
+    } else if (cfg->timeout_ms > 0) {
+        data->deadline = k_uptime_get() + cfg->timeout_ms;
+        k_work_reschedule(&data->disable_work, K_MSEC(cfg->timeout_ms));
     } else {
         // 時間では解除しない（触れている間の確かめの予約が残っていたら取り消す。取り消せずに動いた解除ワークは、
         // 期限がないのを見て何もしない）
@@ -321,14 +321,11 @@ static void activity_work_cb(struct k_work *work) {
             k_mutex_unlock(&data->lock);
             return;
         }
-        data->layer = data->requested_layer;
+        data->layer = cfg->layer;
         data->active = true;
         recount_held(data->dev, data);
         zmk_keymap_layer_activate(data->layer);
         LOG_DBG("Auto mouse layer %d activated", data->layer);
-    } else if (data->requested_layer != data->layer) {
-        LOG_WRN("Auto mouse: layer %d requested while layer %d is active (use separate instances)",
-                data->requested_layer, data->layer);
     }
     restart_timeout(cfg, data);
     k_mutex_unlock(&data->lock);
@@ -374,10 +371,8 @@ static int touch_device_index(const struct auto_mouse_config *cfg, const struct 
 static int auto_mouse_handle_event(const struct device *dev, struct input_event *event,
                                    uint32_t param1, uint32_t param2,
                                    struct zmk_input_processor_state *state) {
-    if (param1 >= ZMK_KEYMAP_LAYERS_LEN) {
-        LOG_ERR("Invalid layer index: %u", param1);
-        return -EINVAL;
-    }
+    ARG_UNUSED(param1);
+    ARG_UNUSED(param2);
 
     // きっかけはカーソル移動・スクロールだけ（タップ・ジェスチャー、触れている／離れたの合図ではない。
     // 触れている／離れたは touch-devices から直接受け取る）
@@ -400,8 +395,6 @@ static int auto_mouse_handle_event(const struct device *dev, struct input_event 
         return ZMK_INPUT_PROC_CONTINUE;
     }
 
-    data->requested_layer = param1;
-    data->timeout_ms = param2;
     k_mutex_unlock(&data->lock);
 
     k_work_submit(&data->activity_work);
@@ -579,6 +572,9 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
                  "auto mouse layer: excluded-positions / passive-positions is out of range");
 
 #define AUTO_MOUSE_INST(n)                                                                         \
+    BUILD_ASSERT(DT_INST_PROP(n, layer) >= 0 && DT_INST_PROP(n, layer) < ZMK_KEYMAP_LAYERS_LEN,    \
+                 "auto mouse layer: layer is out of range");                                       \
+    BUILD_ASSERT(DT_INST_PROP(n, timeout_ms) >= 0, "auto mouse layer: timeout-ms must be >= 0");   \
     BUILD_ASSERT(DT_INST_PROP(n, require_prior_idle_ms) >= 0 &&                                    \
                      DT_INST_PROP(n, touch_stale_ms) >= 0,                                         \
                  "auto mouse layer: require-prior-idle-ms and touch-stale-ms must be >= 0");       \
@@ -602,6 +598,8 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
     static const zmk_keymap_layer_id_t auto_mouse_excluded_layers_##n[] = {                        \
         DT_INST_FOREACH_PROP_ELEM_SEP(n, excluded_layers, DT_PROP_BY_IDX, (, ))};                   \
     static const struct auto_mouse_config auto_mouse_config_##n = {                                \
+        .layer = DT_INST_PROP(n, layer),                                                           \
+        .timeout_ms = DT_INST_PROP(n, timeout_ms),                                                 \
         .require_prior_idle_ms = DT_INST_PROP(n, require_prior_idle_ms),                           \
         .excluded_layers = auto_mouse_excluded_layers_##n,                                         \
         .num_excluded_layers = DT_INST_PROP_LEN(n, excluded_layers),                               \
