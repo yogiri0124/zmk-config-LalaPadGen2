@@ -44,6 +44,9 @@ struct behavior_cursor_slow_config {
     uint8_t mode;
 };
 
+// behavior のノードがないとき（入力処理など、同じモジュールのほかの部分だけを使うとき）に未使用の警告を出さない
+#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
+
 static uint8_t binding_mode(const struct zmk_behavior_binding *binding) {
     const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
     const struct behavior_cursor_slow_config *cfg = dev->config;
@@ -79,6 +82,8 @@ static int on_cursor_slow_binding_released(struct zmk_behavior_binding *binding,
     return ZMK_BEHAVIOR_OPAQUE;
 }
 
+#endif // DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
+
 /* ONESHOT: ほかのキー位置が押されたら低速を解除する */
 static int cursor_slow_position_listener(const zmk_event_t *eh) {
     const struct zmk_position_state_changed *ev = as_zmk_position_state_changed(eh);
@@ -91,6 +96,9 @@ static int cursor_slow_position_listener(const zmk_event_t *eh) {
 
 ZMK_LISTENER(behavior_cursor_slow, cursor_slow_position_listener);
 ZMK_SUBSCRIPTION(behavior_cursor_slow, zmk_position_state_changed);
+
+// behavior のノードがないとき（入力処理など、同じモジュールのほかの部分だけを使うとき）に未使用の警告を出さない
+#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
 
 static const struct behavior_driver_api behavior_cursor_slow_driver_api = {
     .binding_pressed = on_cursor_slow_binding_pressed,
@@ -109,3 +117,5 @@ static const struct behavior_driver_api behavior_cursor_slow_driver_api = {
                             CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &behavior_cursor_slow_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(CURSOR_SLOW_INST)
+
+#endif // DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)

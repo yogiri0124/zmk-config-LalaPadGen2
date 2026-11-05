@@ -432,7 +432,8 @@ static void handle_position(const struct device *dev,
     k_mutex_lock(&data->lock, K_FOREVER);
     data->pressed[ev->position] = ev->state;
     if (ev->state) {
-        if (ev->position < TP_POS_FIRST || ev->position > TP_POS_LAST) {
+        if ((ev->position < TP_POS_FIRST || ev->position > TP_POS_LAST) &&
+            ev->timestamp > data->last_tapped) {
             data->last_tapped = ev->timestamp;
         }
         if (data->active) {
@@ -459,8 +460,11 @@ static void handle_keycode(const struct device *dev, const struct zmk_keycode_st
     if (!ev->state) {
         return;
     }
+    // 新しいほうだけを残す（hold-tap が決まったときのキーは、押した時刻で届くので、後から押した位置より古いことがある）
     k_mutex_lock(&data->lock, K_FOREVER);
-    data->last_tapped = ev->timestamp;
+    if (ev->timestamp > data->last_tapped) {
+        data->last_tapped = ev->timestamp;
+    }
     k_mutex_unlock(&data->lock);
 }
 

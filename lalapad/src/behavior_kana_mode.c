@@ -28,6 +28,9 @@ struct behavior_kana_mode_config {
     uint32_t wait_ms;
 };
 
+// behavior のノードがないとき（入力処理など、同じモジュールのほかの部分だけを使うとき）に未使用の警告を出さない
+#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
+
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 
 static const struct behavior_parameter_value_metadata param_values[] = {
@@ -105,3 +108,5 @@ static const struct behavior_driver_api behavior_kana_mode_driver_api = {
                             CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &behavior_kana_mode_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(KANA_MODE_INST)
+
+#endif // DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)

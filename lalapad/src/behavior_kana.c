@@ -132,6 +132,9 @@ struct kana_entry {
     ENTRY(KE_ENTER, "エンター", K1(ENTER)) \
     ENTRY(KE_BSPC, "バックスペース", K1(BACKSPACE))
 
+// behavior のノードがないとき（入力処理など、同じモジュールのほかの部分だけを使うとき）に未使用の警告を出さない
+#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
+
 #define KANA_TABLE_ENTRY(id, name, keys) [id] = keys,
 
 static const struct kana_entry kana_table[KN_MAX_ID + 1] = {KANA_LIST(KANA_TABLE_ENTRY)};
@@ -259,3 +262,5 @@ static const struct behavior_driver_api behavior_kana_driver_api = {
                             CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &behavior_kana_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(KANA_INST)
+
+#endif // DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)

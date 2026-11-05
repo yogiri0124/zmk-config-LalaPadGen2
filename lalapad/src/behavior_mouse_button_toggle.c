@@ -135,6 +135,9 @@ ZMK_SUBSCRIPTION(behavior_mouse_button_toggle, zmk_endpoint_changed);
 
 #define DT_DRV_COMPAT zmk_behavior_mouse_button_toggle
 
+// behavior のノードがないとき（入力処理など、同じモジュールのほかの部分だけを使うとき）に未使用の警告を出さない
+#if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
+
 struct behavior_mbt_config {
     uint32_t buttons;
 };
@@ -172,3 +175,5 @@ static const struct behavior_driver_api behavior_mbt_driver_api = {
                             CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &behavior_mbt_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(MBT_INST)
+
+#endif // DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
