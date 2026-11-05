@@ -158,9 +158,18 @@ ZMK_SUBSCRIPTION(position_relay, zmk_position_state_changed);
 
 #if WATCH_SPLIT_LINK
 
+/* 印を消すのはシステムワークキューで行う（切れる前に預かって、まだ処理していない右の出来事（同じキュー）を、
+ * 接続し直した後のものとして通さないように） */
+static void split_found_work_handler(struct k_work *work) {
+    ARG_UNUSED(work);
+    atomic_set(&split_lost, 0);
+}
+
+static K_WORK_DEFINE(split_found_work, split_found_work_handler);
+
 static void relay_split_connected(struct bt_conn *conn, uint8_t err) {
     if (err == 0 && is_split_link(conn)) {
-        atomic_set(&split_lost, 0);
+        k_work_submit(&split_found_work);
     }
 }
 

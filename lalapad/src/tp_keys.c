@@ -74,6 +74,7 @@
 #include "layer_lock.h"
 #include "split_link.h"
 #include "tp_keys.h"
+#include "tp_positions.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -173,19 +174,23 @@ static struct action queue[QUEUE_LEN];
 static size_t queue_len;
 
 #if WATCH_SPLIT_LINK
-/* 右（子機）との接続が切れているか（接続・切断のコールバックで書き、behavior のコールバックで読む） */
+/* 右（子機）との接続が切れているか（切断のコールバックで立て、接続し直したらワークで消す。behavior のコールバックと
+ * 入力スレッドで読む） */
 static atomic_t split_lost;
 #endif
 
-/* 右との接続が切れたために出た、右のキーの「離した」か（ZMK は切断の知らせで、右で押されていたキーを離す） */
+/* 右との接続が切れたために出た、右のキーの「離した」か（ZMK は切断の知らせで、右で押されていたキーを離す。
+ * 右のトラックパッドの位置（55〜57・63〜67）は position_relay が親機の出来事として離す） */
 static bool released_by_split_loss(const struct zmk_behavior_binding_event *event) {
 #if WATCH_SPLIT_LINK
-    return atomic_get(&split_lost) && event->source != ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL;
+    return atomic_get(&split_lost) && (event->source != ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL ||
+                                       tp_position_is_right(event->position));
 #else
     ARG_UNUSED(event);
     return false;
 #endif
 }
+
 /* 列がいっぱいで捨てた数（ログ用） */
 static uint32_t dropped;
 
@@ -655,8 +660,33 @@ static bool handle_rel(struct slot *s, const struct input_event *event, bool *qu
 }
 
 /* KEY の入力（触れている／離れた、タップ・ジェスチャー）。捨てるなら true */
+#if WATCH_SPLIT_LINK
+#define TP_KEYS_IS_SPLIT_DEV(node_id) || dev == DEVICE_DT_GET(node_id)
+
+/* 右のトラックパッド（zmk,input-split で中継される入力デバイス）か */
+static bool is_split_dev(const struct device *dev) {
+    return false DT_FOREACH_STATUS_OKAY(zmk_input_split, TP_KEYS_IS_SPLIT_DEV);
+}
+
+#endif
+
+/* 右との接続が切れている間の、右のトラックパッドの分か */
+static bool split_slot_lost(const struct slot *s) {
+#if WATCH_SPLIT_LINK
+    return atomic_get(&split_lost) && is_split_dev(s->dev);
+#else
+    ARG_UNUSED(s);
+    return false;
+#endif
+}
+
 static bool handle_key(struct slot *s, const struct input_event *event, bool *queued) {
     if (event->code == INPUT_BTN_TOUCH) {
+        if (event->value != 0 && split_slot_lost(s)) {
+            // 切れる前に届いていて、後から処理される右の「触れた」: 離れたとみなしたままにする（後に続く動きを、
+            // 指の動きとしてキーに変えないように）
+            return true;
+        }
         s->touch_known = true;
         s->touching = event->value != 0;
         // 動きの組の途中で続きが届かなかったときに、前の組の扱いを持ち越さないように
@@ -745,23 +775,28 @@ static int tp_keys_handle_event(const struct device *dev, struct input_event *ev
 }
 
 #if WATCH_SPLIT_LINK
-#define TP_KEYS_IS_SPLIT_DEV(node_id) || dev == DEVICE_DT_GET(node_id)
-
-/* 右のトラックパッド（zmk,input-split で中継される入力デバイス）か */
-static bool is_split_dev(const struct device *dev) {
-    return false DT_FOREACH_STATUS_OKAY(zmk_input_split, TP_KEYS_IS_SPLIT_DEV);
+/* 印を消すのはシステムワークキューで行う（切断で ZMK が出した右のキーの「離した」の処理（同じキュー）が
+ * 遅れていても、その後に消す） */
+static void split_found_work_cb(struct k_work *work) {
+    ARG_UNUSED(work);
+    atomic_set(&split_lost, 0);
 }
+
+static K_WORK_DEFINE(split_found_work, split_found_work_cb);
 
 static void tp_keys_split_connected(struct bt_conn *conn, uint8_t err) {
     if (err == 0 && is_split_link(conn)) {
-        atomic_set(&split_lost, 0);
+        k_work_submit(&split_found_work);
     }
 }
 
-/* 右（子機）との接続が切れた。ZMK が右のキーを離す処理（システムワークキュー）より先に、その場で行う:
+/* 右（子機）との接続が切れた。ZMK が右のキーを離す処理（システムワークキューのワーク）より先に、その場で行う
+ * （Zephyr 3.5 では、このコールバックもシステムワークキューで呼ばれる）:
  * - 印を付ける（右のモードのキーが離されたときに、描きかけの一筆書きを送らない。mode_released）
  * - 右のトラックパッドの分は「離れた」が届かないまま止まるので、離れたとみなし、描きかけの一筆書きと動きの端数を
- *   捨てる。切れる前に届いていて、まだ処理されていない動きは、離した直後の慣性として捨てる */
+ *   捨てる。切れる前に届いていて、まだ処理されていない動きは、離した直後の慣性として扱う（モードのキーを
+ *   押していればキーにせず、ふつうの慣性と同じく、キーに変えた触れ方の後ならカーソルも動かさない）。
+ *   その間に届いた「触れた」は無視する（handle_key） */
 static void tp_keys_split_disconnected(struct bt_conn *conn, uint8_t reason) {
     ARG_UNUSED(reason);
     if (!is_split_link(conn)) {
