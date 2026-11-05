@@ -56,6 +56,9 @@
  *     修飾キーなど）を見る。預かった入力はまだ反映されていないので、mod-morph や &kt のように押した
  *     時点の修飾キーの状態で動きを変える behavior は、送信中に押すと違う動きになることがある
  *     （このキーマップでは使っていない。自作の key-lock は自分で状態を持つので影響を受けない）。
+ *   - 自分で送るキーは、ZMK の hold-tap・sticky key と自作モジュールのキー入力の listener に届かない（hold-tap の
+ *     quick-tap の判定や、auto mouse の「直前のキー入力」には数えられない。auto mouse は、送信中かを
+ *     alt_code_is_sending で見る）。
  *   - 自分で送るキーは sticky key（&sk）を通らないので、&sk を押した直後に Alt コードのキーを押すと、&sk は
  *     Alt コードには使われず、送り終えた後に打つキーにかかる（kana_key・kana-seq は使い切る）。
  * - 送信の途中で接続先（USB・BLE プロファイル）が変わったら、残りは送らずに中止する
@@ -303,6 +306,8 @@ static bool is_own(const struct zmk_keycode_state_changed *ev) {
 }
 
 bool alt_code_is_own_event(const struct zmk_keycode_state_changed *ev) { return is_own(ev); }
+
+bool alt_code_is_sending(void) { return busy; }
 
 /* 送信を始める: ここからのほかのキー入力を預かる */
 static void start_capturing(void) {

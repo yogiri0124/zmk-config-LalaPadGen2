@@ -31,6 +31,7 @@
  * - 直前のキー入力から require-prior-idle-ms 以内のトラックパッド操作では有効にしない（打鍵中の誤動作防止）。
  *   キー入力は、キーコードの「押す」と、トラックパッド由来でない位置の「押す」（レイヤーのキー、Alt コードの
  *   キーなど、キーコードを出さないものも含める。Alt コードが自分で送るキーは、この listener に届かないため）。
+ *   Alt コードを送っている間も有効にしない（alt_code_is_sending）。
  * - excluded-layers のレイヤーが有効な間は、有効にしない（数字・記号レイヤーの間にトラックパッドを触っても、
  *   マウスレイヤーにしない。有効化を予約したときと、実際に有効にするときの両方で確かめる）。
  * - 状態はインスタンスごとに持つので、左右のリスナーに別々のインスタンスを入れれば別々に動く。
@@ -61,6 +62,7 @@
 #include <zmk/keymap.h>
 #include <zmk/matrix.h>
 
+#include "alt_code.h"
 #include "auto_mouse_layer.h"
 #include "layer_lock.h"
 #include "tp_positions.h"
@@ -295,9 +297,11 @@ static void activity_work_cb(struct k_work *work) {
             k_mutex_unlock(&data->lock);
             return;
         }
-        // 直前にキーを打っていたら有効にしない
-        if (cfg->require_prior_idle_ms > 0 &&
-            data->last_tapped + cfg->require_prior_idle_ms > k_uptime_get()) {
+        // 直前にキーを打っていたら有効にしない。Alt コードを送っている間も、打っている最中とみなす（自分で送る
+        // キーはこの listener に届かず、送信は require-prior-idle-ms より長くかかることがあるため）
+        if ((cfg->require_prior_idle_ms > 0 &&
+             data->last_tapped + cfg->require_prior_idle_ms > k_uptime_get()) ||
+            alt_code_is_sending()) {
             k_mutex_unlock(&data->lock);
             return;
         }
