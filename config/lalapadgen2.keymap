@@ -542,6 +542,7 @@
             key-positions = <10 11>;
             layers = <DEFAULT_LAYER CONTROL_LAYER SECONDARY_LAYER TERTIARY_LAYER SYSTEM_LAYER MOUSE_LAYER KANA_LAYER>;
         };
+        // Default レイヤーだけ: 12＋13 で IME オン、16＋17 で IME オフ
         COMBO_IME_ON {
             bindings = <&kp LANGUAGE_1>;
             key-positions = <12 13>;
@@ -552,6 +553,7 @@
             key-positions = <16 17>;
             layers = <DEFAULT_LAYER>;
         };
+        // 左手用レイヤー（10）へ: 数字レイヤーで 30＋31。左手用レイヤーで 30＋31 を押すと Default に戻る
         COMBO_LEFT_HAND_IN {
             bindings = <&to LEFT_HAND_LAYER>;
             key-positions = <30 31>;
