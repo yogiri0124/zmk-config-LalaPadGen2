@@ -29,6 +29,8 @@
  *   （指を置いたまま止めていただけなら、動かせばまた使えるように）。
  *   右が触れている間に切れた場合（「離れた」は届かない）も、この時間で離れたとみなす。
  * - 直前のキー入力から require-prior-idle-ms 以内のトラックパッド操作では有効にしない（打鍵中の誤動作防止）。
+ *   キー入力は、キーコードの「押す」と、トラックパッド由来でない位置の「押す」（レイヤーのキー、Alt コードの
+ *   キーなど、キーコードを出さないものも含める。Alt コードが自分で送るキーは、この listener に届かないため）。
  * - excluded-layers のレイヤーが有効な間は、有効にしない（数字・記号レイヤーの間にトラックパッドを触っても、
  *   マウスレイヤーにしない。有効化を予約したときと、実際に有効にするときの両方で確かめる）。
  * - 状態はインスタンスごとに持つので、左右のリスナーに別々のインスタンスを入れれば別々に動く。
@@ -61,6 +63,7 @@
 
 #include "auto_mouse_layer.h"
 #include "layer_lock.h"
+#include "tp_positions.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -425,6 +428,9 @@ static void handle_position(const struct device *dev,
     k_mutex_lock(&data->lock, K_FOREVER);
     data->pressed[ev->position] = ev->state;
     if (ev->state) {
+        if (ev->position < TP_POS_FIRST || ev->position > TP_POS_LAST) {
+            data->last_tapped = ev->timestamp;
+        }
         if (data->active) {
             if (is_mouse_key(dev, ev->position)) {
                 if (!data->held[ev->position]) {
