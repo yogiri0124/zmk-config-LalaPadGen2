@@ -194,8 +194,6 @@
         // --- mod_: 修飾キーを次の1キーだけにかける（ZMK 標準の &sk。押してから離し、次のキーを押すとそのキーと一緒に送られる。
         // 押したまま別のキーを押せば、ふつうの修飾キーとして働く） ---
         // &sk は引数でキーを受け取るので、名前付きのキーにするためマクロで包む（押したとき &sk を押し、離したとき離す）。
-        // display-name は bindings より後ろに書く（LaLapad-Gen2-Editor は、display-name の後に bindings がある定義を
-        // レイヤーと見なすため）
         // Left Ctrl を次の1キーだけ
         mod_once_ctrl: mod_once_ctrl {
             compatible = "zmk,behavior-macro";
@@ -311,8 +309,6 @@
         // （2 本指も指を動かした向き。スクロールの向きではない）。4 つとも &trans にした側は、変えずにカーソル（スクロール）のまま。
         // 動き始めの向きで縦か横かを決め、指が触れ直す・離れるか、このキーを押す・離すまで変えない。
         // *-step は 1 回送るのに必要な動きの量（トラックパッドの生の値。速度の設定には影響されない）。
-        // display-name は bindings より後ろに書く（LaLapad-Gen2-Editor は、display-name の後に bindings がある定義を
-        // レイヤーと見なすため）
         // 矢印: 1 本指で ←→↑↓、2 本指で上下が PgUp・PgDn、左右が Home・End
         tp_arrow: tp_arrow {
             compatible = "zmk,behavior-tp-keys";
@@ -566,8 +562,7 @@
         };
     };
 
-    // エディタ（LaLapad-Gen2-Editor）が作るマクロ用。マクロの display-name は bindings より後ろに書く
-    // （LaLapad-Gen2-Editor は、display-name の後に bindings がある定義をレイヤーと見なすため）。
+    // エディタ（LaLapad-Gen2-Editor）が作るマクロ用。
     macros {
     };
 
