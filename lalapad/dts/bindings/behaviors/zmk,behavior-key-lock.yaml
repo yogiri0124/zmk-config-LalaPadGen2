@@ -1,5 +1,6 @@
 # キーの押しっぱなし切り替え behavior（引数なし）。keycode で対象のキーを指定する。
 # 押すたびに押しっぱなし／解除。押しっぱなしかどうかはインスタンスごとに自分で覚える（PC 側の状態は見ない）。
+# 接続先（USB・Bluetooth のプロファイル）が変わったら解除する。
 
 description: Key lock (toggle) behavior with a fixed keycode
 

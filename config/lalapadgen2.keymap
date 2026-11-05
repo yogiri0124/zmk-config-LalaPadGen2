@@ -368,6 +368,9 @@
             #binding-cells = <0>;
             codes = <33116 33116>;
             commit-ime;
+            // 送る打鍵が多い（最大 32）ので、pair_cquote と同じく間隔を広げる
+            tap-ms = <10>;
+            wait-ms = <10>;
         };
         // ～ （全角チルダ U+FF5E）を入力。日本語 Windows（cp932）の Alt+33120（Shift_JIS 0x8160）で送る。
         sym_tilde: sym_tilde {

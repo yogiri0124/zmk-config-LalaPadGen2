@@ -47,6 +47,7 @@
 #include <dt-bindings/zmk/keys.h>
 
 #include "kana_output.h"
+#include "layer_lock.h"
 #include "tp_positions.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
@@ -426,7 +427,10 @@ bool kana_mode_exiting(void) { return off_stage != KANA_OFF_NONE; }
  * （ほかの PC・ウィンドウ・入力欄に移って、IME がオフになっているかもしれないため） */
 static int kana_output_listener(const zmk_event_t *eh) {
     if (as_zmk_layer_state_changed(eh) != NULL) {
-        if (kana_active && off_stage == KANA_OFF_NONE && !zmk_keymap_layer_active(kana_layer)) {
+        // 固定したかなレイヤーは、&to などで解除されても固定の listener が有効にし直す（この listener はそれより
+        // 先に呼ばれるので、固定しているかも見る）
+        if (kana_active && off_stage == KANA_OFF_NONE && !zmk_keymap_layer_active(kana_layer) &&
+            !layer_lock_is_locked(kana_layer)) {
             kana_active = false;
             LOG_DBG("Kana layer deactivated elsewhere, kana mode off");
         }

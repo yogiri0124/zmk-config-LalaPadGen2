@@ -19,7 +19,6 @@
 
 #include "scroll_snap_gate.h"
 
-
 /* 押されている数（複数のキーに置いても正しく数える） */
 static atomic_t hold_count;
 

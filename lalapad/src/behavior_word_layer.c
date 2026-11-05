@@ -251,7 +251,9 @@ ZMK_SUBSCRIPTION(behavior_word_layer, zmk_layer_state_changed);
         .id = ZMK_HID_USAGE_ID(DT_INST_PROP_BY_IDX(n, continue_list, i)),                          \
     }
 
-#define WORD_LAYER_EXIT_OK(i, n) && (DT_INST_PROP_BY_IDX(n, exit_layers, i) < ZMK_KEYMAP_LAYERS_LEN)
+#define WORD_LAYER_EXIT_OK(i, n)                                                                   \
+    &&(DT_INST_PROP_BY_IDX(n, exit_layers, i) >= 0 &&                                              \
+       DT_INST_PROP_BY_IDX(n, exit_layers, i) < ZMK_KEYMAP_LAYERS_LEN)
 
 #define WORD_LAYER_INST(n)                                                                         \
     BUILD_ASSERT(1 LISTIFY(DT_INST_PROP_LEN_OR(n, exit_layers, 0), WORD_LAYER_EXIT_OK, (), n),     \

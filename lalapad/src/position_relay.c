@@ -119,6 +119,15 @@ static int position_relay_listener(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_HANDLED;
     }
 #endif
+    // 後で出す「離した」が残っている位置の「押した」は捨てる（列の分より後に、その「離した」を出すので、
+    // 後から並べた「押した」を、すぐに離してしまわないように。捨てた「押した」の「離した」は、押されていない
+    // 位置のものとして捨てられる）
+    if (pos->state && pos->position < ZMK_KEYMAP_LEN &&
+        atomic_test_bit(deferred_release, pos->position)) {
+        LOG_WRN("Position relay: release of position %u still deferred, dropped press",
+                pos->position);
+        return ZMK_EV_EVENT_HANDLED;
+    }
     struct zmk_position_state_changed_event ev = copy_raised_zmk_position_state_changed(pos);
     // 満杯なら、空くのを少しだけ待つ（入力スレッドを止めるので長くは待たない。K_FOREVER にすると、システム
     // ワークキューが入力イベントの列の空きを待っているときに、互いに待ち合って止まる）
@@ -129,7 +138,8 @@ static int position_relay_listener(const zmk_event_t *eh) {
         // 処理しない:
         // - 「押した」は捨てる（押されたままにはならない。後から届く「離した」は、押されていない位置のものとして捨てる）
         // - 「離した」は印だけ付けて、relay_work_handler が、列の分（その位置の「押した」を含む）を処理した後に出す
-        //   （捨てると押されたままになるため。押した後に離す順番も守られる）
+        //   （捨てると押されたままになるため。押した後に離す順番も守られる。印が残っている間に届いたその位置の
+        //   「押した」は捨てる。ほかの位置の出来事との前後は、列の分の後にずれることがある）
         if (pos->state) {
             LOG_WRN("Position relay queue full, dropped press of position %u", pos->position);
         } else if (pos->position < ZMK_KEYMAP_LEN) {
