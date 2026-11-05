@@ -13,14 +13,11 @@
 
 #include <dt-bindings/lalapad/tp_positions.h>
 
-/* トラックパッド由来の位置の範囲（これより前は、キーマトリクスのキー） */
-#define TP_POS_FIRST POS_TP_FIRST
-#define TP_POS_LAST POS_TP_LAST
-
-BUILD_ASSERT(TP_POS_LAST < ZMK_KEYMAP_LEN, "trackpad positions are out of the keymap range");
-/* 16 個の位置が、重ならずに TP_POS_FIRST〜TP_POS_LAST を埋めていること（範囲で「トラックパッド由来か」を見るため） */
-#define TP_POS_BIT(p) (((p) >= TP_POS_FIRST && (p) <= TP_POS_LAST) ? (1u << ((p) - TP_POS_FIRST)) : 0u)
-BUILD_ASSERT(TP_POS_LAST - TP_POS_FIRST + 1 == 16 &&
+/* トラックパッド由来の位置の範囲は POS_TP_FIRST〜POS_TP_LAST（これより前は、キーマトリクスのキー） */
+BUILD_ASSERT(POS_TP_LAST < ZMK_KEYMAP_LEN, "trackpad positions are out of the keymap range");
+/* 16 個の位置が、重ならずに POS_TP_FIRST〜POS_TP_LAST を埋めていること（範囲で「トラックパッド由来か」を見るため） */
+#define TP_POS_BIT(p) (((p) >= POS_TP_FIRST && (p) <= POS_TP_LAST) ? (1u << ((p) - POS_TP_FIRST)) : 0u)
+BUILD_ASSERT(POS_TP_LAST - POS_TP_FIRST + 1 == 16 &&
                  (TP_POS_BIT(POS_TP_LCLK_L) + TP_POS_BIT(POS_TP_RCLK_L) + TP_POS_BIT(POS_TP_MCLK_L) +
                   TP_POS_BIT(POS_TP_LCLK_R) + TP_POS_BIT(POS_TP_RCLK_R) + TP_POS_BIT(POS_TP_MCLK_R) +
                   TP_POS_BIT(POS_TP_SWIPE_RIGHT_L) + TP_POS_BIT(POS_TP_SWIPE_LEFT_L) +
@@ -28,7 +25,7 @@ BUILD_ASSERT(TP_POS_LAST - TP_POS_FIRST + 1 == 16 &&
                   TP_POS_BIT(POS_TP_PINCH_L) + TP_POS_BIT(POS_TP_SWIPE_RIGHT_R) +
                   TP_POS_BIT(POS_TP_SWIPE_LEFT_R) + TP_POS_BIT(POS_TP_SWIPE_UP_R) +
                   TP_POS_BIT(POS_TP_SWIPE_DOWN_R) + TP_POS_BIT(POS_TP_PINCH_R)) == 0xFFFFu,
-             "trackpad positions must fill TP_POS_FIRST..TP_POS_LAST without overlap");
+             "trackpad positions must fill POS_TP_FIRST..POS_TP_LAST without overlap");
 /* tp_position_is_right は範囲で見るので、右のクリック・右のジェスチャーがそれぞれ続き番号であること */
 BUILD_ASSERT(POS_TP_RCLK_R == POS_TP_LCLK_R + 1 && POS_TP_MCLK_R == POS_TP_LCLK_R + 2 &&
                  POS_TP_SWIPE_LEFT_R == POS_TP_SWIPE_RIGHT_R + 1 &&

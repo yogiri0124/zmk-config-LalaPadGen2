@@ -94,7 +94,8 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define AUTO_MOUSE_INIT_PRIORITY 99
 
 struct auto_mouse_config {
-    /* 有効にするレイヤーの ID（keymap の宣言順の番号）と、解除までの時間（0 なら時間では解除しない） */
+    /* 有効にするレイヤーの ID（keymap の宣言順の番号。&mo などと同じく ID として扱うので、ZMK Studio でレイヤーの
+     * 順番を入れ替えても同じレイヤーを指す）と、解除までの時間（0 なら時間では解除しない） */
     zmk_keymap_layer_id_t layer;
     uint32_t timeout_ms;
     int32_t require_prior_idle_ms;
@@ -160,12 +161,6 @@ static bool position_is_passive(const struct auto_mouse_config *cfg, uint32_t po
     return false;
 }
 
-/* 有効にするレイヤーの ID（layer。keymap の宣言順の番号。&mo などと同じく ID として扱うので、
- * ZMK Studio でレイヤーの順番を入れ替えても同じレイヤーを指す） */
-static zmk_keymap_layer_id_t mouse_layer_id(const struct auto_mouse_data *data) {
-    return ((const struct auto_mouse_config *)data->dev->config)->layer;
-}
-
 /* そのレイヤーで &trans 以外が割り当ててあるキーか（&none も割り当てありとみなす。
  * keymap で &none にした位置は、マウスレイヤーの間は押しても何もせず、レイヤーも解除しない） */
 static bool position_is_bound(zmk_keymap_layer_id_t layer, uint32_t position) {
@@ -223,20 +218,20 @@ static bool is_passive_key(const struct device *dev, uint32_t position) {
 }
 
 /* 有効にしたレイヤーを固定しているか（zmk,behavior-layer-lock） */
-static bool is_locked(const struct auto_mouse_data *data) {
-    return data->active && layer_lock_is_locked(mouse_layer_id(data));
+static bool is_locked(const struct auto_mouse_config *cfg, const struct auto_mouse_data *data) {
+    return data->active && layer_lock_is_locked(cfg->layer);
 }
 
 /* 以下はロックを取った状態で呼ぶ */
 
-static void deactivate(struct auto_mouse_data *data) {
+static void deactivate(const struct auto_mouse_config *cfg, struct auto_mouse_data *data) {
     if (!data->active) {
         return;
     }
     data->active = false;
     k_work_cancel_delayable(&data->disable_work);
-    zmk_keymap_layer_deactivate(mouse_layer_id(data));
-    LOG_DBG("Auto mouse layer %d deactivated", mouse_layer_id(data));
+    zmk_keymap_layer_deactivate(cfg->layer);
+    LOG_DBG("Auto mouse layer %d deactivated", cfg->layer);
 }
 
 /* 有効にしたときに、それより前から押しているキーのうち excluded-positions のもの（トラックパッドのクリックなど）を数え直す
@@ -285,7 +280,7 @@ static void restart_timeout(const struct auto_mouse_config *cfg, struct auto_mou
     if (!data->active) {
         return;
     }
-    if (is_locked(data)) {
+    if (is_locked(cfg, data)) {
         // 固定している間は時間では解除しない
         k_work_cancel_delayable(&data->disable_work);
         return;
@@ -361,7 +356,7 @@ static void disable_work_cb(struct k_work *work) {
     const struct auto_mouse_config *cfg = data->dev->config;
 
     k_mutex_lock(&data->lock, K_FOREVER);
-    if (is_locked(data)) {
+    if (is_locked(cfg, data)) {
         // 固定している（固定の前に予約されていた解除ワークが遅れて動いた）
     } else if (data->active && data->held_count == 0 && data->touch_mask != 0) {
         // 触れている間は解除しない。古くなった「触れている」を外し、残りの状態で時間切れを数え直す
@@ -374,7 +369,7 @@ static void disable_work_cb(struct k_work *work) {
         if (remaining > 0) {
             k_work_reschedule(&data->disable_work, K_MSEC(remaining));
         } else {
-            deactivate(data);
+            deactivate(cfg, data);
         }
     }
     k_mutex_unlock(&data->lock);
@@ -479,7 +474,7 @@ static void handle_position(const struct device *dev,
     k_mutex_lock(&data->lock, K_FOREVER);
     data->pressed[ev->position] = ev->state;
     if (ev->state) {
-        if ((ev->position < TP_POS_FIRST || ev->position > TP_POS_LAST) &&
+        if ((ev->position < POS_TP_FIRST || ev->position > POS_TP_LAST) &&
             ev->timestamp > data->last_tapped) {
             data->last_tapped = ev->timestamp;
         }
@@ -490,7 +485,7 @@ static void handle_position(const struct device *dev,
                     data->held_count++;
                 }
                 restart_timeout(dev->config, data);
-            } else if (!is_locked(data) && !is_passive_key(dev, ev->position)) {
+            } else if (!is_locked(dev->config, data) && !is_passive_key(dev, ev->position)) {
                 // この出来事をほかの listener（ZMK の combo・keymap）に流し終えてから、すぐに解除する
                 // （auto_mouse_listener）。combo の判定中に預かっていた、マウスレイヤーで押したキーが、
                 // 解除の後に処理されて下のレイヤーのキーとして入力されないように。押したこのキーは、
@@ -521,12 +516,12 @@ static void handle_keycode(const struct device *dev, const struct zmk_keycode_st
 }
 
 static void handle_layer_state(const struct device *dev) {
+    const struct auto_mouse_config *cfg = dev->config;
     struct auto_mouse_data *data = dev->data;
     k_mutex_lock(&data->lock, K_FOREVER);
     // ほかの操作（&tog や &to など）でレイヤーが解除されたら、こちらの状態も合わせる。
     // 固定しているレイヤーは、すぐに有効にし直されるので、有効のままとして扱う（behavior_layer_lock.c）
-    if (data->active && !zmk_keymap_layer_active(mouse_layer_id(data)) &&
-        !layer_lock_is_locked(mouse_layer_id(data))) {
+    if (data->active && !zmk_keymap_layer_active(cfg->layer) && !layer_lock_is_locked(cfg->layer)) {
         data->active = false;
         k_work_cancel_delayable(&data->disable_work);
     }
@@ -535,11 +530,12 @@ static void handle_layer_state(const struct device *dev) {
 
 /* 固定をやめた（システムワークキュー）: このインスタンスがそのレイヤーを有効にしていれば、時間を数え直す */
 static bool unlocked(const struct device *dev, zmk_keymap_layer_id_t layer) {
+    const struct auto_mouse_config *cfg = dev->config;
     struct auto_mouse_data *data = dev->data;
     k_mutex_lock(&data->lock, K_FOREVER);
-    const bool mine = data->active && mouse_layer_id(data) == layer;
+    const bool mine = data->active && cfg->layer == layer;
     if (mine) {
-        restart_timeout(dev->config, data);
+        restart_timeout(cfg, data);
     }
     k_mutex_unlock(&data->lock);
     return mine;
@@ -580,10 +576,11 @@ static bool take_deactivate_pending(const struct device *dev) {
 }
 
 static void finish_deactivate(const struct device *dev) {
+    const struct auto_mouse_config *cfg = dev->config;
     struct auto_mouse_data *data = dev->data;
     k_mutex_lock(&data->lock, K_FOREVER);
-    if (!is_locked(data)) {
-        deactivate(data);
+    if (!is_locked(cfg, data)) {
+        deactivate(cfg, data);
     }
     k_mutex_unlock(&data->lock);
 }
@@ -640,6 +637,8 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
     BUILD_ASSERT(DT_PROP_BY_IDX(node_id, prop, idx) < ZMK_KEYMAP_LEN,                              \
                  "auto mouse layer: excluded-positions / passive-positions is out of range");
 
+/* excluded-layers・excluded-positions・passive-positions が空（既定値）のときは、大きさ 0 の配列を作らない
+ * （NULL と 0 個にする） */
 #define AUTO_MOUSE_INST(n)                                                                         \
     BUILD_ASSERT(DT_INST_PROP(n, layer) >= 0 && DT_INST_PROP(n, layer) < ZMK_KEYMAP_LAYERS_LEN,    \
                  "auto mouse layer: layer is out of range");                                       \
@@ -662,19 +661,27 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
         .activity_work = Z_WORK_INITIALIZER(activity_work_cb),                                     \
         .disable_work = Z_WORK_DELAYABLE_INITIALIZER(disable_work_cb),                             \
     };                                                                                             \
-    static const uint16_t auto_mouse_excluded_##n[] = DT_INST_PROP(n, excluded_positions);         \
-    static const uint16_t auto_mouse_passive_##n[] = DT_INST_PROP(n, passive_positions);           \
-    static const zmk_keymap_layer_id_t auto_mouse_excluded_layers_##n[] = {                        \
-        DT_INST_FOREACH_PROP_ELEM_SEP(n, excluded_layers, DT_PROP_BY_IDX, (, ))};                   \
+    COND_CODE_0(DT_INST_PROP_LEN(n, excluded_positions), (),                                       \
+                (static const uint16_t auto_mouse_excluded_##n[] = {                               \
+                     DT_INST_FOREACH_PROP_ELEM_SEP(n, excluded_positions, DT_PROP_BY_IDX, (, ))};))\
+    COND_CODE_0(DT_INST_PROP_LEN(n, passive_positions), (),                                        \
+                (static const uint16_t auto_mouse_passive_##n[] = {                                \
+                     DT_INST_FOREACH_PROP_ELEM_SEP(n, passive_positions, DT_PROP_BY_IDX, (, ))};)) \
+    COND_CODE_0(DT_INST_PROP_LEN(n, excluded_layers), (),                                          \
+                (static const zmk_keymap_layer_id_t auto_mouse_excluded_layers_##n[] = {           \
+                     DT_INST_FOREACH_PROP_ELEM_SEP(n, excluded_layers, DT_PROP_BY_IDX, (, ))};))   \
     static const struct auto_mouse_config auto_mouse_config_##n = {                                \
         .layer = DT_INST_PROP(n, layer),                                                           \
         .timeout_ms = DT_INST_PROP(n, timeout_ms),                                                 \
         .require_prior_idle_ms = DT_INST_PROP(n, require_prior_idle_ms),                           \
-        .excluded_layers = auto_mouse_excluded_layers_##n,                                         \
+        .excluded_layers = COND_CODE_0(DT_INST_PROP_LEN(n, excluded_layers), (NULL),               \
+                                       (auto_mouse_excluded_layers_##n)),                          \
         .num_excluded_layers = DT_INST_PROP_LEN(n, excluded_layers),                               \
-        .excluded_positions = auto_mouse_excluded_##n,                                             \
+        .excluded_positions = COND_CODE_0(DT_INST_PROP_LEN(n, excluded_positions), (NULL),         \
+                                       (auto_mouse_excluded_##n)),                                 \
         .num_excluded_positions = DT_INST_PROP_LEN(n, excluded_positions),                         \
-        .passive_positions = auto_mouse_passive_##n,                                               \
+        .passive_positions = COND_CODE_0(DT_INST_PROP_LEN(n, passive_positions), (NULL),           \
+                                       (auto_mouse_passive_##n)),                                  \
         .num_passive_positions = DT_INST_PROP_LEN(n, passive_positions),                           \
         .touch_stale_ms = DT_INST_PROP(n, touch_stale_ms),                                         \
         .touch_devs = COND_CODE_1(DT_INST_NODE_HAS_PROP(n, touch_devices),                         \

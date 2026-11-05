@@ -167,7 +167,7 @@ static void relay_split_connected(struct bt_conn *conn, uint8_t err) {
 /* 右のトラックパッドの位置で押されたままのものを離す（システムワークキュー。出した「離した」はこの listener を
  * 素通りし、預かった出来事の処理（relay_work_handler）とも同じスレッドなので、順番が入れ替わらない） */
 static void split_release_work_handler(struct k_work *work) {
-    for (uint32_t position = TP_POS_FIRST; position <= TP_POS_LAST; position++) {
+    for (uint32_t position = POS_TP_FIRST; position <= POS_TP_LAST; position++) {
         if (tp_position_is_right(position)) {
             release_if_pressed(position);
         }

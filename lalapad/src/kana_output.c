@@ -446,8 +446,8 @@ static int kana_output_listener(const zmk_event_t *eh) {
     }
 
     const struct zmk_position_state_changed *pos = as_zmk_position_state_changed(eh);
-    if (pos != NULL && pos->state && pos->position >= TP_POS_FIRST &&
-        pos->position <= TP_POS_LAST) {
+    if (pos != NULL && pos->state && pos->position >= POS_TP_FIRST &&
+        pos->position <= POS_TP_LAST) {
         char_sent = false;
     }
     return ZMK_EV_EVENT_BUBBLE;

@@ -247,7 +247,7 @@ static void kick_send(k_timeout_t delay) { k_work_reschedule_for_queue(&key_stre
 static void request_send(void) { k_work_schedule_for_queue(&key_stream_q, &send_work, K_NO_WAIT); }
 
 static bool position_wanted(uint8_t mask, uint32_t position) {
-    const uint8_t kind = position < TP_POS_FIRST ? STREAM_KEYS : STREAM_TRACKPAD;
+    const uint8_t kind = position < POS_TP_FIRST ? STREAM_KEYS : STREAM_TRACKPAD;
     return (mask & kind) != 0;
 }
 
@@ -321,7 +321,7 @@ static void build_status(uint8_t *report) {
     report[1] = MSG_STATUS;
     report[2] = atomic_get(&split_links) > 0 ? 1 : 0;
     report[3] = stream_mask;
-    report[4] = TP_POS_FIRST;
+    report[4] = POS_TP_FIRST;
     report[5] = ZMK_KEYMAP_LEN;
     // 次に届くキーの通し番号（送り待ちがあれば、その先頭。状態は送り待ちのキーより先に送るため）
     sys_put_le16(events_count > 0 ? events[events_head].seq : next_seq, &report[6]);
