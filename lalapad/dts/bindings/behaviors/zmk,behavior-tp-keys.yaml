@@ -43,7 +43,9 @@ child-binding:
   description: >
     レイヤーごとの表。このキーを押したときに有効なレイヤーを上から見て、そのレイヤーを layers に書いた表を使う
     （表のないレイヤーは素通り）。表の中の &trans は、その下のレイヤーの表、最後に直下の既定を見る。
-    書き方は直下と同じ（bindings は左右共通、left-bindings・right-bindings は左右別。bindings がないときは両方要る）
+    書き方は直下と同じ（bindings は左右共通、left-bindings・right-bindings は左右別。bindings がないときは両方要る）。
+    表から送るものは、keymap のキーと同じく、その表のレイヤーで送る（そのレイヤーを解除すると、まだ送っていない分は
+    捨て、&swap_next などはそこで終わる）
   properties:
     layers:
       type: array

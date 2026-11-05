@@ -49,8 +49,9 @@
  * 入力処理は入力スレッドで呼ばれる。behavior はシステムワークキューで呼ぶ（自作の behavior は状態を
  * システムワークキューだけで触る前提のため）ので、送るものを列に預けてワークで送る。送るワークの予約も
  * システムワークキューだけで行う（入力スレッドから予約し直すと、押してから離すまでの待ち時間が飛ぶため）。
- * 押した behavior は、モードのキーを押したときのレイヤーと位置で呼ぶ（&swap_next などが、そのレイヤーの
- * 解除で終わるように）。まだ押していない分は、そのレイヤーが解除されていたら捨てる（解除の後に &swap_next を
+ * 押した behavior は、その binding を書いた表のレイヤー（既定ならモードのキーを押したときのレイヤー）と、モードの
+ * キーの位置で呼ぶ（keymap のキーと同じく、&swap_next などが、そのレイヤーの解除で終わるように）。
+ * まだ押していない分は、そのレイヤーが解除されていたら捨てる（解除の後に &swap_next を
  * 押し直して、Alt が押されたままにならないように）。動かした量で送る分は、そのモードのキーの押し方が
  * 終わっていても捨てる（一筆書きはキーを離して決めることがあるので捨てない）。押した分は必ず離す。
  */
@@ -221,9 +222,11 @@ static const struct tp_keys_table *table_for_layer(const struct tp_keys_mode *mo
 }
 
 /* 表の index 番目に送るもの。モードのキーを押したときに有効だったレイヤーを上から見て、そのレイヤーの表を使う。
- * &trans なら下のレイヤーの表、最後に既定の表（layers のない表）を見る。どれも &trans なら NULL */
+ * &trans なら下のレイヤーの表、最後に既定（layers のない表）を見る。どれも &trans なら NULL。
+ * *layer には、送るときのレイヤー（表のレイヤー。既定ならモードのキーを押したレイヤー）を入れる
+ * （keymap のキーと同じく、そのレイヤーの解除で &swap_next などが終わり、まだ送っていない分は捨てる） */
 static const struct zmk_behavior_binding *resolve(const struct held_mode *hm, uint8_t side,
-                                                  size_t index) {
+                                                  size_t index, int *layer) {
     const struct tp_keys_mode *mode = hm->mode;
     const zmk_keymap_layer_id_t def = zmk_keymap_layer_default();
     for (int i = ZMK_KEYMAP_LAYERS_LEN - 1; i >= 0; i--) {
@@ -233,12 +236,14 @@ static const struct zmk_behavior_binding *resolve(const struct held_mode *hm, ui
         }
         const struct tp_keys_table *t = table_for_layer(mode, id);
         if (t != NULL && !is_trans(&t->sides[side][index])) {
+            *layer = id;
             return &t->sides[side][index];
         }
     }
     for (size_t t = 0; t < mode->num_tables; t++) {
         const struct tp_keys_table *table = &mode->tables[t];
         if (table->num_layers == 0 && !is_trans(&table->sides[side][index])) {
+            *layer = hm->layer;
             return &table->sides[side][index];
         }
     }
@@ -248,7 +253,8 @@ static const struct zmk_behavior_binding *resolve(const struct held_mode *hm, ui
 /* 上・下・左・右の 4 つ（first から）のどれかに送るものがあるか */
 static bool any_converted(const struct held_mode *hm, uint8_t side, size_t first) {
     for (int i = 0; i < TP_KEYS_DIRS; i++) {
-        if (resolve(hm, side, first + i) != NULL) {
+        int layer;
+        if (resolve(hm, side, first + i, &layer) != NULL) {
             return true;
         }
     }
@@ -289,7 +295,8 @@ static void drop_queued_motion(void) {
 }
 
 /* 送る列に足す。足したら true */
-static bool enqueue(const struct held_mode *hm, const struct zmk_behavior_binding *b, bool motion) {
+static bool enqueue(const struct held_mode *hm, const struct zmk_behavior_binding *b, int layer,
+                    bool motion) {
     if (!motion && is_trans(b)) {
         return false;
     }
@@ -318,7 +325,7 @@ static bool enqueue(const struct held_mode *hm, const struct zmk_behavior_bindin
     }
     queue[queue_len++] = (struct action){
         .binding = b,
-        .layer = hm->layer,
+        .layer = layer,
         .position = hm->position,
         .seq = hm->seq,
         .tap_ms = hm->mode->tap_ms,
@@ -343,9 +350,10 @@ static bool finish_stroke(struct slot *s) {
     if (mode != NULL && s->len > 0 && !s->overflow) {
         for (size_t i = 0; i < mode->num_bindings; i++) {
             if (mode->strokes[i] == s->code) {
-                const struct zmk_behavior_binding *b = resolve(&s->stroke, s->side, i);
+                int layer;
+                const struct zmk_behavior_binding *b = resolve(&s->stroke, s->side, i, &layer);
                 if (b != NULL) {
-                    queued = enqueue(&s->stroke, b, false);
+                    queued = enqueue(&s->stroke, b, layer, false);
                 }
                 break;
             }
@@ -602,18 +610,19 @@ static bool convert_motion(struct axis_acc *acc, int32_t dx, int32_t dy, uint16_
 
     int32_t *v = acc->axis == AXIS_X ? &acc->x : &acc->y;
     // &trans（NULL）の向きは、送らずにその分を捨てる（enqueue。ほかの向きの待っている分も捨てる）
+    int neg_layer = hm->layer, pos_layer = hm->layer;
     const struct zmk_behavior_binding *neg =
-        resolve(hm, side, first + (acc->axis == AXIS_X ? TP_KEYS_LEFT : TP_KEYS_UP));
+        resolve(hm, side, first + (acc->axis == AXIS_X ? TP_KEYS_LEFT : TP_KEYS_UP), &neg_layer);
     const struct zmk_behavior_binding *pos =
-        resolve(hm, side, first + (acc->axis == AXIS_X ? TP_KEYS_RIGHT : TP_KEYS_DOWN));
+        resolve(hm, side, first + (acc->axis == AXIS_X ? TP_KEYS_RIGHT : TP_KEYS_DOWN), &pos_layer);
     bool queued = false;
     for (int i = 0; i < MAX_STEPS_PER_EVENT && *v >= step; i++) {
         *v -= step;
-        queued |= enqueue(hm, pos, true);
+        queued |= enqueue(hm, pos, pos_layer, true);
     }
     for (int i = 0; i < MAX_STEPS_PER_EVENT && *v <= -(int32_t)step; i++) {
         *v += step;
-        queued |= enqueue(hm, neg, true);
+        queued |= enqueue(hm, neg, neg_layer, true);
     }
     // 上限で打ち切った残りは捨てる（後からまとめて出ないように）
     if (abs(*v) >= step) {
