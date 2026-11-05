@@ -15,7 +15,7 @@ properties:
   require-prior-idle-ms:
     type: int
     default: 0
-    description: 直前のキー入力からこの時間（ms）以内のトラックパッド操作では有効にしない
+    description: 直前のキー入力（キーコードの押下と、トラックパッド由来でない位置の押下）からこの時間（ms）以内のトラックパッド操作では有効にしない。Alt コードを送っている間も有効にしない
   excluded-layers:
     type: array
     default: []
