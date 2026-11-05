@@ -31,8 +31,16 @@
 
 &lt { quick-tap-ms = <200>; };
 
-// オートマウスレイヤー（lalapadgen2.dtsi）: 数字・記号レイヤーの間は、トラックパッドを操作してもマウスレイヤーにしない
-&zip_auto_mouse_layer { excluded-layers = <SECONDARY_LAYER TERTIARY_LAYER>; };
+// オートマウスレイヤー（lalapadgen2.dtsi）のうち、マウスレイヤーの配置に結びつく設定
+// - excluded-layers: 数字・記号レイヤーの間は、トラックパッドを操作してもマウスレイヤーにしない
+// - excluded-positions: マウスレイヤーで &trans でも、押しても解除しない位置（トラックパッドのクリック・ジェスチャー 52〜67）
+// - passive-positions: マウスレイヤーに割り当てがあっても、押しても解除も延長もしない位置（親指の段の 30〜41 のうち、
+//   33・34 以外。マウスレイヤーで &trans の位置（36〜38）は、ほかのキーと同じく押すと解除する）
+&zip_auto_mouse_layer {
+    excluded-layers = <SECONDARY_LAYER TERTIARY_LAYER>;
+    excluded-positions = <52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67>;
+    passive-positions = <30 31 32 35 36 37 38 39 40 41>;
+};
 
 
 / {

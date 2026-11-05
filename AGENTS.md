@@ -87,7 +87,7 @@ Claude Code（編集担当）と Codex（レビュー担当）の両者がこの
 
 - **bindings の数と位置**
   - 各レイヤーの `bindings` が **68個ちょうど** あるか。引数の数ではなく、`&behavior` の参照1件を1個として数える。コメント・マクロ・include を考慮し、単純な文字検索だけで合格にしない。レイヤー以外（macros・behaviors など）の bindings にこの制約は適用しない。
-  - 個数が同じでも位置がずれていないか。依頼した位置以外の割り当てが変わっていないか。特に 52〜67 はトラックパッド由来の入力に対応する（`lalapadgen2.dtsi` の `POS_TP_*`：52〜54 左クリック群、55〜57 右クリック群、58〜62 左ジェスチャー群、63〜67 右ジェスチャー群）。
+  - 個数が同じでも位置がずれていないか。依頼した位置以外の割り当てが変わっていないか。特に 52〜67 はトラックパッド由来の入力に対応する（`lalapad/include/dt-bindings/lalapad/tp_positions.h` の `POS_TP_*`：52〜54 左クリック群、55〜57 右クリック群、58〜62 左ジェスチャー群、63〜67 右ジェスチャー群）。
   - 参照している behavior・キーコードが存在し、引数の個数・種類が正しいか（独自 behavior から呼ぶ内側の binding も含む）。
 - **独自定義と combos**
   - 独自 behavior（`mt2`、`zip_dyn_scale`、`zip_dyn_scale_set`、keymap で定義している `lalapad/` の behavior。一覧は [docs/reference/zmk-behaviors.md](docs/reference/zmk-behaviors.md)）と `combos` の各ノードが消えていないか。消失だけでなく、ラベル・引数・時間設定・参照先・キー位置が依頼なく変わっていないかを基準コミットと比較する。

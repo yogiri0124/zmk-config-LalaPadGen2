@@ -15,11 +15,8 @@
         ;
 };
 
+// 右のトラックパッドの入力を、親機の左へ送る
 &trackpad_split_R {
     status = "okay";
-    device = <&iqs9151>;
-};
-&trackpad_split_L {
-    status = "disabled";
     device = <&iqs9151>;
 };

@@ -7,27 +7,8 @@
 #include "lalapadgen2-layouts.dtsi"
 #include <behaviors/cursor_slow.dtsi>
 #include <behaviors/tp_keys.dtsi>
-
-// トラックパッドのタップ・ジェスチャーを割り当てるキーの位置（_L・_R は左右のトラックパッド）。
-// SWIPE_* は 3 本指で指を動かした向き（ドライバは右へのスワイプを INPUT_BTN_3、左へを BTN_4、
-// 上へを BTN_5、下へを BTN_6 で送る）
-#define POS_TP_LCLK_L        52
-#define POS_TP_RCLK_L        53
-#define POS_TP_MCLK_L        54
-#define POS_TP_SWIPE_RIGHT_L 58
-#define POS_TP_SWIPE_LEFT_L  59
-#define POS_TP_SWIPE_UP_L    60
-#define POS_TP_SWIPE_DOWN_L  61
-#define POS_TP_PINCH_L       62
-
-#define POS_TP_LCLK_R        55
-#define POS_TP_RCLK_R        56
-#define POS_TP_MCLK_R        57
-#define POS_TP_SWIPE_RIGHT_R 63
-#define POS_TP_SWIPE_LEFT_R  64
-#define POS_TP_SWIPE_UP_R    65
-#define POS_TP_SWIPE_DOWN_R  66
-#define POS_TP_PINCH_R       67
+// トラックパッドのタップ・ジェスチャーを割り当てるキーの位置 POS_TP_*（自作モジュールの C と共通）
+#include <dt-bindings/lalapad/tp_positions.h>
 
 / {
     chosen {
@@ -63,23 +44,15 @@
             ;
     };
 
-    // 左右のトラックパッドの入力（子機の右から親機の左へ中継する）
-    split_inputs_R {
+    // 右のトラックパッドの入力を、子機の右から親機の左へ中継する（右の overlay で device を指定して送る側にする。
+    // 親機の左では、受け取った入力を出す入力デバイスになる）。左のトラックパッドは親機に直接つながっているので中継しない
+    split_inputs {
         #address-cells = <1>;
         #size-cells = <0>;
 
         trackpad_split_R: trackpad_split_R@0 {
             compatible = "zmk,input-split";
             reg = <0>;
-        };
-    };
-    split_inputs_L {
-        #address-cells = <1>;
-        #size-cells = <0>;
-
-        trackpad_split_L: trackpad_split_L@1 {
-            compatible = "zmk,input-split";
-            reg = <1>;
         };
     };
 
@@ -161,27 +134,22 @@
 
     // オートマウスレイヤー: トラックパッド操作でレイヤー5 (MOUSE_LAYER) を一時的に有効化する（自作: lalapad/src/input_processor_auto_mouse_layer.c）。
     // マウスレイヤーで &trans 以外のキー（&none を含む）と excluded-positions のキーは「マウス操作」として扱い、
-    // 押しても解除せず、押している間は時間切れにしない（離してから数え直す）。&none の位置は、マウスレイヤーの間は
-    // 何もしないキーになる。ただし、マウスレイヤーより上の有効なレイヤー（かな）に割り当てのあるキーは、そちらが働くので
-    // 「マウス操作」ではない。「マウス操作」でないキーを押すと即解除し、&trans の位置のキーは下のレイヤー（Default など）の
-    // キーとして入力される。有効にする前から押していたキーは、excluded-positions のものだけを数える。
+    // 押しても解除せず、押している間は時間切れにしない（離してから数え直す）。「マウス操作」でないキーを押すと
+    // 即解除し、&trans の位置のキーは下のレイヤー（Default など）のキーとして入力される。
     // 有効にするきっかけはカーソル移動・スクロールだけ（タップ・ジェスチャー、触れただけでは有効にしない）。
+    // リスナーの入力処理の最後に入れるので、速度の調整の後の、実際にカーソルが動く量で有効にする。
     // トラックパッドに触れている間も時間切れにしない（離れてから 350ms で解除）。触れている合図は
     // ドライバの INPUT_BTN_TOUCH（CONFIG_INPUT_IQS9151_REPORT_TOUCH）で、受け取るデバイスは親機の overlay の touch-devices で指定する。
-    // excluded-positions: マウスレイヤーでは &trans だが、押しても解除したくない位置。トラックパッド由来の位置 (52-67)。
-    // passive-positions: 押しても解除も延長もしない位置。親指の段の 30〜41 のうち、33・34 以外
-    // （マウスレイヤーで &trans の位置（36〜38）は、ほかのキーと同じく押すと解除する）。
-    // 修飾キーは、マウスレイヤーの 15・16・27（右 Ctrl・右 Shift・右 Alt）に置いてある（押している間は解除しない）。
+    // マウスレイヤーの配置に結びつく設定（excluded-layers・excluded-positions・passive-positions）は keymap に書く。
     // レイヤー番号（5）は keymap の MOUSE_LAYER と合わせる（keymap の #define はここからは見えないため数字で書く）。
     zip_auto_mouse_layer: zip_auto_mouse_layer {
         compatible = "zmk,input-processor-auto-mouse-layer";
         #input-processor-cells = <2>;
         require-prior-idle-ms = <150>;
-        excluded-positions = <52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67>;
-        passive-positions = <30 31 32 35 36 37 38 39 40 41>;
     };
 
-    // 左右のトラックパッドのリスナー（親機の overlay で status = "okay" にする）。
+    // 左右のトラックパッドのリスナー（親機の overlay で status = "okay" にする。右は子機から中継した入力、
+    // 左は親機に直接つながったトラックパッド）。
     // カーソル低速: &zip_cursor_slow は keymap の cur_slow_hold / cur_slow_toggle / cur_slow_once で低速がオンの間だけカーソルを 1/3 にする。
     // レイヤーによって速さは変えない（以前は数字・記号レイヤーの間を遅くしていた）。数字・記号レイヤーの間に
     // マウスレイヤーを新しくオンにしないのは、keymap の &zip_auto_mouse_layer の excluded-layers で行う。
@@ -208,7 +176,7 @@
     trackpad_listener_L: trackpad_listener_L {
         compatible = "zmk,input-listener";
         status = "disabled";
-        device = <&trackpad_split_L>;
+        device = <&iqs9151>;
         input-processors = <&zip_tp_keys>,
                            <&trackpad_key_behaviors_L>,
                            <&zip_xy_scaler 1 5>,

@@ -167,7 +167,7 @@
 
 - `zip_dyn_scale` 系の定数（`zip_dynamic_scale.h`）：対象 `ZDS_XY`（カーソル）`ZDS_SC`（スクロール）`ZDS_ALL`（両方）、操作 `ZDS_INC` `ZDS_DEC` `ZDS_RST`。
   `zip_dyn_scale_set` の値は 10 倍表記（`10`＝1.0 倍、`5`＝0.5 倍、`15`＝1.5 倍）。
-- トラックパッドのクリック・ジェスチャーは、ドライバの `trackpad-to-pos` によってキー位置 52〜67 の押下として届く（`lalapadgen2.dtsi` の `POS_TP_*`）。だから keymap の 52〜67 番目に書いたものが、それぞれのジェスチャーの動作になる。
+- トラックパッドのクリック・ジェスチャーは、ドライバの `trackpad-to-pos` によってキー位置 52〜67 の押下として届く（`lalapad/include/dt-bindings/lalapad/tp_positions.h` の `POS_TP_*`。shield の `lalapadgen2.dtsi` と自作モジュールの C の両方が読む）。だから keymap の 52〜67 番目に書いたものが、それぞれのジェスチャーの動作になる。
 - 出典：[zmk-driver-iqs9151 v1.0.0 behavior_input_processor_reference.md](https://github.com/ShiniNet/zmk-driver-iqs9151/blob/v1.0.0/documents/behavior_input_processor_reference.md)
 
 ### 自作モジュール `lalapad/` の behavior・入力処理
@@ -189,7 +189,7 @@
 | `zmk,behavior-alt-tab` | `swap_next` `swap_prev` | 0 | `reverse`（Shift+Tab を送る） | ウィンドウの切り替え。最初に押したときに Alt を押したままにして Tab を送り、押すたびに Tab を送る。押し始めたレイヤーの解除、ほかのキー（キーコードを送るもの。Alt コードの送信が自分で送るキーを除く）の押下、接続先の切り替えで Alt を離す（順方向・逆方向で Alt を共有）。Default に置いたときと、コンボから押したときは、レイヤーの解除では離さない |
 | `zmk,behavior-tp-keys` | `tp_arrow` `tp_dial` | 0 | `bindings`（必須。8 つ: 1 本指を上・下・左・右、2 本指を上・下・左・右へ動かしたとき）、`cursor-step` `scroll-step`（既定 150。トラックパッドの生の値）、`tap-ms`（既定 10） | 押している間だけ、トラックパッドを動かした量ごとに、その向きの binding を送る（4 つとも `&trans` の側はカーソル・スクロールのまま）。押している間のタップ・ジェスチャーは捨てる |
 | `zmk,behavior-tp-stroke` | `tp_draw` | 0 | `strokes`（必須。`TP_STROKE1`〜`4`。`dt-bindings/lalapad/tp_keys.h`）、`bindings`（必須。strokes と同じ数）、`stroke-step`（既定 300）、`tap-ms`（既定 10） | 押している間に 1 本指で描いた向きの並びを、指（またはキー）を離したときに binding に変える |
-| `zmk,input-processor-auto-mouse-layer` | `zip_auto_mouse_layer`（dtsi） | 2（レイヤー番号、解除までの ms。0 なら時間では解除しない） | `require-prior-idle-ms`、`excluded-layers`（keymap で指定）、`excluded-positions`、`passive-positions`、`touch-devices`、`touch-stale-ms` | カーソル移動・スクロールでマウスレイヤーを一時的に有効にする（タップ・ジェスチャーや触れただけでは有効にしない）。マウスレイヤーで `&trans` の位置、またはマウスレイヤーより上の有効なレイヤー（かな・左手用など）に割り当てのある位置を押すと解除。`excluded-positions` の位置は解除しない。`passive-positions` の位置は、割り当てが働いても解除も延長もしない。`&none` の位置は、押しても何も入力せず、解除もしない（押している間は時間切れにしない。`passive-positions` の位置は除く）。`excluded-layers` が有効な間は有効にしない。`require-prior-idle-ms` の「直前のキー入力」は、キーコードの押下と、トラックパッド由来でない位置の押下。Alt コードを送っている間も有効にしない |
+| `zmk,input-processor-auto-mouse-layer` | `zip_auto_mouse_layer`（dtsi） | 2（レイヤー番号、解除までの ms。0 なら時間では解除しない） | `require-prior-idle-ms`、`excluded-layers`・`excluded-positions`・`passive-positions`（keymap で指定）、`touch-devices`（親機の overlay で指定）、`touch-stale-ms` | カーソル移動・スクロールでマウスレイヤーを一時的に有効にする（タップ・ジェスチャーや触れただけでは有効にしない）。マウスレイヤーで `&trans` の位置、またはマウスレイヤーより上の有効なレイヤー（かな・左手用など）に割り当てのある位置を押すと解除。`excluded-positions` の位置は解除しない。`passive-positions` の位置は、割り当てが働いても解除も延長もしない。`&none` の位置は、押しても何も入力せず、解除もしない（押している間は時間切れにしない。`passive-positions` の位置は除く）。`excluded-layers` が有効な間は有効にしない。`require-prior-idle-ms` の「直前のキー入力」は、キーコードの押下と、トラックパッド由来でない位置の押下。Alt コードを送っている間も有効にしない |
 | `zmk,input-processor-cursor-slow` | `zip_cursor_slow`（`behaviors/cursor_slow.dtsi`） | 2（倍率の分子、分母） | — | カーソル低速の間、カーソル移動を遅くする |
 | `zmk,input-processor-scroll-snap-gate` | `zip_scroll_snap_gate_R` `_L`（dtsi） | 0 | `processor`（必須） | `scr_snap_hold` を押している間だけ、スクロールスナップにイベントを渡す |
 | `zmk,input-processor-tp-keys` | `zip_tp_keys`（`behaviors/tp_keys.dtsi`） | 0 | — | `tp_` のキーを押している間、トラックパッドの動きをキーに変える。リスナーの入力処理の並びの先頭に入れる |

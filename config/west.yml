@@ -3,7 +3,7 @@ manifest:
     - name: zmkfirmware
       url-base: https://github.com/zmkfirmware
     - name: ShiniNet
-      url-base: https://github.com/ShiniNet/
+      url-base: https://github.com/ShiniNet
     - name: caksoylar
       url-base: https://github.com/caksoylar
     - name: kot149
@@ -23,7 +23,8 @@ manifest:
       revision: v1.0.0
     - name: zmk-rgbled-widget
       remote: caksoylar
-      revision: v0.3
+      # v0.3 は更新され続けるブランチなので、タグで固定する（2026-11 時点で v0.3 と同じ）
+      revision: v0.3.0
     - name: zmk-scroll-snap
       remote: kot149
       # v1 はタグではなく更新され続けるブランチなので、ビルドが変わらないようコミットで固定する（2026-10-22 時点の v1）

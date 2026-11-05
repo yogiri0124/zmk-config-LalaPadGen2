@@ -3,4 +3,5 @@ on: [push, pull_request, workflow_dispatch]
 
 jobs:
   build:
-    uses: zmkfirmware/zmk/.github/workflows/build-user-config.yml@v0.3
+    # ZMK 本体（config/west.yml の v0.3.0）と同じタグに固定する（v0.3 は更新され続けるブランチ）
+    uses: zmkfirmware/zmk/.github/workflows/build-user-config.yml@v0.3.0
