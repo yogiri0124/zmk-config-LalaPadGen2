@@ -208,10 +208,11 @@ static void remove_queued(size_t i) {
 
 /* 送る列に足す。足したら true */
 static bool enqueue(const struct held_mode *hm, const struct zmk_behavior_binding *b, bool motion) {
-    if (is_trans(b)) {
+    if (!motion && is_trans(b)) {
         return false;
     }
     if (motion) {
+        // &trans の向きに動かしたときも、ほかの向きの待っている分は捨てる（下で、足さずに戻る）
         // 違う向き（または違う押し方）の分が待っていたら捨てる。同じ向きの分は MAX_PENDING_STEPS まで
         size_t pending = 0;
         bool other = false;
@@ -229,7 +230,7 @@ static bool enqueue(const struct held_mode *hm, const struct zmk_behavior_bindin
             }
             pending = 0;
         }
-        if (pending >= MAX_PENDING_STEPS) {
+        if (is_trans(b) || pending >= MAX_PENDING_STEPS) {
             return false;
         }
     }
@@ -255,11 +256,6 @@ static void reset_stroke(struct slot *s) {
     s->len = 0;
     s->last_dir = 0;
     s->overflow = false;
-}
-
-static void reset_motion(struct slot *s) {
-    s->cursor = (struct axis_acc){0};
-    s->scroll = (struct axis_acc){0};
 }
 
 /* 描いた並びに一致するものを送り、一筆書きを終える。送るものを足したら true */
@@ -448,6 +444,11 @@ ZMK_SUBSCRIPTION(tp_keys, zmk_layer_state_changed);
 #if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
 
 /* ---- 入力処理（入力スレッド。以下もロックを取った状態で呼ぶ） ---- */
+
+static void reset_motion(struct slot *s) {
+    s->cursor = (struct axis_acc){0};
+    s->scroll = (struct axis_acc){0};
+}
 
 static struct slot *find_slot(const struct device *dev) {
     for (size_t i = 0; i < MAX_SLOTS; i++) {

@@ -179,13 +179,13 @@ static int on_kana_binding_pressed(struct zmk_behavior_binding *binding,
     const uint32_t id = binding->param1;
 
     if (id == 0 || id > KN_MAX_ID || kana_table[id].len == 0) {
-        LOG_WRN("Unknown kana id %d", id);
+        LOG_WRN("Unknown kana id %u", id);
         return ZMK_BEHAVIOR_OPAQUE;
     }
 
     if (!kana_input_enabled()) {
         // かな配列モードでない、または解除処理中（IME オフの後にローマ字が出ないよう捨てる）
-        LOG_DBG("Kana input disabled, dropped kana id %d", id);
+        LOG_DBG("Kana input disabled, dropped kana id %u", id);
         return ZMK_BEHAVIOR_OPAQUE;
     }
 
@@ -196,14 +196,14 @@ static int on_kana_binding_pressed(struct zmk_behavior_binding *binding,
             const int ret = kana_output_tap(&event, keycode, cfg->tap_ms, cfg->wait_ms);
             if (ret < 0) {
                 // -EAGAIN は「押す」だけ登録済み（「離す」は自動で再試行される）
-                LOG_WRN("Behavior queue busy/full (err %d), kana id %d", ret, id);
+                LOG_WRN("Behavior queue busy/full (err %d), kana id %u", ret, id);
             }
         } else if (held_keycode[event.position] == 0) {
             const int ret = kana_output_press(&event, keycode, cfg->tap_ms);
             if (ret == 0) {
                 held_keycode[event.position] = keycode;
             } else {
-                LOG_WRN("Behavior queue busy/full (err %d), dropped kana id %d", ret, id);
+                LOG_WRN("Behavior queue busy/full (err %d), dropped kana id %u", ret, id);
             }
         }
         return ZMK_BEHAVIOR_OPAQUE;
@@ -220,7 +220,7 @@ static int on_kana_binding_pressed(struct zmk_behavior_binding *binding,
     if (ret < 0) {
         // -EBUSY / -ENOSPC: その打鍵から先は登録していない。-EAGAIN: 「離す」は自動で再試行される。
         // いずれも同じ文字の残りは送っていない（順番が崩れないように）
-        LOG_WRN("Behavior queue busy/full (err %d), dropped (rest of) kana id %d", ret, id);
+        LOG_WRN("Behavior queue busy/full (err %d), dropped (rest of) kana id %u", ret, id);
     }
 
     return ZMK_BEHAVIOR_OPAQUE;

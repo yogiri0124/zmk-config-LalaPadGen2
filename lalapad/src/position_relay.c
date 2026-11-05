@@ -53,12 +53,28 @@ K_MSGQ_DEFINE(relay_queue, sizeof(struct zmk_position_state_changed_event), RELA
 /* 預かって処理した出来事で、いま押されている位置（右との接続が切れたときに離す分と、押されていない位置の
  * 「離した」を知る） */
 static ATOMIC_DEFINE(relayed_pressed, ZMK_KEYMAP_LEN);
+/* 列に預けきれなかった「離した」の位置（relay_work_handler が、列の分を処理した後に離す） */
+static ATOMIC_DEFINE(deferred_release, ZMK_KEYMAP_LEN);
 #if WATCH_SPLIT_LINK
 /* 右との接続が切れているか */
 static atomic_t split_lost;
 #endif
 
-/* 預かった出来事を、届いた順に、預かった listener の次から処理し直す（システムワークキュー） */
+/* position が押されていたら、「離した」を出す（システムワークキューで呼ぶ。出した出来事はこの listener を素通りする） */
+static void release_if_pressed(uint32_t position) {
+    if (!atomic_test_and_clear_bit(relayed_pressed, position)) {
+        return;
+    }
+    raise_zmk_position_state_changed((struct zmk_position_state_changed){
+        .source = ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL,
+        .state = false,
+        .position = position,
+        .timestamp = k_uptime_get(),
+    });
+}
+
+/* 預かった出来事を、届いた順に、預かった listener の次から処理し直す（システムワークキュー）。
+ * 列に預けきれなかった「離した」は、列の分（その位置の「押した」を含む）を処理した後に出す */
 static void relay_work_handler(struct k_work *work) {
     struct zmk_position_state_changed_event ev;
     while (k_msgq_get(&relay_queue, &ev, K_NO_WAIT) == 0) {
@@ -81,6 +97,12 @@ static void relay_work_handler(struct k_work *work) {
         }
         ZMK_EVENT_RELEASE(ev);
     }
+    for (uint32_t position = 0; position < ZMK_KEYMAP_LEN; position++) {
+        if (atomic_test_and_clear_bit(deferred_release, position)) {
+            LOG_DBG("Releasing deferred position %u", position);
+            release_if_pressed(position);
+        }
+    }
 }
 
 static K_WORK_DEFINE(relay_work, relay_work_handler);
@@ -102,22 +124,20 @@ static int position_relay_listener(const zmk_event_t *eh) {
     // ワークキューが入力イベントの列の空きを待っているときに、互いに待ち合って止まる）
     if (k_msgq_put(&relay_queue, &ev, K_MSEC(RELAY_PUT_TIMEOUT_MS)) != 0) {
         // それでも預けきれない（システムワークキューが長く止まったとき）。システムワークキューが止まる主な原因は、
-        // behavior（&mkp など）が入力イベントの列の空きを K_FOREVER で待っていることなので、ここで「押した」を
-        // 入力スレッドで処理すると、その behavior が自分の列を待って止まる。そのため:
+        // behavior（&mkp など）が入力イベントの列の空きを K_FOREVER で待っていることで、&mkp は押すときも離すときも
+        // 待つので、ここで入力スレッドのまま処理すると、その behavior が自分の列を待って止まる。そのため、この場では
+        // 処理しない:
         // - 「押した」は捨てる（押されたままにはならない。後から届く「離した」は、押されていない位置のものとして捨てる）
-        // - 「離した」はこの場で処理する（捨てると押されたままになるため。離すときに入力の列を待つ behavior はない）。
-        //   まだ預けてある出来事より先に処理されるので、同じ位置の「押した」が預けてあると押されたままになるが、
-        //   列が満杯のまま 50 ms 空かないときだけの、まれな場合の妥協とする
+        // - 「離した」は印だけ付けて、relay_work_handler が、列の分（その位置の「押した」を含む）を処理した後に出す
+        //   （捨てると押されたままになるため。押した後に離す順番も守られる）
         if (pos->state) {
             LOG_WRN("Position relay queue full, dropped press of position %u", pos->position);
-            return ZMK_EV_EVENT_HANDLED;
+        } else if (pos->position < ZMK_KEYMAP_LEN) {
+            LOG_WRN("Position relay queue full, deferring release of position %u", pos->position);
+            atomic_set_bit(deferred_release, pos->position);
+            k_work_submit(&relay_work);
         }
-        LOG_WRN("Position relay queue full, processing release of position %u in place",
-                pos->position);
-        if (pos->position < ZMK_KEYMAP_LEN) {
-            atomic_clear_bit(relayed_pressed, pos->position);
-        }
-        return ZMK_EV_EVENT_BUBBLE;
+        return ZMK_EV_EVENT_HANDLED;
     }
     k_work_submit(&relay_work);
     return ZMK_EV_EVENT_CAPTURED;
@@ -143,14 +163,8 @@ static void relay_split_connected(struct bt_conn *conn, uint8_t err) {
  * 素通りし、預かった出来事の処理（relay_work_handler）とも同じスレッドなので、順番が入れ替わらない） */
 static void split_release_work_handler(struct k_work *work) {
     for (uint32_t position = TP_POS_FIRST; position <= TP_POS_LAST; position++) {
-        if (tp_position_is_right(position) && atomic_test_and_clear_bit(relayed_pressed, position)) {
-            LOG_DBG("Split link lost, releasing right trackpad position %u", position);
-            raise_zmk_position_state_changed((struct zmk_position_state_changed){
-                .source = ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL,
-                .state = false,
-                .position = position,
-                .timestamp = k_uptime_get(),
-            });
+        if (tp_position_is_right(position)) {
+            release_if_pressed(position);
         }
     }
 }

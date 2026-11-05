@@ -33,6 +33,7 @@
 
 #include <dt-bindings/zmk/keys.h>
 
+#include "alt_code.h"
 #include "layer_lock.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
@@ -129,7 +130,9 @@ static int alt_tab_listener(const zmk_event_t *eh) {
     const struct zmk_keycode_state_changed *kc = as_zmk_keycode_state_changed(eh);
     if (kc != NULL) {
         // ほかのキーの「押す」: そのキーより先に Alt を離す（この listener は ZMK 本体の HID への反映より前に呼ばれる）
-        if (kc->state && !raising) {
+        // Alt コードの送信が自分で送るキー（テンキーの数字・IME オン など）では終えない（送っている間に始めた
+        // 切り替えが、送信の続きで確定しないように）
+        if (kc->state && !raising && !alt_code_is_own_event(kc)) {
             end_switch();
         }
         return ZMK_EV_EVENT_BUBBLE;

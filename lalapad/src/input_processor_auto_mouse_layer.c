@@ -532,6 +532,9 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
                  "auto mouse layer: excluded-positions / passive-positions is out of range");
 
 #define AUTO_MOUSE_INST(n)                                                                         \
+    BUILD_ASSERT(DT_INST_PROP(n, require_prior_idle_ms) >= 0 &&                                    \
+                     DT_INST_PROP(n, touch_stale_ms) >= 0,                                         \
+                 "auto mouse layer: require-prior-idle-ms and touch-stale-ms must be >= 0");       \
     BUILD_ASSERT(DT_INST_PROP_LEN_OR(n, touch_devices, 0) <= MAX_TOUCH_DEVICES,                    \
                  "too many touch-devices");                                                        \
     DT_INST_FOREACH_PROP_ELEM(n, excluded_layers, AUTO_MOUSE_CHECK_LAYER)                          \

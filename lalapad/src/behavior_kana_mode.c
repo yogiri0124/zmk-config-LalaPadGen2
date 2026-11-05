@@ -61,7 +61,7 @@ static int on_kana_mode_binding_pressed(struct zmk_behavior_binding *binding,
                       cfg->wait_ms);
         break;
     default:
-        LOG_WRN("Unknown kana mode command %d", binding->param1);
+        LOG_WRN("Unknown kana mode command %u", binding->param1);
         break;
     }
 

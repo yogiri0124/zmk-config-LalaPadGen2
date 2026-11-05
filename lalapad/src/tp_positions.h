@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <zephyr/toolchain.h>
 #include <zmk/matrix.h>
 
 /* トラックパッド由来の位置の範囲（これより前は、キーマトリクスのキー） */

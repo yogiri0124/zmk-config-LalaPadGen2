@@ -222,8 +222,11 @@ static int word_layer_listener(const zmk_event_t *eh) {
     }
     // exit-layers のレイヤーが有効になった: 終える（有効になった時点のその出来事の中で解除するので、
     // 後に続く conditional layer の listener は、両方が有効な状態を見ない）
+    if (!zmk_keymap_layer_active(ly->layer)) {
+        return ZMK_EV_EVENT_BUBBLE;
+    }
     for (int i = 0; i < MAX_ACTIVE; i++) {
-        if (!actives[i].active || !zmk_keymap_layer_active(ly->layer)) {
+        if (!actives[i].active) {
             continue;
         }
         const struct behavior_word_layer_config *cfg = actives[i].config;

@@ -68,9 +68,6 @@ BUILD_ASSERT(DT_NODE_EXISTS(DT_NODELABEL(kana_sync)),
 #define SYNC_MASK_ON 3
 #define SYNC_MASK_OFF 4
 
-/* トラックパッドのクリック・ジェスチャーのキー位置（tp_positions.h の TP_POS_FIRST〜TP_POS_LAST）を押した後は、
- * ほかのウィンドウや入力欄に移って IME がオフになっているかもしれないので、次のかな・記号の前に IME オンを送り直す */
-
 /* ---- 送信キュー ---- */
 
 /* キューが満杯のため、まだ登録できていない「必ず送る」もの（キーの「離す」と、修飾キーを戻す合図）。
