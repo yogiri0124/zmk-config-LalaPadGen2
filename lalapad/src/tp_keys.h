@@ -2,9 +2,9 @@
  * トラックパッドをキー操作に変えるモード（behavior_tp_keys.c・behavior_tp_stroke.c が定義し、
  * tp_keys.c の入力処理が使う）。
  *
- * 出すものは、モードの定義の子ノード（表）にレイヤーごと・左右のトラックパッドごとに書く。
- * モードのキーを押したときに有効なレイヤーを上から見て、そのレイヤーを layers に書いた表を使う
- * （表の中の &trans は、その下のレイヤーの表、最後に layers を書かない表（既定）を見る）。
+ * 出すものは、モードの定義の直下（既定。どのレイヤーでも使う）と、子ノード（表。layers に書いたレイヤーで使う）に、
+ * 左右のトラックパッドごとに書ける。モードのキーを押したときに有効なレイヤーを上から見て、表のあるレイヤーの表を使う
+ * （表のないレイヤーは素通り。表の中の &trans は、その下のレイヤーの表、最後に既定を見る）。
  */
 
 #pragma once
@@ -42,9 +42,9 @@ enum tp_keys_kind {
     TP_KEYS_KIND_STROKE,
 };
 
-/* 表（モードの定義の子ノード 1 つ） */
+/* 表（モードの定義の直下の既定、または子ノード 1 つ） */
 struct tp_keys_table {
-    /* 使うレイヤーの ID（num_layers が 0 なら既定の表） */
+    /* 使うレイヤーの ID（num_layers が 0 なら既定。モードの定義の直下） */
     const uint8_t *layers;
     size_t num_layers;
     /* 左右のトラックパッドで出すもの（それぞれ struct tp_keys_mode の num_bindings 個） */
@@ -124,6 +124,19 @@ int tp_keys_binding_released(struct zmk_behavior_binding *binding,
     TP_KEYS_TABLE_ARRAY(node, bindings, both)                                                      \
     TP_KEYS_TABLE_ARRAY(node, left_bindings, left)                                                 \
     TP_KEYS_TABLE_ARRAY(node, right_bindings, right)
+
+/* モードの定義の直下に bindings・left-bindings・right-bindings のどれかがあるか（あれば既定の表にする） */
+#define TP_KEYS_HAS_DEFAULT(node)                                                                      UTIL_OR(UTIL_OR(DT_NODE_HAS_PROP(node, bindings), DT_NODE_HAS_PROP(node, left_bindings)),                  DT_NODE_HAS_PROP(node, right_bindings))
+
+/* モードの定義（inst の node）の表をすべて作る（直下の既定と子ノード）。num は 1 つの側の数。
+ * 表の配列 name を作る。既定があれば先頭に置く */
+#define TP_KEYS_TABLES_DEFINE(node, name, num)                                                     \
+    IF_ENABLED(TP_KEYS_HAS_DEFAULT(node), (TP_KEYS_TABLE_DEFINE(node, num)))                       \
+    DT_FOREACH_CHILD_VARGS(node, TP_KEYS_TABLE_DEFINE, num)                                        \
+    static const struct tp_keys_table name[] = {                                                   \
+        IF_ENABLED(TP_KEYS_HAS_DEFAULT(node), (TP_KEYS_TABLE_ENTRY(node)))                         \
+            DT_FOREACH_CHILD(node, TP_KEYS_TABLE_ENTRY)};                                          \
+    BUILD_ASSERT(ARRAY_SIZE(name) > 0, "tp-keys/tp-stroke: needs bindings");
 
 /* struct tp_keys_table の初期化子（後ろに , を付ける） */
 #define TP_KEYS_TABLE_ENTRY(node)                                                                  \

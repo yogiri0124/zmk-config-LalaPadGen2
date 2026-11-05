@@ -2,8 +2,8 @@
  * トラックパッドの一筆書きでキーを送る behavior（zmk,behavior-tp-stroke、引数なし）。
  *
  * 押している間、1 本指で描いた向きの並び（上下左右、最大 4 つ）を覚え、指を離したとき（または先に
- * このキーを離したとき）に、strokes の中で並びが一致するものの binding（表の bindings の同じ順番）を 1 回送る。
- * 送るものは子ノード（表）に、レイヤーごと・左右のトラックパッドごとに書く（tp_keys.h）。
+ * このキーを離したとき）に、strokes の中で並びが一致するものの binding（bindings の同じ順番）を 1 回送る。
+ * 送るものは直下の bindings（既定）と、子ノード（表）にレイヤーごと・左右のトラックパッドごとに書く（tp_keys.h）。
  * 描いている間はカーソルは動かない。2 本指のスクロールはそのまま通す。
  * 実際に動きを読むのは、トラックパッドのリスナーに入れた zmk,input-processor-tp-keys（tp_keys.c）。
  */
@@ -54,11 +54,7 @@ static const struct behavior_driver_api behavior_tp_stroke_driver_api = {
                      (1 LISTIFY(DT_INST_PROP_LEN(n, strokes), TP_STROKE_ELEM_OK, (), n)),          \
                  "tp-stroke: each stroke must be TP_STROKE1..4 of TP_UP/DOWN/LEFT/RIGHT, "         \
                  "with no two same directions in a row");                                          \
-    DT_INST_FOREACH_CHILD_VARGS(n, TP_KEYS_TABLE_DEFINE, DT_INST_PROP_LEN(n, strokes))             \
-    static const struct tp_keys_table tp_stroke_tables_##n[] = {                                   \
-        DT_INST_FOREACH_CHILD(n, TP_KEYS_TABLE_ENTRY)};                                            \
-    BUILD_ASSERT(ARRAY_SIZE(tp_stroke_tables_##n) > 0,                                             \
-                 "tp-stroke: needs at least one table (child node with bindings)");                \
+    TP_KEYS_TABLES_DEFINE(DT_DRV_INST(n), tp_stroke_tables_##n, DT_INST_PROP_LEN(n, strokes))      \
     static const uint16_t tp_stroke_strokes_##n[] = DT_INST_PROP(n, strokes);                      \
     static const struct tp_keys_mode tp_stroke_mode_##n = {                                        \
         .kind = TP_KEYS_KIND_STROKE,                                                               \
