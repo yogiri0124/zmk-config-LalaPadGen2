@@ -130,7 +130,9 @@ struct kana_entry {
     ENTRY(KN_VU, "ゔ", K2(V, U)) \
     ENTRY(KE_SPACE, "スペース", K1(SPACE)) \
     ENTRY(KE_ENTER, "エンター", K1(ENTER)) \
-    ENTRY(KE_BSPC, "バックスペース", K1(BACKSPACE))
+    ENTRY(KE_BSPC, "バックスペース", K1(BACKSPACE)) \
+    ENTRY(KE_ESC, "エスケープ", K1(ESCAPE)) \
+    ENTRY(KE_TAB, "タブ", K1(TAB))
 
 // behavior のノードがないとき（入力処理など、同じモジュールのほかの部分だけを使うとき）に未使用の警告を出さない
 #if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
@@ -139,9 +141,9 @@ struct kana_entry {
 
 static const struct kana_entry kana_table[KN_MAX_ID + 1] = {KANA_LIST(KANA_TABLE_ENTRY)};
 
-/* かな（1〜KN_VU）と、編集用のキー3つ。その間の番号は欠番（kana.h に ID を足したら KANA_LIST にも足す） */
+/* かな（1〜KN_VU）と、編集用のキー5つ。その間の番号は欠番（kana.h に ID を足したら KANA_LIST にも足す） */
 #define KANA_COUNT_ENTRY(id, name, keys) +1
-BUILD_ASSERT((0 KANA_LIST(KANA_COUNT_ENTRY)) == KN_VU + 3, "KANA_LIST must cover every kana ID");
+BUILD_ASSERT((0 KANA_LIST(KANA_COUNT_ENTRY)) == KN_VU + 5, "KANA_LIST must cover every kana ID");
 
 struct behavior_kana_config {
     uint32_t tap_ms;
@@ -149,11 +151,11 @@ struct behavior_kana_config {
     uint32_t ime_resync_ms;
 };
 
-/* スペース・エンター・バックスペースは押しっぱなし（キーリピート）ができるよう、押したとき「押す」、
+/* 編集用のキー（スペース・エンター・バックスペース・Esc・Tab）は押しっぱなし（キーリピート）ができるよう、押したとき「押す」、
  * 離したとき「離す」を送る。キー位置ごとに押しているキーコードを覚えておく（0 = 押していない） */
 static uint32_t held_keycode[ZMK_KEYMAP_LEN];
 
-static bool is_hold_key(uint32_t id) { return id == KE_SPACE || id == KE_ENTER || id == KE_BSPC; }
+static bool is_hold_key(uint32_t id) { return id >= KE_SPACE && id <= KE_TAB; }
 
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 

@@ -109,8 +109,10 @@
 #define KE_SPACE 90
 #define KE_ENTER 91
 #define KE_BSPC 92
+#define KE_ESC 93
+#define KE_TAB 94
 
-#define KN_MAX_ID 92
+#define KN_MAX_ID 94
 
 /* &kana_sw のパラメータ */
 #define KANA_SW_ON 1

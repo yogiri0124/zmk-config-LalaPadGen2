@@ -577,12 +577,23 @@
         COMBO_ESC {
             bindings = <&kp ESCAPE>;
             key-positions = <0 1>;
-            layers = <DEFAULT_LAYER CONTROL_LAYER SECONDARY_LAYER TERTIARY_LAYER SYSTEM_LAYER MOUSE_LAYER KANA_LAYER>;
+            layers = <DEFAULT_LAYER CONTROL_LAYER SECONDARY_LAYER TERTIARY_LAYER SYSTEM_LAYER MOUSE_LAYER>;
         };
         COMBO_TAB {
             bindings = <&kp TAB>;
             key-positions = <10 11>;
-            layers = <DEFAULT_LAYER CONTROL_LAYER SECONDARY_LAYER TERTIARY_LAYER SYSTEM_LAYER MOUSE_LAYER KANA_LAYER>;
+            layers = <DEFAULT_LAYER CONTROL_LAYER SECONDARY_LAYER TERTIARY_LAYER SYSTEM_LAYER MOUSE_LAYER>;
+        };
+        // かなの単打の面の Esc・Tab は、かなと同じ送信キューで送る（まだ送り終えていないかなを追い越さないように）
+        COMBO_KANA_ESC {
+            bindings = <&kana_key KE_ESC>;
+            key-positions = <0 1>;
+            layers = <KANA_LAYER>;
+        };
+        COMBO_KANA_TAB {
+            bindings = <&kana_key KE_TAB>;
+            key-positions = <10 11>;
+            layers = <KANA_LAYER>;
         };
         // Default レイヤーだけ: 16＋17 で IME オン、12＋13 で IME オフ。打っている途中で起きないよう、30ms 以内に
         // 両方を押したときだけ（timeout-ms）、直前のキーから 150ms 以上あけて押したときだけ（require-prior-idle-ms）
