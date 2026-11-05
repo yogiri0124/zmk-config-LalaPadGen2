@@ -58,6 +58,8 @@ static uint32_t held_tab;
 static uint32_t held_tab_position;
 /* 自分の送っているキー入力（ほかのキーの入力と見分ける） */
 static bool raising;
+/* 自分のキー入力を送っている最中に、押し始めたレイヤーが解除された（送り終えてから終える） */
+static bool end_after_raise;
 
 static void raise_key(uint32_t keycode, bool pressed) {
     raising = true;
@@ -99,6 +101,12 @@ static int on_alt_tab_binding_pressed(struct zmk_behavior_binding *binding,
     held_tab = tab_keycode(binding);
     held_tab_position = event.position;
     raise_key(held_tab, true);
+    // 送った Alt・Tab の処理の中でレイヤーが解除された（Num Word が Tab で終わったなど）: 送り終えてから終える
+    // （処理の中で終えると、Tab の「押す」が PC に届く前に「離す」を送ってしまい、Tab が押されたままになる）
+    if (end_after_raise) {
+        end_after_raise = false;
+        end_switch();
+    }
     return ZMK_BEHAVIOR_OPAQUE;
 }
 
@@ -109,6 +117,10 @@ static int on_alt_tab_binding_released(struct zmk_behavior_binding *binding,
     if (held_tab == keycode && held_tab_position == event.position) {
         raise_key(keycode, false);
         held_tab = 0;
+    }
+    if (end_after_raise) {
+        end_after_raise = false;
+        end_switch();
     }
     return ZMK_BEHAVIOR_OPAQUE;
 }
@@ -150,7 +162,11 @@ static int alt_tab_listener(const zmk_event_t *eh) {
         // 有効にし直す。この listener はそれより先に呼ばれるので、固定しているかも見る）
         if (!ly->state && ly->layer == active_layer && !zmk_keymap_layer_active(active_layer) &&
             !layer_lock_is_locked(active_layer)) {
-            end_switch();
+            if (raising) {
+                end_after_raise = true;
+            } else {
+                end_switch();
+            }
         }
         return ZMK_EV_EVENT_BUBBLE;
     }
