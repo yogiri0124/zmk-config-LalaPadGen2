@@ -27,7 +27,8 @@
  *   ドライバの慣性の最長の時間で区切る。それまでの間は慣性として扱われる）。
  * - 「離れた」が届かなかったとき（右のトラックパッド）は、次の INPUT_BTN_TOUCH まで触れているとみなすので、
  *   離した後の慣性を指の動きとして扱う（モードのキーを押していると、キーに変わる。止まった指と慣性は見分けられない
- *   ので、時間では区切らない）。
+ *   ので、時間では区切らない）。右との接続が切れたときは、右のトラックパッドは離れたとみなし、描きかけの一筆書きは
+ *   捨てる（右のモードのキーが切断で離されたときも、描きかけの並びで送らない）。
  * - 2 本指でスクロールした後、1 本の指を残したまま止めると、ドライバはスクロールの慣性を送る（触れたままなので
  *   慣性と見分けられず、モードのキーを押していると、キーに変わる）。指をすべて離せば、慣性はキーにしない。
  *   カーソルとスクロールは別々に数える（一筆書きの後に 2 本指でスクロールしても、一筆書きの慣性は捨てる）。
@@ -170,6 +171,21 @@ static uint32_t gen;
 static struct slot slots[MAX_SLOTS];
 static struct action queue[QUEUE_LEN];
 static size_t queue_len;
+
+#if WATCH_SPLIT_LINK
+/* 右（子機）との接続が切れているか（接続・切断のコールバックで書き、behavior のコールバックで読む） */
+static atomic_t split_lost;
+#endif
+
+/* 右との接続が切れたために出た、右のキーの「離した」か（ZMK は切断の知らせで、右で押されていたキーを離す） */
+static bool released_by_split_loss(const struct zmk_behavior_binding_event *event) {
+#if WATCH_SPLIT_LINK
+    return atomic_get(&split_lost) && event->source != ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL;
+#else
+    ARG_UNUSED(event);
+    return false;
+#endif
+}
 /* 列がいっぱいで捨てた数（ログ用） */
 static uint32_t dropped;
 
@@ -404,10 +420,16 @@ static void mode_released(const struct tp_keys_mode *mode,
         if (held[i - 1].mode == mode && held[i - 1].position == event->position) {
             const uint32_t seq = held[i - 1].seq;
             remove_held(i - 1);
-            // 指より先にキーを離したら、そこまでに描いた並びで決める
+            // 指より先にキーを離したら、そこまでに描いた並びで決める。右との接続が切れて離されたときは、
+            // 描きかけのまま捨てる（離そうとして離したのではないので、途中の並びで送らない）
+            const bool discard = released_by_split_loss(event);
             for (size_t j = 0; j < MAX_SLOTS; j++) {
                 if (slots[j].stroke.mode != NULL && slots[j].stroke.seq == seq) {
-                    queued |= finish_stroke(&slots[j]);
+                    if (discard) {
+                        reset_stroke(&slots[j]);
+                    } else {
+                        queued |= finish_stroke(&slots[j]);
+                    }
                 }
             }
             break;
@@ -723,17 +745,30 @@ static int tp_keys_handle_event(const struct device *dev, struct input_event *ev
 }
 
 #if WATCH_SPLIT_LINK
-/* 右（子機）との接続が切れた: 右のトラックパッド（zmk,input-split で中継される入力デバイス）の分は、
- * 「離れた」が届かないまま止まるので、離れたとみなし、描きかけの一筆書きは捨てる（後でモードのキーを離したときに、
- * 描きかけの並びで送らないように） */
 #define TP_KEYS_IS_SPLIT_DEV(node_id) || dev == DEVICE_DT_GET(node_id)
 
+/* 右のトラックパッド（zmk,input-split で中継される入力デバイス）か */
 static bool is_split_dev(const struct device *dev) {
     return false DT_FOREACH_STATUS_OKAY(zmk_input_split, TP_KEYS_IS_SPLIT_DEV);
 }
 
-static void split_lost_work_cb(struct k_work *work) {
-    ARG_UNUSED(work);
+static void tp_keys_split_connected(struct bt_conn *conn, uint8_t err) {
+    if (err == 0 && is_split_link(conn)) {
+        atomic_set(&split_lost, 0);
+    }
+}
+
+/* 右（子機）との接続が切れた。ZMK が右のキーを離す処理（システムワークキュー）より先に、その場で行う:
+ * - 印を付ける（右のモードのキーが離されたときに、描きかけの一筆書きを送らない。mode_released）
+ * - 右のトラックパッドの分は「離れた」が届かないまま止まるので、離れたとみなし、描きかけの一筆書きと動きの端数を
+ *   捨てる。切れる前に届いていて、まだ処理されていない動きは、離した直後の慣性として捨てる */
+static void tp_keys_split_disconnected(struct bt_conn *conn, uint8_t reason) {
+    ARG_UNUSED(reason);
+    if (!is_split_link(conn)) {
+        return;
+    }
+    atomic_set(&split_lost, 1);
+    const uint32_t now = k_uptime_get_32();
     k_spinlock_key_t key = k_spin_lock(&lock);
     for (size_t i = 0; i < MAX_SLOTS; i++) {
         struct slot *s = &slots[i];
@@ -741,26 +776,19 @@ static void split_lost_work_cb(struct k_work *work) {
             continue;
         }
         reset_stroke(s);
-        if (s->touching) {
-            s->touching = false;
-            s->released_ms = k_uptime_get_32();
-        }
+        reset_motion(s);
+        s->touch_known = true;
+        s->touching = false;
+        s->last_coast_ms = now;
+        s->released_ms = now;
         s->in_frame = false;
         s->frame_dropped = false;
     }
     k_spin_unlock(&lock, key);
 }
 
-static K_WORK_DEFINE(split_lost_work, split_lost_work_cb);
-
-static void tp_keys_split_disconnected(struct bt_conn *conn, uint8_t reason) {
-    ARG_UNUSED(reason);
-    if (is_split_link(conn)) {
-        k_work_submit(&split_lost_work);
-    }
-}
-
 BT_CONN_CB_DEFINE(tp_keys_split_callbacks) = {
+    .connected = tp_keys_split_connected,
     .disconnected = tp_keys_split_disconnected,
 };
 #endif // WATCH_SPLIT_LINK
