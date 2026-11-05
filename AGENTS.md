@@ -14,7 +14,7 @@ Claude Code（編集担当）と Codex（レビュー担当）の両者がこの
 
 ## 作業の流れ
 
-1. Claude Code が main を最新化し（`git pull --ff-only`）、変更ごとにブランチを切る（例：`feat/xxx`、`fix/xxx`）。基準となる main の SHA を記録する。ブランチは**作業用フォルダ（git worktree、`.worktrees/<ブランチ名>/`）で開き**、メインのフォルダ（ユーザーが LaLapad-Gen2-Editor で開いているフォルダ）は常に main のままにする（詳細は CLAUDE.md）。
+1. Claude Code が main を最新化し（`git pull --ff-only`）、変更ごとにブランチを切る（例：`feat/xxx`、`fix/xxx`）。基準となる main の SHA を記録する。ブランチは**作業用フォルダ（git worktree、`.worktrees/<名前>/`。`<名前>` はブランチ名の `/` を `-` に置き換えたもの）で開き**、メインのフォルダ（ユーザーが LaLapad-Gen2-Editor で開いているフォルダ）は常に main のままにする（詳細は CLAUDE.md）。
 2. 編集してコミットする。
 3. Claude Code が `codex exec` で Codex にレビューさせ、結果を `.review/` に保存する（詳細は「レビューの実施と判定」）。
 4. 合格（「指摘の区分」参照）でなければ修正 → 再レビュー（ユーザーの判断が必要な確認事項は止めて報告）。レビューは**初回を含めて最大3回**。3回目でも合格しなければ、未解決の事項を添えて作業を止め、ユーザーに報告する。CI 失敗の修正やマージ競合の解消で回数はリセットしない。
