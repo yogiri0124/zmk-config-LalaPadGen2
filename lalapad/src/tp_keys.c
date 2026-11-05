@@ -173,17 +173,13 @@ static struct slot slots[MAX_SLOTS];
 static struct action queue[QUEUE_LEN];
 static size_t queue_len;
 
-#if WATCH_SPLIT_LINK
-/* 右（子機）との接続が切れているか（切断のコールバックで立て、接続し直したらワークで消す。behavior のコールバックと
- * 入力スレッドで読む） */
-static atomic_t split_lost;
-#endif
-
 /* 右との接続が切れたために出た、右のキーの「離した」か（ZMK は切断の知らせで、右で押されていたキーを離す。
  * 右のトラックパッドの位置（55〜57・63〜67）は position_relay が親機の出来事として離す） */
 static bool released_by_split_loss(const struct zmk_behavior_binding_event *event) {
 #if WATCH_SPLIT_LINK
-    return atomic_get(&split_lost) && (event->source != ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL ||
+    // 切断の後に ZMK・position_relay が出す「離した」は、切断のコールバックの後にシステムワークキューで処理され、
+    // つながり直した後の区切りの合図（入力スレッド）が処理されるより前なので、印が立っている
+    return split_link_input_lost() && (event->source != ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL ||
                                        tp_position_is_right(event->position));
 #else
     ARG_UNUSED(event);
@@ -681,7 +677,7 @@ static bool is_split_dev(const struct device *dev) {
 /* 右との接続が切れている間の、右のトラックパッドの分か */
 static bool split_slot_lost(const struct slot *s) {
 #if WATCH_SPLIT_LINK
-    return atomic_get(&split_lost) && is_split_dev(s->dev);
+    return split_link_input_lost() && is_split_dev(s->dev);
 #else
     ARG_UNUSED(s);
     return false;
@@ -783,21 +779,6 @@ static int tp_keys_handle_event(const struct device *dev, struct input_event *ev
 }
 
 #if WATCH_SPLIT_LINK
-/* 印を消すのはシステムワークキューで行う（切断で ZMK が出した右のキーの「離した」の処理（同じキュー）が
- * 遅れていても、その後に消す） */
-static void split_found_work_cb(struct k_work *work) {
-    ARG_UNUSED(work);
-    atomic_set(&split_lost, 0);
-}
-
-static K_WORK_DEFINE(split_found_work, split_found_work_cb);
-
-static void tp_keys_split_connected(struct bt_conn *conn, uint8_t err) {
-    if (err == 0 && is_split_link(conn)) {
-        k_work_submit(&split_found_work);
-    }
-}
-
 /* 右（子機）との接続が切れた。ZMK が右のキーを離す処理（システムワークキューのワーク）より先に、その場で行う
  * （Zephyr 3.5 では、このコールバックもシステムワークキューで呼ばれる）:
  * - 印を付ける（右のモードのキーが離されたときに、描きかけの一筆書きを送らない。mode_released）
@@ -810,7 +791,7 @@ static void tp_keys_split_disconnected(struct bt_conn *conn, uint8_t reason) {
     if (!is_split_link(conn)) {
         return;
     }
-    atomic_set(&split_lost, 1);
+    split_link_mark_lost();
     const uint32_t now = k_uptime_get_32();
     k_spinlock_key_t key = k_spin_lock(&lock);
     for (size_t i = 0; i < MAX_SLOTS; i++) {
@@ -831,7 +812,6 @@ static void tp_keys_split_disconnected(struct bt_conn *conn, uint8_t reason) {
 }
 
 BT_CONN_CB_DEFINE(tp_keys_split_callbacks) = {
-    .connected = tp_keys_split_connected,
     .disconnected = tp_keys_split_disconnected,
 };
 #endif // WATCH_SPLIT_LINK
