@@ -9,7 +9,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include <zmk/keymap.h>
+#include <zmk/matrix.h>
 
 /* トラックパッド由来の位置の範囲（これより前は、キーマトリクスのキー） */
 #define TP_POS_FIRST 52

@@ -62,15 +62,24 @@
             exit-layers = <TERTIARY_LAYER>;
         };
 
+        // 33 の長押し: 押している間だけ数字レイヤー（&mo と同じ）。Num Word の間に押したら、Num Word を引き継ぐ
+        // （ほかのキーや 38 を押しても数字レイヤーのまま。33 と 38 でシステムレイヤーになる）。
+        // 使い方: &num_hold SECONDARY_LAYER
+        num_hold: num_hold {
+            compatible = "zmk,behavior-word-layer";
+            #binding-cells = <1>;
+            momentary;
+        };
+
         // 33: タップで Num Word（数字レイヤーを、数字を打っている間だけ続ける）、長押しで今までどおり押している間だけ
-        // 数字レイヤー。長押しの間にほかのキーを押したら、すぐに長押しとして扱う（hold-preferred）。
+        // 数字レイヤー（num_hold）。長押しの間にほかのキーを押したら、すぐに長押しとして扱う（hold-preferred）。
         // 使い方: &num_mo SECONDARY_LAYER SECONDARY_LAYER
         num_mo: num_mo {
             compatible = "zmk,behavior-hold-tap";
             #binding-cells = <2>;
             flavor = "hold-preferred";
             tapping-term-ms = <200>;
-            bindings = <&mo>, <&num_word>;
+            bindings = <&num_hold>, <&num_word>;
         };
 
         mt2: mod_tap2 {

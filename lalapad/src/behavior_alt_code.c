@@ -95,6 +95,7 @@
 
 /* KANA_CHECK_MS は、かな入力のモジュールがないビルドでも使う（関数はかな入力のモジュールがあるときだけ呼ぶ） */
 #include "kana_output.h"
+#include "alt_code.h"
 #include "word_layer.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
@@ -277,6 +278,8 @@ static bool is_own(const struct zmk_keycode_state_changed *ev) {
     return raising_thread == k_current_get() && ev->usage_page == raising_usage_page &&
            ev->keycode == raising_keycode && ev->state == raising_state;
 }
+
+bool alt_code_is_own_event(const struct zmk_keycode_state_changed *ev) { return is_own(ev); }
 
 /* 送信を始める: ここからのほかのキー入力を預かる */
 static void start_capturing(void) {

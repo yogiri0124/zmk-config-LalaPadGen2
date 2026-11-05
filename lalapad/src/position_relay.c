@@ -13,8 +13,11 @@
  *
  * 右（子機）との接続が切れたら、右のトラックパッドの位置（tp_positions.h）で押されたままのものの「離した」を出す。
  * 右のキーは ZMK が離すが、右のトラックパッドは入力の出来事として届いて親機で位置に変えるので、ZMK は離さない
- * （ドラッグ中に切れると、クリックが押されたままになる）。切れている間に届いた右のトラックパッドの「押した」
- * （切れる前に入力の列に残っていた分）は捨てる（離した後に押されたままにならないように）。
+ * （ドラッグ中に切れると、クリックが押されたままになる）。切れている間に処理する右のトラックパッドの「押した」
+ * （切れる前に入力の列や、この中継の列に残っていた分）は捨てる（離した後に押されたままにならないように）。
+ * 押されていない位置の「離した」（離した後に届いた本物の「離した」、捨てた「押した」の「離した」）も捨てる
+ * （ZMK は押されていない位置の「離した」でも binding を離すので、同じボタンを押している別の位置のクリックが
+ * 離れてしまうため）。
  *
  * この listener は、ほかの自作モジュールより前に呼ばれるようにしている（CMakeLists.txt でこのファイルを最初に足す。
  * listener はリンクの順に呼ばれる）。
@@ -27,7 +30,7 @@
 
 #include <zmk/event_manager.h>
 #include <zmk/events/position_state_changed.h>
-#include <zmk/keymap.h>
+#include <zmk/matrix.h>
 
 #include "tp_positions.h"
 
@@ -47,9 +50,10 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 K_MSGQ_DEFINE(relay_queue, sizeof(struct zmk_position_state_changed_event), RELAY_QUEUE_SIZE, 4);
 
-#if WATCH_SPLIT_LINK
-/* 預かって処理した出来事で、いま押されている位置（右との接続が切れたときに離す分を知る） */
+/* 預かって処理した出来事で、いま押されている位置（右との接続が切れたときに離す分と、押されていない位置の
+ * 「離した」を知る） */
 static ATOMIC_DEFINE(relayed_pressed, ZMK_KEYMAP_LEN);
+#if WATCH_SPLIT_LINK
 /* 右との接続が切れているか */
 static atomic_t split_lost;
 #endif
@@ -58,11 +62,23 @@ static atomic_t split_lost;
 static void relay_work_handler(struct k_work *work) {
     struct zmk_position_state_changed_event ev;
     while (k_msgq_get(&relay_queue, &ev, K_NO_WAIT) == 0) {
+        const uint32_t position = ev.data.position;
+        if (position < ZMK_KEYMAP_LEN) {
+            if (ev.data.state) {
 #if WATCH_SPLIT_LINK
-        if (ev.data.position < ZMK_KEYMAP_LEN) {
-            atomic_set_bit_to(relayed_pressed, ev.data.position, ev.data.state);
-        }
+                // 切れた後に処理する右のトラックパッドの「押した」（切れる前に並んでいた分）。切れたときの処理と
+                // 同じシステムワークキューで調べるので、取りこぼさない
+                if (atomic_get(&split_lost) && tp_position_is_right(position)) {
+                    LOG_DBG("Split link lost, dropped press of right trackpad position %u", position);
+                    continue;
+                }
 #endif
+                atomic_set_bit(relayed_pressed, position);
+            } else if (!atomic_test_and_clear_bit(relayed_pressed, position)) {
+                LOG_DBG("Dropped release of position %u that is not pressed", position);
+                continue;
+            }
+        }
         ZMK_EVENT_RELEASE(ev);
     }
 }
@@ -75,6 +91,7 @@ static int position_relay_listener(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
 #if WATCH_SPLIT_LINK
+    // 早めに捨てる分（同じことは relay_work_handler でも調べる）
     if (pos->state && atomic_get(&split_lost) && tp_position_is_right(pos->position)) {
         LOG_DBG("Split link lost, dropped press of right trackpad position %u", pos->position);
         return ZMK_EV_EVENT_HANDLED;
@@ -87,7 +104,7 @@ static int position_relay_listener(const zmk_event_t *eh) {
         // それでも預けきれない（システムワークキューが長く止まったとき）。システムワークキューが止まる主な原因は、
         // behavior（&mkp など）が入力イベントの列の空きを K_FOREVER で待っていることなので、ここで「押した」を
         // 入力スレッドで処理すると、その behavior が自分の列を待って止まる。そのため:
-        // - 「押した」は捨てる（押されたままにはならない。後から届く「離した」は、押されていない位置の解除になる）
+        // - 「押した」は捨てる（押されたままにはならない。後から届く「離した」は、押されていない位置のものとして捨てる）
         // - 「離した」はこの場で処理する（捨てると押されたままになるため。離すときに入力の列を待つ behavior はない）。
         //   まだ預けてある出来事より先に処理されるので、同じ位置の「押した」が預けてあると押されたままになるが、
         //   列が満杯のまま 50 ms 空かないときだけの、まれな場合の妥協とする
@@ -97,11 +114,9 @@ static int position_relay_listener(const zmk_event_t *eh) {
         }
         LOG_WRN("Position relay queue full, processing release of position %u in place",
                 pos->position);
-#if WATCH_SPLIT_LINK
         if (pos->position < ZMK_KEYMAP_LEN) {
             atomic_clear_bit(relayed_pressed, pos->position);
         }
-#endif
         return ZMK_EV_EVENT_BUBBLE;
     }
     k_work_submit(&relay_work);

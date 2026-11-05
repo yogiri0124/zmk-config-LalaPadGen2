@@ -23,6 +23,10 @@
  *   離れている間の動きが COAST_GAP_MS より長く途切れた後に届いたら、慣性ではなく、「触れた」が届かなかった
  *   （右のトラックパッドは分割の通信で取りこぼすことがある）新しい触れ方とみなし、次の INPUT_BTN_TOUCH まで
  *   触れているかわからない状態として扱う（その触れ方の間、ずっと慣性として扱って、動きを捨て続けないように）。
+ *   離れてから COAST_MAX_MS より後の動きも同じ（慣性が途切れないうちに触れ直して「触れた」が届かなかったとき、
+ *   ドライバの慣性の最長の時間で区切る。それまでの間は慣性として扱われる）。
+ * - 2 本指でスクロールした後、1 本の指を残したまま止めると、ドライバはスクロールの慣性を送る（触れたままなので
+ *   慣性と見分けられず、モードのキーを押していると、キーに変わる）。指をすべて離せば、慣性はキーにしない。
  *   カーソルとスクロールは別々に数える（一筆書きの後に 2 本指でスクロールしても、一筆書きの慣性は捨てる）。
  * - モードのキーを押したときのレイヤーが解除されたら（押したままでも）、そのモードは終わる（描きかけの
  *   一筆書きは送らずに捨てる）。トラックパッドが止まったままにならないように。
@@ -81,6 +85,8 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define MAX_PENDING_STEPS 8
 /* 離れている間の動きがこれより長く途切れたら、慣性ではない（ドライバの慣性は、続けて送られる） */
 #define COAST_GAP_MS 300
+/* 離れてからこれより長くたった動きも、慣性ではない（ドライバの慣性は最長 3000 ms。*_INERTIA_MAX_DURATION_MS） */
+#define COAST_MAX_MS 3000
 /* 1 回の入力で数える回数の上限（大きな値が届いても、待っておける数を超えて数えない） */
 #define MAX_STEPS_PER_EVENT MAX_PENDING_STEPS
 /* 捨てるタップ・ジェスチャー（INPUT_BTN_0〜7） */
@@ -113,8 +119,9 @@ struct slot {
     /* 今の触れ方（指を離した後の慣性を含む）で、カーソル・スクロールの動きをキーに変えたか */
     bool converted_cursor;
     bool converted_scroll;
-    /* 離れている間に最後に動きを受け取った時刻（慣性が途切れたかを見る） */
+    /* 離れている間に最後に動きを受け取った時刻（慣性が途切れたかを見る）と、離れた時刻 */
     uint32_t last_coast_ms;
+    uint32_t released_ms;
     /* 捨てたタップ・ジェスチャーのボタン（「離した」も捨てる。押すたびに決め直す） */
     uint8_t buttons_dropped;
     /* 同期（sync）のない動きを受け取った後で、同じ組の続きを待っているか、その組を捨てているか
@@ -563,7 +570,7 @@ static bool handle_rel(struct slot *s, const struct input_event *event, bool *qu
     // 慣性（触れていない間の動き）か。途切れた後の動きは、「触れた」が届かなかった新しい触れ方とみなす
     if (s->touch_known && !s->touching) {
         const uint32_t now = k_uptime_get_32();
-        if (now - s->last_coast_ms > COAST_GAP_MS) {
+        if (now - s->last_coast_ms > COAST_GAP_MS || now - s->released_ms > COAST_MAX_MS) {
             // 触れているかわからない状態に戻す（次の INPUT_BTN_TOUCH で知り直す）。動きとして数える
             s->touch_known = false;
             s->converted_cursor = false;
@@ -618,6 +625,7 @@ static bool handle_key(struct slot *s, const struct input_event *event, bool *qu
             s->converted_scroll = false;
         } else {
             s->last_coast_ms = k_uptime_get_32();
+            s->released_ms = s->last_coast_ms;
             *queued |= finish_stroke(s);
         }
         // リスナーは INPUT_BTN_TOUCH を使わない（同期つきなので、通すと空のマウスのレポートを毎回送る）。

@@ -42,7 +42,7 @@ static const struct behavior_driver_api behavior_tp_stroke_driver_api = {
                   : (TP_STROKE_DIR_OK(v, 2) && TP_STROKE_GROUP(v, 2) != TP_STROKE_GROUP(v, 1) &&   \
                      (TP_STROKE_GROUP(v, 3) == 0 || (TP_STROKE_DIR_OK(v, 3) &&                     \
                                                      TP_STROKE_GROUP(v, 3) != TP_STROKE_GROUP(v, 2))))))))
-#define TP_STROKE_ELEM_OK(i, n) TP_STROKE_VALID(DT_INST_PROP_BY_IDX(n, strokes, i))
+#define TP_STROKE_ELEM_OK(i, n) && TP_STROKE_VALID(DT_INST_PROP_BY_IDX(n, strokes, i))
 
 #define TP_STROKE_INST(n)                                                                          \
     BUILD_ASSERT(DT_INST_PROP_LEN(n, bindings) == DT_INST_PROP_LEN(n, strokes),                    \
@@ -51,7 +51,8 @@ static const struct behavior_driver_api behavior_tp_stroke_driver_api = {
                  "tp-stroke: stroke-step must be 1..65535");                                       \
     BUILD_ASSERT(DT_INST_PROP(n, tap_ms) >= 0 && DT_INST_PROP(n, tap_ms) <= UINT16_MAX,            \
                  "tp-stroke: tap-ms must be 0..65535");                                            \
-    BUILD_ASSERT(LISTIFY(DT_INST_PROP_LEN(n, strokes), TP_STROKE_ELEM_OK, (&&), n),                \
+    BUILD_ASSERT(DT_INST_PROP_LEN(n, strokes) > 0 &&                                               \
+                     (1 LISTIFY(DT_INST_PROP_LEN(n, strokes), TP_STROKE_ELEM_OK, (), n)),           \
                  "tp-stroke: each stroke must be TP_STROKE1..4 of TP_UP/DOWN/LEFT/RIGHT, "         \
                  "with no two same directions in a row");                                          \
     static const uint16_t tp_stroke_strokes_##n[] = DT_INST_PROP(n, strokes);                      \

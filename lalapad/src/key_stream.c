@@ -82,8 +82,6 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define KEY_STREAM_PROTOCOL_VERSION 1
 #define USAGE_PAGE 0xFF4C /* ベンダー定義 */
 #define USAGE 0x01
-/* TP_POS_FIRST（tp_positions.h）以降の位置は、トラックパッドのタップ・ジェスチャー。
- * アプリが「開始」で指定したときだけ送る */
 /* 「開始」（生存確認。アプリは2秒ごとに送る）がこの時間届かなければ、送るのをやめる */
 #define KEEPALIVE_TIMEOUT_MS 6000
 
