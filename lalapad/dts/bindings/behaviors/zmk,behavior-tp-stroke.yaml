@@ -1,5 +1,6 @@
 # トラックパッドの一筆書きでキーを送る behavior（引数なし）。押している間に 1 本指で描いた向きの並びを覚え、
 # 指を離したとき（または先にこのキーを離したとき）に、並びが一致する binding を 1 回送る。
+# 送るものは、直下の bindings（どのレイヤーでも使う既定）と、子ノード（表。layers に書いたレイヤーで使う）に書く。
 # 押している間のタップ・ジェスチャーは捨てる。2 本指のスクロールはそのまま通す。
 # 実際に動きを読むのは、トラックパッドのリスナーに入れた zmk,input-processor-tp-keys。
 
@@ -15,13 +16,21 @@ properties:
     required: true
     description: >
       向きの並び（dt-bindings/lalapad/tp_keys.h の TP_STROKE1〜4 と TP_UP・TP_DOWN・TP_LEFT・TP_RIGHT。
-      例 TP_STROKE2(TP_DOWN, TP_RIGHT)）。bindings と同じ数・同じ順番で書く。
+      例 TP_STROKE2(TP_DOWN, TP_RIGHT)）。すべてのレイヤーで共通。bindings（表の bindings も）は、これと同じ数・同じ順番で書く。
       続けて同じ向きに動かしても 1 つの向きとして数えるので、同じ向きを続けて並べたもの
       （TP_STROKE2(TP_UP, TP_UP) など）は描けない。5 つ以上の向きを描いたときは、どれにも一致しない
   bindings:
     type: phandle-array
-    required: true
-    description: strokes の同じ順番の並びを描いたときに送るもの
+    description: どのレイヤーでも使う既定（左右共通）。strokes と同じ数・同じ順番で、その並びを描いたときに送るもの
+  left-bindings:
+    type: phandle-array
+    # 引数の数は、bindings と同じく、割り当てる behavior の #binding-cells で決める
+    specifier-space: binding
+    description: 左のトラックパッドで出すもの（そちらでは bindings の代わりに使う）
+  right-bindings:
+    type: phandle-array
+    specifier-space: binding
+    description: 右のトラックパッド（分割の通信で届くもの）で出すもの（そちらでは bindings の代わりに使う）
   stroke-step:
     type: int
     default: 300
@@ -30,3 +39,28 @@ properties:
     type: int
     default: 10
     description: 押してから離すまで、離してから次を押すまでの時間 (ms。0〜65535)
+
+child-binding:
+  description: >
+    レイヤーごとの表。このキーを押したときに有効なレイヤーを上から見て、そのレイヤーを layers に書いた表を使う
+    （表のないレイヤーは素通り）。表の中の &trans は、その下のレイヤーの表、最後に直下の既定を見る。
+    書き方は直下と同じ（bindings は左右共通、left-bindings・right-bindings は左右別。bindings がないときは両方要る）。
+    表から送るものは、keymap のキーと同じく、その表のレイヤーで送る（そのレイヤーを解除すると、まだ送っていない分は
+    捨て、&swap_next などはそこで終わる）
+  properties:
+    layers:
+      type: array
+      required: true
+      description: この表を使うレイヤー（keymap の宣言順の番号。#define の名前を書ける。同じレイヤーを複数の表に書いたときは先の表）
+    bindings:
+      type: phandle-array
+      description: 左右共通の出すもの
+    left-bindings:
+      type: phandle-array
+      # 引数の数は、bindings と同じく、割り当てる behavior の #binding-cells で決める
+      specifier-space: binding
+      description: 左のトラックパッドで出すもの（そちらでは bindings の代わりに使う）
+    right-bindings:
+      type: phandle-array
+      specifier-space: binding
+      description: 右のトラックパッド（分割の通信で届くもの）で出すもの（そちらでは bindings の代わりに使う）
