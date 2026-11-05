@@ -63,7 +63,7 @@
 
         // Num Word（自作モジュール lalapad/ の zmk,behavior-word-layer）: 数字レイヤーを、数字と continue-list のキー
         // （Backspace・Delete・. , + - * / =）を押している間だけ続け、ほかのキーを押すと自動で戻す。Shift などの修飾キーでは
-        // 戻さない（ignore-modifiers）。ほかの操作（30＋31 のコンボの &to など）で数字レイヤーが解除されたら、こちらも終わる。
+        // 戻さない（ignore-modifiers）。ほかの操作（20＋21 のコンボの &to など）で数字レイヤーが解除されたら、こちらも終わる。
         // 記号レイヤー（38）を押したら終える（exit-layers）: 数字レイヤーと記号レイヤーが同時に有効になると
         // システムレイヤー（bootloader・BT_CLR など）になるため。Num Word の間に 38 を押すと、記号レイヤーになる。
         // 使い方: &num_word SECONDARY_LAYER
@@ -591,16 +591,16 @@
             key-positions = <12 13>;
             layers = <DEFAULT_LAYER>;
         };
-        // 左手用レイヤー（10）へ: 数字レイヤーで 30＋31。Default に戻るのは left_hand_4（left_hand で 33 を長押し）の
-        // 30＋31 だけ（ほかの左手用レイヤーの 30＋31 では戻らない）
+        // 左手用レイヤー（10）へ: 数字レイヤーの 20＋21 だけ。Default に戻るのは left_hand_4（left_hand で 33 を長押し）の
+        // 20＋21 だけ（ほかの左手用レイヤーの 20＋21 では戻らない）
         COMBO_LEFT_HAND_IN {
             bindings = <&to LEFT_HAND_LAYER>;
-            key-positions = <30 31>;
+            key-positions = <20 21>;
             layers = <SECONDARY_LAYER>;
         };
         COMBO_LEFT_HAND_OUT {
             bindings = <&to DEFAULT_LAYER>;
-            key-positions = <30 31>;
+            key-positions = <20 21>;
             layers = <LEFT_HAND4_LAYER>;
         };
     };
