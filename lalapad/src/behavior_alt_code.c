@@ -452,6 +452,14 @@ static void build_steps(const struct behavior_alt_code_config *cfg) {
     }
 }
 
+/* 送信をやめて待機状態に戻る: 隠していた修飾キーを戻し、預かった入力をすべて届いた順に通して、預かるのをやめる */
+static void go_idle(void) {
+    mask_mods(false);
+    busy = false;
+    active_cfg = NULL;
+    release_captured(true, 0);
+}
+
 /* 待ち行列の先頭から次の送信を始める。先頭の目印がまだ処理されていなければ、処理されるまで待つ。
  * 待ち行列が空なら、預かった入力をすべて通して待機状態に戻る */
 static void start_next(void) {
@@ -466,10 +474,7 @@ static void start_next(void) {
             // 預かっている分は、どれもこの目印が処理されるより前に届いたもので、目印が処理されたときにも
             // （mark より前の分として）この送信より先に通すものなので、ここで通しても順番は変わらない。
             // 目印が処理されたときの mark は、その後に預かった分だけを指す
-            mask_mods(false);
-            busy = false;
-            active_cfg = NULL;
-            release_captured(true, 0);
+            go_idle();
             return;
         }
         // この送信の目印より前に届いて預かっていた入力を、先に通す（あれば、修飾キーを戻してから）
@@ -511,10 +516,7 @@ static void start_next(void) {
         k_work_schedule(&alt_code_work, K_NO_WAIT);
         return;
     }
-    mask_mods(false);
-    busy = false;
-    active_cfg = NULL;
-    release_captured(true, 0);
+    go_idle();
 }
 
 /* 目印が処理された（それより前に並んだ送信がすべて終わった）: まだ目印が処理されていない最初の分

@@ -23,6 +23,7 @@
 #include <zmk/event_manager.h>
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/keymap.h>
+#include <zmk/matrix.h>
 
 #include "layer_lock.h"
 #if IS_ENABLED(CONFIG_ZMK_AUTO_MOUSE_LAYER)
@@ -56,7 +57,12 @@ void layer_lock_forget(zmk_keymap_layer_id_t layer) {
 
 static int on_layer_lock_binding_pressed(struct zmk_behavior_binding *binding,
                                          struct zmk_behavior_binding_event event) {
-    const zmk_keymap_layer_id_t layer = event.layer;
+    zmk_keymap_layer_id_t layer = event.layer;
+    if (event.position >= ZMK_KEYMAP_LEN && layer == zmk_keymap_layer_default()) {
+        // combos から押した: ZMK v0.3.0 はレイヤーを Default として渡す。combos は layers で働くレイヤーを
+        // 決めるので、いちばん上の有効なレイヤー（その同時押しが働いたレイヤー）を固定する
+        layer = zmk_keymap_layer_index_to_id(zmk_keymap_highest_layer_active());
+    }
     if (layer >= 32 || layer == zmk_keymap_layer_default() || (conditional_layers & BIT(layer))) {
         LOG_DBG("Layer %d cannot be locked", layer);
         return ZMK_BEHAVIOR_OPAQUE;

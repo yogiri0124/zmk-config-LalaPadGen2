@@ -3,6 +3,8 @@
 # Num Lock がオフなら前後で Num Lock を押して一時的にオンにする（CONFIG_ZMK_HID_INDICATORS が必要）。
 # 送る間は、押している Shift・Ctrl を隠す。Alt か Win を押している間と、かな配列モードの解除処理中は送らない。
 
+# マクロ（zmk,behavior-macro）の中には置かない（マクロを送る behavior queue の処理の中から、さらに同じキューに
+# 並べることになり、待ち時間が効かず、処理が入れ子になってスタックを使う）。
 description: Send characters as Windows Alt codes, independent of the Num Lock state
 
 compatible: "zmk,behavior-alt-code"
