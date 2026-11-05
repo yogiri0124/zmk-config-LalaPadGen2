@@ -139,14 +139,9 @@ static void relay_split_connected(struct bt_conn *conn, uint8_t err) {
     }
 }
 
-/* 右との接続が切れた: 右のトラックパッドの位置で押されたままのものを離す。出した「離した」は、システムワークキュー
- * 以外で呼ばれた場合も、この listener が預かってシステムワークキューで処理する */
-static void relay_split_disconnected(struct bt_conn *conn, uint8_t reason) {
-    ARG_UNUSED(reason);
-    if (!is_split_link(conn)) {
-        return;
-    }
-    atomic_set(&split_lost, 1);
+/* 右のトラックパッドの位置で押されたままのものを離す（システムワークキュー。出した「離した」はこの listener を
+ * 素通りし、預かった出来事の処理（relay_work_handler）とも同じスレッドなので、順番が入れ替わらない） */
+static void split_release_work_handler(struct k_work *work) {
     for (uint32_t position = TP_POS_FIRST; position <= TP_POS_LAST; position++) {
         if (tp_position_is_right(position) && atomic_test_and_clear_bit(relayed_pressed, position)) {
             LOG_DBG("Split link lost, releasing right trackpad position %u", position);
@@ -158,6 +153,18 @@ static void relay_split_disconnected(struct bt_conn *conn, uint8_t reason) {
             });
         }
     }
+}
+
+static K_WORK_DEFINE(split_release_work, split_release_work_handler);
+
+/* 右との接続が切れた（Zephyr 3.5 ではシステムワークキューから呼ばれるが、それに頼らず、離す処理はワークで行う） */
+static void relay_split_disconnected(struct bt_conn *conn, uint8_t reason) {
+    ARG_UNUSED(reason);
+    if (!is_split_link(conn)) {
+        return;
+    }
+    atomic_set(&split_lost, 1);
+    k_work_submit(&split_release_work);
 }
 
 BT_CONN_CB_DEFINE(position_relay_split_callbacks) = {

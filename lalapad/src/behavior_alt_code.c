@@ -630,7 +630,8 @@ static int on_alt_code_binding_pressed(struct zmk_behavior_binding *binding,
     alt_code_on_marker();
 #endif
     // Num Word などを終える（送る Alt とテンキーの数字では終わらないため。「3時」のように打ったら、元のレイヤーに
-    // 戻す）。送る分を並べられたときだけ（捨てた押下では、レイヤーをそのままにする）
+    // 戻す）。押下を受け付けて並べられたときだけ（受け付けなかった押下では、レイヤーをそのままにする。
+    // 並べた後に、Alt・Win が押されていたり接続先が変わったりして送らずに捨てた場合は、もう終えている）
     word_layer_finish_all();
     return ZMK_BEHAVIOR_OPAQUE;
 }

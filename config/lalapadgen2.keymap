@@ -49,7 +49,7 @@
 
         // Num Word（自作モジュール lalapad/ の zmk,behavior-word-layer）: 数字レイヤーを、数字と continue-list のキー
         // （Backspace・Delete・. , + - * / =）を押している間だけ続け、ほかのキーを押すと自動で戻す。Shift などの修飾キーでは
-        // 戻さない（ignore-modifiers）。ほかの操作（33 の長押しを離したなど）で数字レイヤーが解除されたら、こちらも終わる。
+        // 戻さない（ignore-modifiers）。ほかの操作（30＋31 のコンボの &to など）で数字レイヤーが解除されたら、こちらも終わる。
         // 記号レイヤー（38）を押したら終える（exit-layers）: 数字レイヤーと記号レイヤーが同時に有効になると
         // システムレイヤー（bootloader・BT_CLR など）になるため。Num Word の間に 38 を押すと、記号レイヤーになる。
         // 使い方: &num_word SECONDARY_LAYER
