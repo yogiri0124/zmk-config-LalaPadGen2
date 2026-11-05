@@ -114,6 +114,8 @@ struct auto_mouse_data {
     const struct device *dev;
     struct k_mutex lock;
     struct k_work activity_work;
+    /* 「マウス操作」でないキーを押したときの解除（キーの出来事の処理が終わってから行う） */
+    struct k_work deactivate_work;
     struct k_work_delayable disable_work;
 
     /* レイヤーの状態 */
@@ -350,6 +352,15 @@ static void activity_work_cb(struct k_work *work) {
     k_mutex_unlock(&data->lock);
 }
 
+static void deactivate_work_cb(struct k_work *work) {
+    struct auto_mouse_data *data = CONTAINER_OF(work, struct auto_mouse_data, deactivate_work);
+    k_mutex_lock(&data->lock, K_FOREVER);
+    if (!is_locked(data)) {
+        deactivate(data);
+    }
+    k_mutex_unlock(&data->lock);
+}
+
 static void disable_work_cb(struct k_work *work) {
     struct k_work_delayable *d_work = k_work_delayable_from_work(work);
     struct auto_mouse_data *data = CONTAINER_OF(d_work, struct auto_mouse_data, disable_work);
@@ -486,7 +497,11 @@ static void handle_position(const struct device *dev,
                 }
                 restart_timeout(dev->config, data);
             } else if (!is_locked(data) && !is_passive_key(dev, ev->position)) {
-                deactivate(data);
+                // その場では解除せず、この出来事の処理（と ZMK の combo が預かっていたキーの処理）が終わってから
+                // 解除する。combo の判定中に預かっていた、マウスレイヤーで押したキーが、解除の後に処理されて
+                // 下のレイヤーのキーとして入力されないように。押したこのキーは、マウスレイヤーで &trans か、
+                // 上のレイヤーのキーが働くので、解除の前でも後でも同じキーとして入力される
+                k_work_submit(&data->deactivate_work);
             }
         }
     } else if (data->held[ev->position]) {
@@ -614,6 +629,7 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
         .dev = DEVICE_DT_INST_GET(n),                                                              \
         .lock = Z_MUTEX_INITIALIZER(auto_mouse_data_##n.lock),                                     \
         .activity_work = Z_WORK_INITIALIZER(activity_work_cb),                                     \
+        .deactivate_work = Z_WORK_INITIALIZER(deactivate_work_cb),                                 \
         .disable_work = Z_WORK_DELAYABLE_INITIALIZER(disable_work_cb),                             \
     };                                                                                             \
     static const uint16_t auto_mouse_excluded_##n[] = DT_INST_PROP(n, excluded_positions);         \

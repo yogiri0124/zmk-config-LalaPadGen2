@@ -787,6 +787,12 @@ static int key_stream_listener(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
     k_spinlock_key_t key = k_spin_lock(&lock);
+    // 押した状態が変わらない出来事は送らない（ZMK の combo は、判定のために預かったキーのうち 2 つ目以降を、
+    // listener の最初からもう一度出し直すので、同じキーの「押した」がもう一度届く）
+    if (pressed[pos->position] == pos->state) {
+        k_spin_unlock(&lock, key);
+        return ZMK_EV_EVENT_BUBBLE;
+    }
     pressed[pos->position] = pos->state;
     const bool queued = streaming && position_wanted(stream_mask, pos->position);
     if (queued) {
