@@ -319,8 +319,6 @@ static size_t off_sub_layers_len;
 static uint32_t off_tap_ms;
 static uint32_t off_wait_ms;
 
-static void kana_off_work_handler(struct k_work *work);
-
 /* かな単打面と sub-layers を解除する（固定していればやめてから。有効でなければ何も起きない） */
 static void drop_kana_layers(zmk_keymap_layer_id_t layer, const zmk_keymap_layer_id_t *sub_layers,
                              size_t sub_layers_len) {
@@ -331,6 +329,8 @@ static void drop_kana_layers(zmk_keymap_layer_id_t layer, const zmk_keymap_layer
     layer_lock_forget(layer);
     zmk_keymap_layer_deactivate(layer);
 }
+
+static void kana_off_work_handler(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(kana_off_work, kana_off_work_handler);
 
 static void kana_off_work_handler(struct k_work *work) {

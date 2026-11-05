@@ -7,6 +7,8 @@
  * （オートマウスレイヤーが有効にしているレイヤーなら解除はせず、ふだんどおり時間を数え直す）。
  * 一番下のレイヤー（Default）と、conditional_layers が有効・解除するレイヤー（then-layer。数字＋記号でなる
  * システムレイヤーなど）は固定しない（条件で解除されるたびに有効にし直すと、条件の評価と取り合いになるため）。
+ * combos・マクロ・hold-tap（&mt など）の中から押すと、ZMK v0.3.0 はレイヤーを Default として渡すので、何もしない
+ * （キーマップのレイヤーに直接置く）。
  *
  * 状態はシステムワークキューで書き換える（behavior のコールバックと、レイヤーの出来事の listener）。
  * オートマウスレイヤーの入力処理（入力スレッド）からも読むので、atomic で持つ。
@@ -23,7 +25,6 @@
 #include <zmk/event_manager.h>
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/keymap.h>
-#include <zmk/matrix.h>
 
 #include "layer_lock.h"
 #if IS_ENABLED(CONFIG_ZMK_AUTO_MOUSE_LAYER)
@@ -57,12 +58,7 @@ void layer_lock_forget(zmk_keymap_layer_id_t layer) {
 
 static int on_layer_lock_binding_pressed(struct zmk_behavior_binding *binding,
                                          struct zmk_behavior_binding_event event) {
-    zmk_keymap_layer_id_t layer = event.layer;
-    if (event.position >= ZMK_KEYMAP_LEN && layer == zmk_keymap_layer_default()) {
-        // combos から押した: ZMK v0.3.0 はレイヤーを Default として渡す。combos は layers で働くレイヤーを
-        // 決めるので、いちばん上の有効なレイヤー（その同時押しが働いたレイヤー）を固定する
-        layer = zmk_keymap_layer_index_to_id(zmk_keymap_highest_layer_active());
-    }
+    const zmk_keymap_layer_id_t layer = event.layer;
     if (layer >= 32 || layer == zmk_keymap_layer_default() || (conditional_layers & BIT(layer))) {
         LOG_DBG("Layer %d cannot be locked", layer);
         return ZMK_BEHAVIOR_OPAQUE;

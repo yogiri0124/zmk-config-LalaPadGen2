@@ -1,8 +1,9 @@
 # ウィンドウの切り替え behavior（引数なし）。最初に押したときに Alt を押したままにして Tab を送り、
 # 続けて押すたびに Tab を送る。押し始めたときのレイヤーが解除される、ほかのキー（キーコードを送るもの）を押す、接続先が変わる、
 # のどれかで Alt を離す。reverse を付けると Shift+Tab を送る（Alt は順方向のキーと共有する）。
-# レイヤーの解除で離すのは、Default 以外のレイヤーに置いたときだけ（Default は解除されない。コンボから押すと、
-# ZMK v0.3.0 はレイヤーを Default として渡すので、ほかのキーを押すか接続先が変わるまで Alt を離さない）。
+# レイヤーの解除で離すのは、Default 以外のレイヤーに置いたときだけ（Default は解除されない。コンボや hold-tap
+# （&mt など）の中から押すと、ZMK v0.3.0 はレイヤーを Default として渡すので、ほかのキーを押すか接続先が変わるまで
+# Alt を離さない）。
 
 description: Alt+Tab window switcher that keeps Alt held until the layer is released
 
