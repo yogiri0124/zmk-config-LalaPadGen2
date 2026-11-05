@@ -60,7 +60,7 @@ config ZMK_SCROLL_SNAP_GATE
 config ZMK_POSITION_RELAY
     bool "Process position events raised outside the system work queue on the system work queue"
     default y
-    depends on LALAPAD_CENTRAL
+    depends on LALAPAD_CENTRAL && ZMK_POINTING
     help
       トラックパッドのタップ・ジェスチャーなど、入力スレッドから出たキー位置の出来事を預かり、キーマップと
       behavior の処理をシステムワークキューで行う（lalapad/src/position_relay.c）。

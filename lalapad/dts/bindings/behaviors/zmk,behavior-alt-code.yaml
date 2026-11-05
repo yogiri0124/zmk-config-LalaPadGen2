@@ -32,4 +32,4 @@ properties:
   ime-wait-ms:
     type: int
     default: 30
-    description: commit-ime で IME オフを送った後、Alt コードを送るまでに待つ時間（ms）
+    description: commit-ime で IME オフを送った後（Alt コードを送るまで）と、最後に IME オンを送った後（続きの入力を通すまで）に待つ時間（ms）

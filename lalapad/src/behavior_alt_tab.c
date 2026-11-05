@@ -29,8 +29,11 @@
 #include <zmk/events/endpoint_changed.h>
 #include <zmk/events/keycode_state_changed.h>
 #include <zmk/events/layer_state_changed.h>
+#include <zmk/keymap.h>
 
 #include <dt-bindings/zmk/keys.h>
+
+#include "layer_lock.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -45,6 +48,8 @@ static bool active;
 static int active_layer;
 /* 今押している Tab（TAB または LS(TAB)。押していなければ 0） */
 static uint32_t held_tab;
+/* held_tab を押したキーの位置（離したキーが、押したままのキーかを見分ける） */
+static uint32_t held_tab_position;
 /* 自分の送っているキー入力（ほかのキーの入力と見分ける） */
 static bool raising;
 
@@ -86,15 +91,16 @@ static int on_alt_tab_binding_pressed(struct zmk_behavior_binding *binding,
         raise_key(held_tab, false);
     }
     held_tab = tab_keycode(binding);
+    held_tab_position = event.position;
     raise_key(held_tab, true);
     return ZMK_BEHAVIOR_OPAQUE;
 }
 
 static int on_alt_tab_binding_released(struct zmk_behavior_binding *binding,
                                        struct zmk_behavior_binding_event event) {
-    // 後から押した別のキーに Tab を引き継いでいたら、そちらの分は離さない
+    // 後から押した別のキーに Tab を引き継いでいたら、そちらの分は離さない（同じ向きのキーでも、位置で見分ける）
     const uint32_t keycode = tab_keycode(binding);
-    if (held_tab == keycode) {
+    if (held_tab == keycode && held_tab_position == event.position) {
         raise_key(keycode, false);
         held_tab = 0;
     }
@@ -130,7 +136,10 @@ static int alt_tab_listener(const zmk_event_t *eh) {
     }
     const struct zmk_layer_state_changed *ly = as_zmk_layer_state_changed(eh);
     if (ly != NULL) {
-        if (!ly->state && ly->layer == active_layer) {
+        // 解除の出来事でも、まだ有効なら終えない（固定したレイヤーは、&to などで解除されても固定の listener が
+        // 有効にし直す。この listener はそれより先に呼ばれることがあるので、固定しているかも見る）
+        if (!ly->state && ly->layer == active_layer && !zmk_keymap_layer_active(active_layer) &&
+            !layer_lock_is_locked(active_layer)) {
             end_switch();
         }
         return ZMK_EV_EVENT_BUBBLE;

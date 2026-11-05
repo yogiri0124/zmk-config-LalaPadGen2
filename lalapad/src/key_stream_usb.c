@@ -30,6 +30,10 @@ BUILD_ASSERT(CONFIG_USB_HID_DEVICE_COUNT >= 2, "key stream over USB needs CONFIG
 // ZMK はその受け取り（int_out_ready）を登録していないので、キーボードの出力レポート（LED など）が届かなくなる
 BUILD_ASSERT(!IS_ENABLED(CONFIG_ENABLE_HID_INT_OUT_EP),
              "key stream over USB does not support CONFIG_ENABLE_HID_INT_OUT_EP");
+// ブートプロトコル（CONFIG_ZMK_USB_BOOT が選ぶ）は使わない。有効にすると、HID のすべての口がブート用キーボードとして
+// 名乗るので、キー位置の送信用（HID_1）も PC からキーボードに見える
+BUILD_ASSERT(!IS_ENABLED(CONFIG_USB_HID_BOOT_PROTOCOL),
+             "key stream over USB does not support CONFIG_USB_HID_BOOT_PROTOCOL (CONFIG_ZMK_USB_BOOT)");
 
 #define HID_GET_REPORT_TYPE_MASK 0xff00
 #define HID_REPORT_TYPE_OUTPUT 0x200

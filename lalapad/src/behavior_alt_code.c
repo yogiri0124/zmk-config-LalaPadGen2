@@ -415,8 +415,9 @@ static void build_steps(const struct behavior_alt_code_config *cfg) {
         add_tap(KP_NUM);
     }
     if (cfg->commit_ime) {
-        // 続きを日本語で打てるように IME オンに戻す
-        add_tap(LANGUAGE_1);
+        // 続きを日本語で打てるように IME オンに戻す。IME が切り替わるまで待ってから、預かった入力や続きの
+        // かなを通す（切り替わる前に届いた打鍵は、ローマ字のまま入るため）
+        add_tap_then_wait(LANGUAGE_1, cfg->ime_wait_ms);
     }
 }
 
@@ -607,8 +608,6 @@ static int on_alt_code_binding_pressed(struct zmk_behavior_binding *binding,
         LOG_WRN("Too many pending alt code presses, ignoring");
         return ZMK_BEHAVIOR_OPAQUE;
     }
-    // Num Word などを終える（送る Alt とテンキーの数字では終わらないため。「3時」のように打ったら、元のレイヤーに戻す）
-    word_layer_finish_all();
     pending[pending_count++] = (struct pending_press){
         .cfg = cfg,
         .endpoint = zmk_endpoints_selected(),
@@ -621,11 +620,15 @@ static int on_alt_code_binding_pressed(struct zmk_behavior_binding *binding,
     if (kana_output_add_marker(&event) < 0) {
         pending_count--;
         LOG_WRN("Behavior queue busy/full, dropped alt code press");
+        return ZMK_BEHAVIOR_OPAQUE;
     }
 #else
     // かな入力のモジュールがない: 待つ送信もないので、すぐに送り始めてよい
     alt_code_on_marker();
 #endif
+    // Num Word などを終える（送る Alt とテンキーの数字では終わらないため。「3時」のように打ったら、元のレイヤーに
+    // 戻す）。送る分を並べられたときだけ（捨てた押下では、レイヤーをそのままにする）
+    word_layer_finish_all();
     return ZMK_BEHAVIOR_OPAQUE;
 }
 

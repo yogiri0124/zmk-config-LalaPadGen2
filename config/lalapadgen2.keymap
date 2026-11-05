@@ -25,6 +25,8 @@
 #define LEFT_HAND3_LAYER 12
 #define LEFT_HAND4_LAYER 13
 
+// &mt・&lt: 短く押してから 200ms 以内にもう一度押し続けると、長押しにせずタップを押し続ける（Space の連続入力など）。
+// &mt は今どこにも置いていない（エディタで置いたときの既定）
 &mt { quick-tap-ms = <200>; };
 
 &lt { quick-tap-ms = <200>; };
@@ -48,6 +50,8 @@
         // Num Word（自作モジュール lalapad/ の zmk,behavior-word-layer）: 数字レイヤーを、数字と continue-list のキー
         // （Backspace・Delete・. , + - * / =）を押している間だけ続け、ほかのキーを押すと自動で戻す。Shift などの修飾キーでは
         // 戻さない（ignore-modifiers）。ほかの操作（33 の長押しを離したなど）で数字レイヤーが解除されたら、こちらも終わる。
+        // 記号レイヤー（38）を押したら終える（exit-layers）: 数字レイヤーと記号レイヤーが同時に有効になると
+        // システムレイヤー（bootloader・BT_CLR など）になるため。Num Word の間に 38 を押すと、記号レイヤーになる。
         // 使い方: &num_word SECONDARY_LAYER
         num_word: num_word {
             compatible = "zmk,behavior-word-layer";
@@ -55,6 +59,7 @@
             continue-list = <BACKSPACE DELETE DOT COMMA PLUS MINUS STAR FSLH EQUAL>;
             ignore-numbers;
             ignore-modifiers;
+            exit-layers = <TERTIARY_LAYER>;
         };
 
         // 33: タップで Num Word（数字レイヤーを、数字を打っている間だけ続ける）、長押しで今までどおり押している間だけ
@@ -363,29 +368,6 @@
             codes = <33120>;
             commit-ime;
         };
-        // --- kj_: 漢字 1 文字（ミニ漢直。Windows の Alt コードで送る。ローマ字テーブル・IME の状態に関係なく、確定した文字で入る） ---
-        // 押すと Num Word を終える（「3時」のように打ったら、元のレイヤーに戻る）。数字レイヤーの 20〜22 に置いている
-        // 時（Shift_JIS 0x8E9E）
-        kj_ji: kj_ji {
-            compatible = "zmk,behavior-alt-code";
-            display-name = "時";
-            #binding-cells = <0>;
-            codes = <36510>;
-        };
-        // 人（Shift_JIS 0x906C）
-        kj_hito: kj_hito {
-            compatible = "zmk,behavior-alt-code";
-            display-name = "人";
-            #binding-cells = <0>;
-            codes = <36972>;
-        };
-        // 日（Shift_JIS 0x93FA）
-        kj_hi: kj_hi {
-            compatible = "zmk,behavior-alt-code";
-            display-name = "日";
-            #binding-cells = <0>;
-            codes = <37882>;
-        };
         // “” を入力してカーソルを中に。Alt+33127 = “、Alt+33128 = ”（Shift_JIS 0x8167・0x8168）
         pair_cquote: pair_cquote {
             compatible = "zmk,behavior-alt-code";
@@ -397,6 +379,35 @@
             // 送る打鍵が多い（最大 34）ので、Bluetooth の送信待ちがあふれないよう間隔を広げる
             tap-ms = <10>;
             wait-ms = <10>;
+        };
+
+        // --- kj_: 漢字 1 文字（ミニ漢直。Windows の Alt コードで送る。ローマ字テーブルに関係なく、確定した文字で入る） ---
+        // 押すと Num Word を終える（「3時」のように打ったら、元のレイヤーに戻る）。数字レイヤーの 20〜22 に置いている。
+        // commit-ime: IME オンで打った確定前の数字（「3」）を先に確定させる（付けないと「時3」の順に入る）。
+        // 送り終えると IME オンになる（IME オフのときに押した場合も）
+        // 時（Shift_JIS 0x8E9E）
+        kj_ji: kj_ji {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "時";
+            #binding-cells = <0>;
+            codes = <36510>;
+            commit-ime;
+        };
+        // 人（Shift_JIS 0x906C）
+        kj_hito: kj_hito {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "人";
+            #binding-cells = <0>;
+            codes = <36972>;
+            commit-ime;
+        };
+        // 日（Shift_JIS 0x93FA）
+        kj_hi: kj_hi {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "日";
+            #binding-cells = <0>;
+            codes = <37882>;
+            commit-ime;
         };
 
         // --- かな入力（自作モジュール lalapad/）。Keymap Editor が認識できるよう、定義はこのファイルに置く ---
@@ -582,7 +593,7 @@
             >;
         };
 
-        // Control レイヤー（Default の 42 を押すたびに入る／戻る）。左右とも同じ並びで、矢印・Page Up／Down・数字・F11 を置く。
+        // Control レイヤー（Default の 42 を押すたびに入る／戻る）。左右に、矢印・Page Up／Down・数字・F11 を置く（上の段は左右対称、矢印の段は左右とも同じ並び）。
         // Default のすぐ上に置くので、数字・記号・マウス・かなのレイヤーは、この上に重なって今までどおり使える。
         CONTROL_LAYER {
             display-name = "Control";

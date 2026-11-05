@@ -1,7 +1,7 @@
 # 打っている間だけ続くレイヤー（引数 1 つ: レイヤー番号。Num Word に使う）。押すとレイヤーを有効にし、
 # continue-list のキー（と ignore-* の種類のキー）を押している間は続け、それ以外のキーを押したら解除する。
 # 有効な間にもう一度押すと解除する。ほかの操作でレイヤーが解除されたら、こちらも終わる。
-# urob/zmk-auto-layer の auto-layer と同じプロパティ。
+# exit-layers のレイヤーが有効になったときも終わる（ほかのプロパティは urob の auto-layer と同じ）。
 
 description: Layer that stays active while continue-list keys are typed (Num Word)
 
@@ -23,3 +23,6 @@ properties:
   ignore-modifiers:
     type: boolean
     description: 修飾キー（Shift・Ctrl・Alt・Win）でも解除しない
+  exit-layers:
+    type: array
+    description: このレイヤーが有効になったら解除する（conditional layer の条件になるレイヤーなど）

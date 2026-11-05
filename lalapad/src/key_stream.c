@@ -74,6 +74,7 @@
 #endif
 
 #include "key_stream.h"
+#include "tp_positions.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -81,9 +82,8 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define KEY_STREAM_PROTOCOL_VERSION 1
 #define USAGE_PAGE 0xFF4C /* ベンダー定義 */
 #define USAGE 0x01
-/* この番号以降の位置は、トラックパッドのタップ・ジェスチャー（lalapadgen2.dtsi の POS_TP_*）。
+/* TP_POS_FIRST（tp_positions.h）以降の位置は、トラックパッドのタップ・ジェスチャー。
  * アプリが「開始」で指定したときだけ送る */
-#define TRACKPAD_FIRST 52
 /* 「開始」（生存確認。アプリは2秒ごとに送る）がこの時間届かなければ、送るのをやめる */
 #define KEEPALIVE_TIMEOUT_MS 6000
 
@@ -248,7 +248,7 @@ static void kick_send(k_timeout_t delay) { k_work_reschedule_for_queue(&key_stre
 static void request_send(void) { k_work_schedule_for_queue(&key_stream_q, &send_work, K_NO_WAIT); }
 
 static bool position_wanted(uint8_t mask, uint32_t position) {
-    const uint8_t kind = position < TRACKPAD_FIRST ? STREAM_KEYS : STREAM_TRACKPAD;
+    const uint8_t kind = position < TP_POS_FIRST ? STREAM_KEYS : STREAM_TRACKPAD;
     return (mask & kind) != 0;
 }
 
@@ -311,7 +311,8 @@ static void stop(void) {
     struct bt_conn *conn = stop_locked();
     k_spin_unlock(&lock, key);
     release_conn(conn);
-    k_work_cancel_delayable(&timeout_work);
+    // 時間切れの予約は取り消さない（送っていなければ何もしない。取り消しは、ほかの送り道の「開始」が予約し直した分を
+    // 消してしまうことがある）
     LOG_DBG("Key stream stopped");
 }
 
@@ -321,7 +322,7 @@ static void build_status(uint8_t *report) {
     report[1] = MSG_STATUS;
     report[2] = atomic_get(&split_links) > 0 ? 1 : 0;
     report[3] = stream_mask;
-    report[4] = MIN(TRACKPAD_FIRST, ZMK_KEYMAP_LEN);
+    report[4] = TP_POS_FIRST;
     report[5] = ZMK_KEYMAP_LEN;
     // 次に届くキーの通し番号（送り待ちがあれば、その先頭。状態は送り待ちのキーより先に送るため）
     sys_put_le16(events_count > 0 ? events[events_head].seq : next_seq, &report[6]);
@@ -581,7 +582,6 @@ static void route_work_handler(struct k_work *work) {
     release_conn(old_conn);
     release_conn(conn);
     if (same) {
-        k_work_cancel_delayable(&timeout_work);
         LOG_DBG("Key stream stopped: no longer the selected endpoint");
     }
     if (resume) {
@@ -620,14 +620,18 @@ static void start(enum key_stream_transport transport, struct bt_conn *conn, uin
 
     // ZMK がいまキーの入力を送っている先からの「開始」だけを受け付ける（ほかの PC には、別の PC で打った内容を
     // 送らない）。答えずに無視する（生存確認の時間も数え直さない）。入力先が変わって、今送っている先からの
-    // 「開始」を無視したときは、入力先が変わったの知らせ（route_work）で送るのをやめる
+    // 「開始」を無視したときは、入力先が変わったの知らせ（route_work）で送るのをやめる。
+    // 照合の前に、ここまでに届いた「入力先が変わった」の知らせの数を覚えておく（下で使う）
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    const uint32_t route_gen = route_requested;
+    k_spin_unlock(&lock, key);
     if (!route_selected(transport, conn)) {
         LOG_DBG("Key stream start ignored: not the selected endpoint (transport %d)", transport);
         release_conn(conn);
         return;
     }
 
-    k_spinlock_key_t key = k_spin_lock(&lock);
+    key = k_spin_lock(&lock);
     const bool fresh = !streaming || stream_transport != transport || stream_conn != conn ||
                        stream_mask != mask;
     // 送っている最中のものが、この「開始」と同じ送り道のものか（止めた後に同じ送り道で始め直したときも含む）
@@ -646,6 +650,12 @@ static void start(enum key_stream_transport transport, struct bt_conn *conn, uin
         stream_conn = conn; // 参照は命令から引き継ぐ
         conn = NULL;
         stream_mask = mask;
+        // 照合の後に新しい知らせが来ていなければ、ここでの照合が最新（新しい入力先から始めた）。前の入力先から
+        // 変わったという印（route_left）は、この送り道には当てはまらないので消す（並んでいる route_work が、
+        // 始めたばかりの送信をやめないように）
+        if (route_requested == route_gen) {
+            route_left = false;
+        }
         status_requested++;
         // 押されたままのキーを知らせる（アプリが途中から見ても、押しっぱなしの扱いを合わせられるように）。
         // 1件ずつの「押した」（印の bit1）と、その後に押されているキーの一覧の両方を送る
@@ -767,9 +777,6 @@ void key_stream_transport_lost(enum key_stream_transport transport, struct bt_co
     }
     k_spin_unlock(&lock, key);
     release_conn(old_conn);
-    if (same) {
-        k_work_cancel_delayable(&timeout_work);
-    }
     if (was_in_flight) {
         kick_send(K_NO_WAIT);
     }
@@ -809,30 +816,15 @@ static bool is_split_link(struct bt_conn *conn) {
     return bt_conn_get_info(conn, &info) == 0 && info.role == BT_CONN_ROLE_CENTRAL;
 }
 
-/* 右のトラックパッドのタップ・ジェスチャーの位置（lalapadgen2.dtsi の POS_TP_*_R）。右のキーとは違い、
- * 右が切れても ZMK はこれらの「離した」を出さない（右からは入力の出来事として届き、親機で位置に変えるため） */
-static const uint8_t right_trackpad_positions[] = {55, 56, 57, 63, 64, 65, 66, 67};
-
 /* つながりが変わった: 送っている間なら状態を送り直す（値は送るときに調べる）。Bluetooth の接続・切断の通知
  * （つながったときは Bluetooth の受信のスレッド、切れたときはシステムワークキュー）から呼ばれる。
- * 切れたときは、右のトラックパッドの位置で押されたままのものを離した扱いにし、送っている間なら「離した」を送る */
-static void split_link_changed(bool lost) {
-    const uint32_t now = (uint32_t)k_uptime_get();
+ * 右のキーの「離した」は ZMK が、右のトラックパッドの位置の「離した」は position_relay.c が出すので、
+ * ふつうのキーの出来事として届く */
+static void split_link_changed(void) {
     k_spinlock_key_t key = k_spin_lock(&lock);
     const bool send = streaming;
     if (send) {
         status_requested++;
-    }
-    if (lost) {
-        for (size_t i = 0; i < ARRAY_SIZE(right_trackpad_positions); i++) {
-            const uint8_t pos = right_trackpad_positions[i];
-            if (pos < ZMK_KEYMAP_LEN && pressed[pos]) {
-                pressed[pos] = false;
-                if (streaming && position_wanted(stream_mask, pos)) {
-                    push_event(pos, 0, now);
-                }
-            }
-        }
     }
     k_spin_unlock(&lock, key);
     if (send) {
@@ -843,7 +835,7 @@ static void split_link_changed(bool lost) {
 static void split_connected(struct bt_conn *conn, uint8_t err) {
     if (err == 0 && is_split_link(conn)) {
         atomic_inc(&split_links);
-        split_link_changed(false);
+        split_link_changed();
     }
 }
 
@@ -851,7 +843,7 @@ static void split_disconnected(struct bt_conn *conn, uint8_t reason) {
     ARG_UNUSED(reason);
     if (is_split_link(conn)) {
         atomic_dec(&split_links);
-        split_link_changed(true);
+        split_link_changed();
     }
 }
 

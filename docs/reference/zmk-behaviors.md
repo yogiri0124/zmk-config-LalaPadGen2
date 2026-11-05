@@ -12,7 +12,7 @@
 
 - 1つのキー位置 = `&behavior` 1個 + その引数。引数の数（binding-cells）は behavior ごとに決まっている。
 - 下の表の「引数」は**キーマップに書く値の数**。`BT_NXT` や `BL_ON` などの定数は中身が「コマンド 0」の2値に展開されるマクロなので、1つ書くだけで2セル分になる（`&bt` と `&bl` は2セル）。
-- レイヤー番号は `keymap` ノード内の**定義順**で 0 から数える。このリポジトリでは `DEFAULT_LAYER`=0、`CONTROL_LAYER`=1、`SECONDARY_LAYER`=2、`TERTIARY_LAYER`=3、`SYSTEM_LAYER`=4、`MOUSE_LAYER`=5、`KANA_LAYER`=6、`KANA_L_LAYER`=7、`KANA_R_LAYER`=8、`KANA_SYM_LAYER`=9 を `#define` している。
+- レイヤー番号は `keymap` ノード内の**定義順**で 0 から数える。このリポジトリでは `DEFAULT_LAYER`=0、`CONTROL_LAYER`=1、`SECONDARY_LAYER`=2、`TERTIARY_LAYER`=3、`SYSTEM_LAYER`=4、`MOUSE_LAYER`=5、`KANA_LAYER`=6、`KANA_L_LAYER`=7、`KANA_R_LAYER`=8、`KANA_SYM_LAYER`=9、`LEFT_HAND_LAYER`=10、`LEFT_HAND2_LAYER`=11、`LEFT_HAND3_LAYER`=12、`LEFT_HAND4_LAYER`=13 を `#define` している（エディタが数字で書いた `&mo 11` なども同じレイヤーを指す）。
 - 引数に使う定数は include が必要：`bt.h`（`BT_*`）、`outputs.h`（`OUT_*`）、`pointing.h`（`LCLK`・`MOVE_*`・`SCRL_*`）、`keys.h`（キーコード）。このリポジトリの keymap は全部 include 済み。
 
 ## 組み込み behavior
@@ -184,7 +184,7 @@
 | `zmk,behavior-key-lock` | `mod_lock_…` | 0 | `keycode`（必須） | キーの押しっぱなし切り替え（押しっぱなしかどうかは自分で覚える。ほかのキーで同じキーを押していても独立して切り替わる。接続先の切り替えで解除） |
 | `zmk,behavior-cursor-slow` | `cur_slow_hold` `_toggle` `_once` | 0 | `mode`（必須。`CURSOR_SLOW_HOLD` など） | カーソル低速のオン・オフ |
 | `zmk,behavior-scroll-snap-hold` | `scr_snap_hold` | 0 | — | 押している間だけスクロールを縦か横にそろえる |
-| `zmk,behavior-word-layer` | `num_word` | 1（レイヤー番号） | `continue-list`（必須）、`ignore-numbers`、`ignore-alphas`、`ignore-modifiers` | 打っている間だけ続くレイヤー（Num Word）。continue-list と ignore のキー以外のキー（キーコード）を押したら解除する。有効な間にもう一度押すと解除。ほかの操作でレイヤーが解除されたら終わる（urob/zmk-auto-layer の auto-layer と同じプロパティ）。keymap の hold-tap `num_mo`（タップで `&num_word`、長押しで `&mo`）から使う |
+| `zmk,behavior-word-layer` | `num_word` | 1（レイヤー番号） | `continue-list`（必須）、`ignore-numbers`、`ignore-alphas`、`ignore-modifiers`、`exit-layers` | 打っている間だけ続くレイヤー（Num Word）。continue-list と ignore のキー以外のキー（キーコード）を押したら解除する。有効な間にもう一度押すと解除。ほかの操作でレイヤーが解除されたら終わる。`exit-layers` のレイヤーが有効になったら終わる（このリポジトリでは記号レイヤー。数字＋記号でシステムレイヤーにならないように）。ほかのプロパティは urob/zmk-auto-layer の auto-layer と同じ。keymap の hold-tap `num_mo`（タップで `&num_word`、長押しで `&mo`）から使う |
 | `zmk,behavior-layer-lock` | `lyr_lock` | 0 | — | 置いたレイヤーを固定する／固定をやめる（Layer Lock。固定している間は、そのレイヤーが解除されてもすぐ有効にし直す。固定をやめるとそのレイヤーを解除する。オートマウスレイヤーなら解除せず時間を数え直す。Default と conditional_layers の then-layer は固定しない） |
 | `zmk,behavior-alt-tab` | `swap_next` `swap_prev` | 0 | `reverse`（Shift+Tab を送る） | ウィンドウの切り替え。最初に押したときに Alt を押したままにして Tab を送り、押すたびに Tab を送る。押し始めたレイヤーの解除、ほかのキー（キーコードを送るもの）の押下、接続先の切り替えで Alt を離す（順方向・逆方向で Alt を共有） |
 | `zmk,behavior-tp-keys` | `tp_arrow` `tp_dial` | 0 | `bindings`（必須。8 つ: 1 本指を上・下・左・右、2 本指を上・下・左・右へ動かしたとき）、`cursor-step` `scroll-step`（既定 150。トラックパッドの生の値）、`tap-ms`（既定 10） | 押している間だけ、トラックパッドを動かした量ごとに、その向きの binding を送る（4 つとも `&trans` の側はカーソル・スクロールのまま）。押している間のタップ・ジェスチャーは捨てる |

@@ -1,7 +1,7 @@
 /*
  * オートマウスレイヤーの入力処理 (zmk,input-processor-auto-mouse-layer)。
  *
- * トラックパッドのリスナーに <&zip_auto_mouse_layer 5 300> のように入れると、
+ * トラックパッドのリスナーに <&zip_auto_mouse_layer 5 350> のように入れると、
  * トラックパッドの操作でレイヤー param1 を有効にし、操作が止まって param2 ms たったら解除する。
  * ZMK 標準の zmk,input-processor-temp-layer と同じ使い方で、次の点が違う。
  *
@@ -15,7 +15,7 @@
  *   押しても解除せず、時間切れも延ばさない（押している間も時間切れを数え続ける）。マウスレイヤーで &trans など、
  *   下や上のレイヤーのキーが働く場合は、ほかのキーと同じく、押すとすぐに解除する。
  * - 「マウス操作」でないキーを押すと、すぐに解除する（&trans のキーは下のレイヤーのキーとして入力される）。
- * - 有効にする前から押していたキーは、excluded-positions のキー（Ctrl など）だけを「マウス操作」として数える
+ * - 有効にする前から押していたキーは、excluded-positions のキー（トラックパッドのクリックなど）だけを「マウス操作」として数える
  *   （ほかのキーは下のレイヤーのキーとして押されているので、押したままでもレイヤーを保たない）。
  * - 有効にするきっかけは、カーソル移動・スクロール（値が 0 でない REL）だけ。タップ・ジェスチャー
  *   （クリックの直後に打ち始めても文字がマウスレイヤーのキーにならないように）や、触れただけでは有効にしない。
@@ -29,9 +29,8 @@
  *   （指を置いたまま止めていただけなら、動かせばまた使えるように）。
  *   右が触れている間に切れた場合（「離れた」は届かない）も、この時間で離れたとみなす。
  * - 直前のキー入力から require-prior-idle-ms 以内のトラックパッド操作では有効にしない（打鍵中の誤動作防止）。
- * - excluded-layers のレイヤーが有効な間は、有効にしない（入力リスナーの layers の上書きで、その間は
- *   この処理を通さないようにしていても、上書きに切り替わる前に届いた操作で有効になることがあるため。
- *   有効化を予約したときと、実際に有効にするときの両方で確かめる）。
+ * - excluded-layers のレイヤーが有効な間は、有効にしない（数字・記号レイヤーの間にトラックパッドを触っても、
+ *   マウスレイヤーにしない。有効化を予約したときと、実際に有効にするときの両方で確かめる）。
  * - 状態はインスタンスごとに持つので、左右のリスナーに別々のインスタンスを入れれば別々に動く。
  *   1つのインスタンスで扱うレイヤーは1つだけ。別のレイヤーを使うリスナーには別のインスタンスを入れること
  *   （有効中に違う param1 が来ても、有効にしたレイヤーのまま扱う）。
@@ -79,7 +78,7 @@ struct auto_mouse_config {
     const zmk_keymap_layer_id_t *excluded_layers;
     size_t num_excluded_layers;
     const uint16_t *excluded_positions;
-    size_t num_positions;
+    size_t num_excluded_positions;
     const uint16_t *passive_positions;
     size_t num_passive_positions;
     uint32_t touch_stale_ms;
@@ -120,7 +119,7 @@ struct auto_mouse_data {
 };
 
 static bool position_is_excluded(const struct auto_mouse_config *cfg, uint32_t position) {
-    for (size_t i = 0; i < cfg->num_positions; i++) {
+    for (size_t i = 0; i < cfg->num_excluded_positions; i++) {
         if (cfg->excluded_positions[i] == position) {
             return true;
         }
@@ -210,7 +209,7 @@ static void deactivate(struct auto_mouse_data *data) {
     LOG_DBG("Auto mouse layer %d deactivated", data->layer);
 }
 
-/* 有効にしたときに、それより前から押しているキーのうち excluded-positions のもの（Ctrl など）を数え直す
+/* 有効にしたときに、それより前から押しているキーのうち excluded-positions のもの（トラックパッドのクリックなど）を数え直す
  * （ほかのキーは下のレイヤーのキーとして押されているので数えない） */
 static void recount_held(const struct device *dev, struct auto_mouse_data *data) {
     const struct auto_mouse_config *cfg = dev->config;
@@ -234,7 +233,7 @@ static void expire_stale_touches(const struct auto_mouse_config *cfg,
         if ((data->touch_mask & BIT(i)) && now - data->touch_last_ms[i] >= cfg->touch_stale_ms) {
             data->touch_mask &= ~BIT(i);
             data->touch_unknown_mask |= BIT(i);
-            LOG_WRN("Auto mouse: no input from touch device %d for %d ms, treating as released", i,
+            LOG_WRN("Auto mouse: no input from touch device %d for %u ms, treating as released", i,
                     cfg->touch_stale_ms);
         }
     }
@@ -348,7 +347,7 @@ static int auto_mouse_handle_event(const struct device *dev, struct input_event 
                                    uint32_t param1, uint32_t param2,
                                    struct zmk_input_processor_state *state) {
     if (param1 >= ZMK_KEYMAP_LAYERS_LEN) {
-        LOG_ERR("Invalid layer index: %d", param1);
+        LOG_ERR("Invalid layer index: %u", param1);
         return -EINVAL;
     }
 
@@ -557,7 +556,7 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
         .excluded_layers = auto_mouse_excluded_layers_##n,                                         \
         .num_excluded_layers = DT_INST_PROP_LEN(n, excluded_layers),                               \
         .excluded_positions = auto_mouse_excluded_##n,                                             \
-        .num_positions = DT_INST_PROP_LEN(n, excluded_positions),                                  \
+        .num_excluded_positions = DT_INST_PROP_LEN(n, excluded_positions),                         \
         .passive_positions = auto_mouse_passive_##n,                                               \
         .num_passive_positions = DT_INST_PROP_LEN(n, passive_positions),                           \
         .touch_stale_ms = DT_INST_PROP(n, touch_stale_ms),                                         \

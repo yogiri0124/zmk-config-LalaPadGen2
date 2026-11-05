@@ -47,6 +47,7 @@
 #include <dt-bindings/zmk/keys.h>
 
 #include "kana_output.h"
+#include "tp_positions.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -67,12 +68,8 @@ BUILD_ASSERT(DT_NODE_EXISTS(DT_NODELABEL(kana_sync)),
 #define SYNC_MASK_ON 3
 #define SYNC_MASK_OFF 4
 
-/* トラックパッドのクリック・ジェスチャーのキー位置（config/boards/shields/lalapadgen2/lalapadgen2.dtsi の
- * POS_TP_*。52〜57 がクリック、58〜67 がジェスチャー）。押した後は、ほかのウィンドウや入力欄に移って
- * IME がオフになっているかもしれないので、次のかな・記号の前に IME オンを送り直す */
-#define TP_POS_FIRST 52
-#define TP_POS_LAST 67
-BUILD_ASSERT(TP_POS_LAST < ZMK_KEYMAP_LEN, "kana: trackpad positions are out of range");
+/* トラックパッドのクリック・ジェスチャーのキー位置（tp_positions.h の TP_POS_FIRST〜TP_POS_LAST）を押した後は、
+ * ほかのウィンドウや入力欄に移って IME がオフになっているかもしれないので、次のかな・記号の前に IME オンを送り直す */
 
 /* ---- 送信キュー ---- */
 

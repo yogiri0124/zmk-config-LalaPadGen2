@@ -163,6 +163,8 @@ static const struct behavior_driver_api behavior_mbt_driver_api = {
 };
 
 #define MBT_INST(n)                                                                                \
+    BUILD_ASSERT((DT_INST_PROP(n, button) & BIT_MASK(NUM_BUTTONS)) != 0,                           \
+                 "mouse-button-toggle: button must be LCLK, MCLK, RCLK, MB4 or MB5");              \
     static const struct behavior_mbt_config behavior_mbt_config_##n = {                           \
         .buttons = DT_INST_PROP(n, button),                                                        \
     };                                                                                             \
