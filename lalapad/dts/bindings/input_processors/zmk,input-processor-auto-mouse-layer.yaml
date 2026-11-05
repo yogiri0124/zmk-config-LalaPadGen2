@@ -1,6 +1,6 @@
-# オートマウスレイヤーの入力処理。<&zip_auto_mouse_layer レイヤー番号 解除までのms> のように使う
-# （解除までの ms を 0 にすると、時間では解除しない）。カーソル移動・スクロールで有効にする（タップ・ジェスチャーや、
-# 触れただけでは有効にしない）。
+# オートマウスレイヤーの入力処理。リスナーの入力処理に <&zip_auto_mouse_layer> のように入れ、有効にするレイヤーと
+# 解除までの時間はプロパティ（layer・timeout-ms）で指定する。カーソル移動・スクロールで有効にする
+# （タップ・ジェスチャーや、触れただけでは有効にしない）。
 # マウスレイヤーで &trans 以外（&none を含む）のキーと excluded-positions のキーは、押しても解除せず、離してから時間を数え直す
 # （マウスレイヤーより上の有効なレイヤーに &trans 以外があるキーは、そちらが働くので除く）。
 # それ以外のキーを押すとすぐに解除する（&trans のキーは下のレイヤーのキーとして入力される）。
@@ -9,9 +9,17 @@ description: Input processor that temporarily enables a mouse layer and keeps it
 
 compatible: "zmk,input-processor-auto-mouse-layer"
 
-include: ip_two_param.yaml
+include: ip_zero_param.yaml
 
 properties:
+  layer:
+    type: int
+    required: true
+    description: 有効にするレイヤーの番号（keymap の宣言順）
+  timeout-ms:
+    type: int
+    default: 0
+    description: 操作が止まって（指とマウス操作のキーを離して）から解除するまでの時間（ms）。0 なら時間では解除しない
   require-prior-idle-ms:
     type: int
     default: 0

@@ -5,7 +5,9 @@
  * 最初に押したときに Alt を押したままにして、Tab（reverse なら Shift+Tab）を送る。続けて押すたびに
  * Tab・Shift+Tab を送るので、Windows のウィンドウの切り替えの画面で、選ぶ先を進めたり戻したりできる。
  * 次のどれかで Alt を離す（選んでいるウィンドウに切り替わる）:
- * - 押し始めたときのレイヤーが解除された（&mo のレイヤーに置いて、そのレイヤーのキーを離したとき）
+ * - 押し始めたときのレイヤーが解除された（&mo のレイヤーに置いて、そのレイヤーのキーを離したとき。Default は
+ *   解除されないので対象外。combos・hold-tap の中から押すと ZMK v0.3.0 はレイヤーを Default として渡すので、
+ *   これでは離さない）
  * - ほかのキーの入力（キーコードの「押す」）が届いた（そのキーより先に Alt を離すので、そのキーは Alt なしで届く）
  * - 接続先（USB・BLE プロファイル）が変わった
  * zmk-tri-state（urob）の swapper と同じ考え方で、順方向と逆方向のキーで Alt を共有する
@@ -118,6 +120,7 @@ static int on_alt_tab_binding_released(struct zmk_behavior_binding *binding,
         raise_key(keycode, false);
         held_tab = 0;
     }
+    // 「離す」の処理の中でレイヤーを解除するものは今はないが、念のため押したときと同じく扱う
     if (end_after_raise) {
         end_after_raise = false;
         end_switch();

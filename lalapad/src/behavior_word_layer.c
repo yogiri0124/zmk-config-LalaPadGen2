@@ -157,9 +157,30 @@ static int on_word_layer_binding_released(struct zmk_behavior_binding *binding,
     return ZMK_BEHAVIOR_OPAQUE;
 }
 
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
+// 引数（レイヤー番号）の説明。ZMK Studio で割り当てるときに、レイヤーを選べるようにする（説明がないと、
+// &num_word・&num_hold と、それを使う hold-tap の &num_mo を Studio から割り当てられない）
+static const struct behavior_parameter_value_metadata param_values[] = {
+    {.display_name = "Layer", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_LAYER_ID},
+};
+
+static const struct behavior_parameter_metadata_set param_metadata_set[] = {{
+    .param1_values = param_values,
+    .param1_values_len = ARRAY_SIZE(param_values),
+}};
+
+static const struct behavior_parameter_metadata metadata = {
+    .sets_len = ARRAY_SIZE(param_metadata_set),
+    .sets = param_metadata_set,
+};
+#endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
+
 static const struct behavior_driver_api behavior_word_layer_driver_api = {
     .binding_pressed = on_word_layer_binding_pressed,
     .binding_released = on_word_layer_binding_released,
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
+    .parameter_metadata = &metadata,
+#endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 };
 
 static bool is_alpha(uint16_t page, uint32_t id) {

@@ -1,13 +1,14 @@
 /*
  * オートマウスレイヤーの入力処理 (zmk,input-processor-auto-mouse-layer)。
  *
- * トラックパッドのリスナーに <&zip_auto_mouse_layer 5 350> のように入れると、
- * トラックパッドの操作でレイヤー param1 を有効にし、操作が止まって param2 ms たったら解除する。
- * ZMK 標準の zmk,input-processor-temp-layer と同じ使い方で、次の点が違う。
+ * トラックパッドのリスナーに <&zip_auto_mouse_layer> のように入れると、トラックパッドの操作でレイヤー layer を
+ * 有効にし、操作が止まって timeout-ms たったら解除する（layer・timeout-ms はノードのプロパティ。keymap で、
+ * マウスレイヤーの #define と一緒に書けるように、引数にはしない）。
+ * ZMK 標準の zmk,input-processor-temp-layer と同じ考え方で、次の点が違う。
  *
  * - マウスレイヤー上で &trans 以外のキー（&none を含む）と excluded-positions のキーは
  *   「マウス操作」として扱う。押してもレイヤーを解除せず、押している間は時間切れにしない。
- *   離したときから param2 ms を数え直す（クリック → ダブルクリックの間に解除されないように）。
+ *   離したときから timeout-ms を数え直す（クリック → ダブルクリックの間に解除されないように）。
  *   &none のキーは「マウスレイヤーの間は何もしないキー」になる。
  *   ただし、マウスレイヤーより上の有効なレイヤー（かなのレイヤーなど）に &trans 以外があるキーは、
  *   そちらが働くので「マウス操作」ではない（excluded-positions のキーを除く）。
@@ -20,14 +21,20 @@
  * - 有効にするきっかけは、カーソル移動・スクロール（値が 0 でない REL）だけ。タップ・ジェスチャー
  *   （クリックの直後に打ち始めても文字がマウスレイヤーのキーにならないように）や、触れただけでは有効にしない。
  * - touch-devices に指定した入力デバイスから INPUT_BTN_TOUCH（トラックパッドに触れている／離れた）が届く場合、
- *   触れている間は時間切れにしない。離れてから param2 ms で解除する（触れただけでは有効にしない）。
+ *   触れている間は時間切れにしない。離れてから timeout-ms で解除する（触れただけでは有効にしない）。
  *   そのデバイスからの入力は、触れている間のものだけを有効化・延長のきっかけにする
  *   （指を離した後の慣性による移動では延長しない。離してすぐの打鍵がクリックにならないように）。
  *   触れている合図はリスナーを通さず入力デバイスから直接受け取るので、どのレイヤーでも取りこぼさない。
  *   「離れた」が届かなかったときに備え、そのデバイスから touch-stale-ms の間なにも届かなければ離れたとみなす。
  *   この場合は触れているか「分からない」状態として、次に入力が届いたら触れているとみなし直す
  *   （指を置いたまま止めていただけなら、動かせばまた使えるように）。
- *   右が触れている間に切れた場合（「離れた」は届かない）も、この時間で離れたとみなす。
+ *   右（子機）との接続が切れたときは、子機からの中継（zmk,input-split）のデバイスを、すぐに離れたとみなす
+ *   （「離れた」は届かないので、touch-stale-ms を待つと、その間マウスレイヤーが残り、打った文字がマウスレイヤーの
+ *   キーになるため）。
+ *   「触れた」が届かなかったとき（子機からの中継は取りこぼすことがある）に備え、触れていないはずの中継のデバイスから
+ *   TOUCH_GAP_MS より長く途切れた後に動きが届いたら、触れているとみなす（指を離した後の慣性は途切れずに届く）。
+ *   推測なので、TOUCH_INFERRED_STALE_MS の間なにも届かなければ離れたとみなす（止まっていた慣性の再開を取り違えても、
+ *   マウスレイヤーが長く残らないように）。
  * - 直前のキー入力から require-prior-idle-ms 以内のトラックパッド操作では有効にしない（打鍵中の誤動作防止）。
  *   キー入力は、キーコードの「押す」と、トラックパッド由来でない位置の「押す」（レイヤーのキー、Alt コードの
  *   キーなど、キーコードを出さないものも含める。Alt コードが自分で送るキーは、この listener に届かないため）。
@@ -35,14 +42,15 @@
  * - excluded-layers のレイヤーが有効な間は、有効にしない（数字・記号レイヤーの間にトラックパッドを触っても、
  *   マウスレイヤーにしない。有効化を予約したときと、実際に有効にするときの両方で確かめる）。
  * - 状態はインスタンスごとに持つので、左右のリスナーに別々のインスタンスを入れれば別々に動く。
- *   1つのインスタンスで扱うレイヤーは1つだけ。別のレイヤーを使うリスナーには別のインスタンスを入れること
- *   （有効中に違う param1 が来ても、有効にしたレイヤーのまま扱う）。
+ *   1つのインスタンスで扱うレイヤーは、layer の1つだけ。別のレイヤーを使うリスナーには別のインスタンスを入れること。
+ * - ほかの操作（&mo・&tog など）ですでに有効なレイヤーは、引き取らない（自分の時間切れで解除しない）。
  *
  * - マウスレイヤーを固定しているとき（zmk,behavior-layer-lock のキー。layer_lock.h）は、時間切れでも、
  *   「マウス操作」でないキーを押しても解除しない（&trans のキーは、レイヤーを残したまま下のレイヤーのキーとして
  *   入力される）。固定をやめると、ふだんどおり時間を数え直す（auto_mouse_layer_unlocked）。
  *
  * 入力処理は入力スレッドで呼ばれるので、レイヤーの切り替えはワーク（システムワークキュー）で行う。
+ * 「マウス操作」でないキーでの解除は、キーの出来事の listener（auto_mouse_listener。システムワークキュー）の中で行う。
  */
 
 #define DT_DRV_COMPAT zmk_input_processor_auto_mouse_layer
@@ -65,6 +73,7 @@
 #include "alt_code.h"
 #include "auto_mouse_layer.h"
 #include "layer_lock.h"
+#include "split_link.h"
 #include "tp_positions.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
@@ -73,12 +82,22 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 /* touch-devices に指定できる入力デバイスの数 */
 #define MAX_TOUCH_DEVICES 8
+/* 触れていないはずのデバイスからの入力が、これより長く途切れた後に届いたら、「触れた」を取りこぼしたとみなす
+ * （ドライバは、指を離した後の慣性を 10 ms ごとに途切れずに送る） */
+#define TOUCH_GAP_MS 300
+/* 「触れた」の取りこぼしとみなして触れていることにしたデバイスは、この時間なにも届かなければ離れたとみなす
+ * （止まっていた慣性が再開したのを、新しい触れ方と取り違えたときに、マウスレイヤーが長く残らないように） */
+#define TOUCH_INFERRED_STALE_MS 500
 
 /* 初期化の優先度。touch-devices（トラックパッドのドライバ・左右の中継）より後にする必要がある
  * （Zephyr のビルド時チェック）。ロックとワークは静的に初期化しているので、これより前に入力が届いても動く */
 #define AUTO_MOUSE_INIT_PRIORITY 99
 
 struct auto_mouse_config {
+    /* 有効にするレイヤーの ID（keymap の宣言順の番号。&mo などと同じく ID として扱うので、ZMK Studio でレイヤーの
+     * 順番を入れ替えても同じレイヤーを指す）と、解除までの時間（0 なら時間では解除しない） */
+    zmk_keymap_layer_id_t layer;
+    uint32_t timeout_ms;
     int32_t require_prior_idle_ms;
     const zmk_keymap_layer_id_t *excluded_layers;
     size_t num_excluded_layers;
@@ -89,23 +108,25 @@ struct auto_mouse_config {
     uint32_t touch_stale_ms;
     const struct device *const *touch_devs;
     size_t num_touch_devs;
+    /* touch_devs のうち、子機からの中継（zmk,input-split）のもの（touch-devices の順番のビット） */
+    uint8_t touch_split_mask;
 };
 
 struct auto_mouse_data {
     const struct device *dev;
     struct k_mutex lock;
     struct k_work activity_work;
+    /* activity_work の予約のきっかけ: 親機のデバイスの動き、子機からの中継の動き（と、そのとき読んだ右との接続が
+     * 切れた回数。実行するときに今の回数と違えば、予約の後に切れたので、その動きでは有効にしない） */
+    bool activity_local;
+    bool activity_split;
+    uint32_t activity_split_losses;
+    /* 「マウス操作」でないキーを押したので、その出来事をほかの listener に流し終えたら解除する */
+    bool deactivate_pending;
     struct k_work_delayable disable_work;
-
-    /* トラックパッドの操作で指定された値（入力スレッドから書く） */
-    zmk_keymap_layer_id_t requested_layer;
-    uint32_t timeout_ms;
 
     /* レイヤーの状態 */
     bool active;
-    /* 有効にしたレイヤーの ID（keymap の宣言順の番号。&mo などと同じく ID として扱うので、
-     * ZMK Studio でレイヤーの順番を入れ替えても同じレイヤーを指す） */
-    zmk_keymap_layer_id_t layer;
     int64_t last_tapped;
     /* 解除する時刻。解除ワークが遅れて動いても、この時刻まではまだ解除しない */
     int64_t deadline;
@@ -120,7 +141,11 @@ struct auto_mouse_data {
     uint8_t touch_mask;
     /* touch-stale-ms で離れたとみなしたデバイス。「離れた」を実際には受け取っていないので、次の入力で触れているに戻す */
     uint8_t touch_unknown_mask;
+    /* 「触れた」を受け取らずに、途切れた後の動きから触れているとみなしたデバイス（TOUCH_INFERRED_STALE_MS で切れる） */
+    uint8_t touch_inferred_mask;
     int64_t touch_last_ms[MAX_TOUCH_DEVICES];
+    /* そのデバイスから最後に何かの入力が届いた時刻（触れているかに関係なく。「触れた」の取りこぼしを見る） */
+    int64_t touch_input_ms[MAX_TOUCH_DEVICES];
 };
 
 static bool position_is_excluded(const struct auto_mouse_config *cfg, uint32_t position) {
@@ -180,8 +205,8 @@ static bool excluded_layer_active(const struct auto_mouse_config *cfg) {
 
 /* マウスレイヤーの割り当てが働くキーか（&trans でなく、上の有効なレイヤーに隠されていない） */
 static bool mouse_binding_works(const struct device *dev, uint32_t position) {
-    const struct auto_mouse_data *data = dev->data;
-    return position_is_bound(data->layer, position) && mouse_layer_wins(data->layer, position);
+    const struct auto_mouse_config *cfg = dev->config;
+    return position_is_bound(cfg->layer, position) && mouse_layer_wins(cfg->layer, position);
 }
 
 static bool is_mouse_key(const struct device *dev, uint32_t position) {
@@ -198,20 +223,20 @@ static bool is_passive_key(const struct device *dev, uint32_t position) {
 }
 
 /* 有効にしたレイヤーを固定しているか（zmk,behavior-layer-lock） */
-static bool is_locked(const struct auto_mouse_data *data) {
-    return data->active && layer_lock_is_locked(data->layer);
+static bool is_locked(const struct auto_mouse_config *cfg, const struct auto_mouse_data *data) {
+    return data->active && layer_lock_is_locked(cfg->layer);
 }
 
 /* 以下はロックを取った状態で呼ぶ */
 
-static void deactivate(struct auto_mouse_data *data) {
+static void deactivate(const struct auto_mouse_config *cfg, struct auto_mouse_data *data) {
     if (!data->active) {
         return;
     }
     data->active = false;
     k_work_cancel_delayable(&data->disable_work);
-    zmk_keymap_layer_deactivate(data->layer);
-    LOG_DBG("Auto mouse layer %d deactivated", data->layer);
+    zmk_keymap_layer_deactivate(cfg->layer);
+    LOG_DBG("Auto mouse layer %d deactivated", cfg->layer);
 }
 
 /* 有効にしたときに、それより前から押しているキーのうち excluded-positions のもの（トラックパッドのクリックなど）を数え直す
@@ -227,19 +252,30 @@ static void recount_held(const struct device *dev, struct auto_mouse_data *data)
     }
 }
 
-/* touch_stale_ms の間なにも届いていない「触れている」デバイスを、離れたとみなす */
+/* 「触れている」が古くなるまでの時間（0 なら古くならない）。推測で触れていることにしたデバイスは短い */
+static uint32_t touch_stale_limit(const struct auto_mouse_config *cfg,
+                                  const struct auto_mouse_data *data, int idx) {
+    return (data->touch_inferred_mask & BIT(idx)) ? TOUCH_INFERRED_STALE_MS : cfg->touch_stale_ms;
+}
+
+/* 古くなった（その時間なにも届いていない）「触れている」デバイスを、離れたとみなす。
+ * 「離れた」を受け取っていたデバイスは、触れているかわからない状態にして、次の入力で触れているに戻す。
+ * 推測で触れていることにしたデバイスは、ただ離れたとみなす（慣性を取り違えていたら、慣性では戻さない） */
 static void expire_stale_touches(const struct auto_mouse_config *cfg,
                                  struct auto_mouse_data *data) {
-    if (cfg->touch_stale_ms == 0) {
-        return;
-    }
     const int64_t now = k_uptime_get();
     for (int i = 0; i < MAX_TOUCH_DEVICES; i++) {
-        if ((data->touch_mask & BIT(i)) && now - data->touch_last_ms[i] >= cfg->touch_stale_ms) {
+        const uint32_t limit = touch_stale_limit(cfg, data, i);
+        if ((data->touch_mask & BIT(i)) && limit > 0 && now - data->touch_last_ms[i] >= limit) {
             data->touch_mask &= ~BIT(i);
-            data->touch_unknown_mask |= BIT(i);
-            LOG_WRN("Auto mouse: no input from touch device %d for %u ms, treating as released", i,
-                    cfg->touch_stale_ms);
+            if (data->touch_inferred_mask & BIT(i)) {
+                data->touch_inferred_mask &= ~BIT(i);
+                LOG_DBG("Auto mouse: inferred touch on device %d expired", i);
+            } else {
+                data->touch_unknown_mask |= BIT(i);
+                LOG_WRN("Auto mouse: no input from touch device %d for %u ms, treating as released",
+                        i, limit);
+            }
         }
     }
 }
@@ -249,7 +285,7 @@ static void restart_timeout(const struct auto_mouse_config *cfg, struct auto_mou
     if (!data->active) {
         return;
     }
-    if (is_locked(data)) {
+    if (is_locked(cfg, data)) {
         // 固定している間は時間では解除しない
         k_work_cancel_delayable(&data->disable_work);
         return;
@@ -260,22 +296,22 @@ static void restart_timeout(const struct auto_mouse_config *cfg, struct auto_mou
         k_work_cancel_delayable(&data->disable_work);
     } else if (data->touch_mask != 0) {
         // 触れている間は解除しない。「離れた」の取りこぼしに備えて、最も早く古くなる時刻に確かめる
-        if (cfg->touch_stale_ms == 0) {
-            data->deadline = INT64_MAX;
-            k_work_cancel_delayable(&data->disable_work);
-            return;
-        }
         int64_t check_at = INT64_MAX;
         for (int i = 0; i < MAX_TOUCH_DEVICES; i++) {
-            if (data->touch_mask & BIT(i)) {
-                check_at = MIN(check_at, data->touch_last_ms[i] + cfg->touch_stale_ms);
+            const uint32_t limit = touch_stale_limit(cfg, data, i);
+            if ((data->touch_mask & BIT(i)) && limit > 0) {
+                check_at = MIN(check_at, data->touch_last_ms[i] + limit);
             }
         }
         data->deadline = check_at;
-        k_work_reschedule(&data->disable_work, K_MSEC(MAX(check_at - k_uptime_get(), 0)));
-    } else if (data->timeout_ms > 0) {
-        data->deadline = k_uptime_get() + data->timeout_ms;
-        k_work_reschedule(&data->disable_work, K_MSEC(data->timeout_ms));
+        if (check_at == INT64_MAX) {
+            k_work_cancel_delayable(&data->disable_work);
+        } else {
+            k_work_reschedule(&data->disable_work, K_MSEC(MAX(check_at - k_uptime_get(), 0)));
+        }
+    } else if (cfg->timeout_ms > 0) {
+        data->deadline = k_uptime_get() + cfg->timeout_ms;
+        k_work_reschedule(&data->disable_work, K_MSEC(cfg->timeout_ms));
     } else {
         // 時間では解除しない（触れている間の確かめの予約が残っていたら取り消す。取り消せずに動いた解除ワークは、
         // 期限がないのを見て何もしない）
@@ -291,6 +327,19 @@ static void activity_work_cb(struct k_work *work) {
     const struct auto_mouse_config *cfg = data->dev->config;
 
     k_mutex_lock(&data->lock, K_FOREVER);
+    // 予約の後に右との接続が切れたら、子機からの中継の動きでは有効にも延長にもしない（親機の動きの予約は残す）
+    bool valid = data->activity_local;
+#if WATCH_SPLIT_LINK
+    valid |= data->activity_split && data->activity_split_losses == split_link_losses();
+#else
+    valid |= data->activity_split;
+#endif
+    data->activity_local = false;
+    data->activity_split = false;
+    if (!valid) {
+        k_mutex_unlock(&data->lock);
+        return;
+    }
     if (!data->active) {
         // 有効にしないレイヤーにいたら有効にしない（予約の後に、そのレイヤーに入ったときのため）
         if (excluded_layer_active(cfg)) {
@@ -305,14 +354,15 @@ static void activity_work_cb(struct k_work *work) {
             k_mutex_unlock(&data->lock);
             return;
         }
-        data->layer = data->requested_layer;
+        // ほかの操作（&mo・&tog など）ですでに有効なら、引き取らない（自分の時間切れで、そのレイヤーを解除しない）
+        if (zmk_keymap_layer_active(cfg->layer)) {
+            k_mutex_unlock(&data->lock);
+            return;
+        }
         data->active = true;
         recount_held(data->dev, data);
-        zmk_keymap_layer_activate(data->layer);
-        LOG_DBG("Auto mouse layer %d activated", data->layer);
-    } else if (data->requested_layer != data->layer) {
-        LOG_WRN("Auto mouse: layer %d requested while layer %d is active (use separate instances)",
-                data->requested_layer, data->layer);
+        zmk_keymap_layer_activate(cfg->layer);
+        LOG_DBG("Auto mouse layer %d activated", cfg->layer);
     }
     restart_timeout(cfg, data);
     k_mutex_unlock(&data->lock);
@@ -324,7 +374,7 @@ static void disable_work_cb(struct k_work *work) {
     const struct auto_mouse_config *cfg = data->dev->config;
 
     k_mutex_lock(&data->lock, K_FOREVER);
-    if (is_locked(data)) {
+    if (is_locked(cfg, data)) {
         // 固定している（固定の前に予約されていた解除ワークが遅れて動いた）
     } else if (data->active && data->held_count == 0 && data->touch_mask != 0) {
         // 触れている間は解除しない。古くなった「触れている」を外し、残りの状態で時間切れを数え直す
@@ -337,7 +387,7 @@ static void disable_work_cb(struct k_work *work) {
         if (remaining > 0) {
             k_work_reschedule(&data->disable_work, K_MSEC(remaining));
         } else {
-            deactivate(data);
+            deactivate(cfg, data);
         }
     }
     k_mutex_unlock(&data->lock);
@@ -346,6 +396,20 @@ static void disable_work_cb(struct k_work *work) {
 /* ---- 入力処理（入力スレッド） ---- */
 
 /* touch-devices の何番目か。含まれなければ -1 */
+/* 子機からの中継の、touch-devices の idx 番目のデバイスで、右との接続が切れてから、つながり直した後の区切りの合図が
+ * 処理されるまでの間か（split_link.h。切れる前に届いていて、後から処理される入力で、触れている状態やマウスレイヤーを
+ * 戻さないように）。入力スレッドで、ロックを取った状態で呼ぶ: 印はロックを取らずに立つが、触れている状態を消すのは
+ * その後にロックを取って行う（split_lost_work_cb）ので、ロックの中で印が立っていなければ、その入力の後に消される */
+static bool split_input_lost(const struct auto_mouse_config *cfg, int idx) {
+#if WATCH_SPLIT_LINK
+    return idx >= 0 && (cfg->touch_split_mask & BIT(idx)) && split_link_input_lost();
+#else
+    ARG_UNUSED(cfg);
+    ARG_UNUSED(idx);
+    return false;
+#endif
+}
+
 static int touch_device_index(const struct auto_mouse_config *cfg, const struct device *input_dev) {
     for (size_t i = 0; i < cfg->num_touch_devs; i++) {
         if (cfg->touch_devs[i] == input_dev) {
@@ -358,10 +422,8 @@ static int touch_device_index(const struct auto_mouse_config *cfg, const struct 
 static int auto_mouse_handle_event(const struct device *dev, struct input_event *event,
                                    uint32_t param1, uint32_t param2,
                                    struct zmk_input_processor_state *state) {
-    if (param1 >= ZMK_KEYMAP_LAYERS_LEN) {
-        LOG_ERR("Invalid layer index: %u", param1);
-        return -EINVAL;
-    }
+    ARG_UNUSED(param1);
+    ARG_UNUSED(param2);
 
     // きっかけはカーソル移動・スクロールだけ（タップ・ジェスチャー、触れている／離れたの合図ではない。
     // 触れている／離れたは touch-devices から直接受け取る）
@@ -375,17 +437,29 @@ static int auto_mouse_handle_event(const struct device *dev, struct input_event 
     }
 
     struct auto_mouse_data *data = dev->data;
+    const struct auto_mouse_config *cfg = dev->config;
+#if WATCH_SPLIT_LINK
+    // 右との接続が切れた回数は、切断の確認より前に読む（確認の後に切れたら、予約を実行するときに回数の違いでわかる）
+    const uint32_t losses = split_link_losses();
+#endif
     k_mutex_lock(&data->lock, K_FOREVER);
 
-    // 触れているかを送ってくるデバイスで、いま触れていなければ（指を離した後の慣性など）きっかけにしない
+    // 触れているかを送ってくるデバイスで、いま触れていなければ（指を離した後の慣性など）きっかけにしない。
+    // 右との接続が切れている間の、子機からの中継の入力（切れる前に届いていたもの）もきっかけにしない
     const int touch_idx = touch_device_index(dev->config, event->dev);
-    if (touch_idx >= 0 && !(data->touch_mask & BIT(touch_idx))) {
+    if (touch_idx >= 0 &&
+        (!(data->touch_mask & BIT(touch_idx)) || split_input_lost(dev->config, touch_idx))) {
         k_mutex_unlock(&data->lock);
         return ZMK_INPUT_PROC_CONTINUE;
     }
-
-    data->requested_layer = param1;
-    data->timeout_ms = param2;
+    if (touch_idx >= 0 && (cfg->touch_split_mask & BIT(touch_idx))) {
+        data->activity_split = true;
+#if WATCH_SPLIT_LINK
+        data->activity_split_losses = losses;
+#endif
+    } else {
+        data->activity_local = true;
+    }
     k_mutex_unlock(&data->lock);
 
     k_work_submit(&data->activity_work);
@@ -397,7 +471,21 @@ static int auto_mouse_handle_event(const struct device *dev, struct input_event 
 static void handle_touch_input(const struct device *dev, int idx, struct input_event *evt) {
     struct auto_mouse_data *data = dev->data;
 
+    // 触れている・動きの入力だけを見る（ほかの種類は、split_link.c の区切りの合図など）
+    if (evt->type != INPUT_EV_KEY && evt->type != INPUT_EV_REL) {
+        return;
+    }
+
     k_mutex_lock(&data->lock, K_FOREVER);
+    // 右との接続が切れた後に処理される、子機からの中継の入力（切れる前に届いていたもの）は使わない。
+    // ロックを取ってから見る（切断の後の、触れている状態を消す処理と順番を守るため）
+    if (split_input_lost(dev->config, idx)) {
+        k_mutex_unlock(&data->lock);
+        return;
+    }
+    const int64_t now = k_uptime_get();
+    const int64_t gap = now - data->touch_input_ms[idx];
+    data->touch_input_ms[idx] = now;
     if (evt->type == INPUT_EV_KEY && evt->code == INPUT_BTN_TOUCH) {
         if (evt->value) {
             data->touch_mask |= BIT(idx);
@@ -405,17 +493,28 @@ static void handle_touch_input(const struct device *dev, int idx, struct input_e
             data->touch_mask &= ~BIT(idx);
         }
         data->touch_unknown_mask &= ~BIT(idx);
-        data->touch_last_ms[idx] = k_uptime_get();
+        data->touch_inferred_mask &= ~BIT(idx);
+        data->touch_last_ms[idx] = now;
         restart_timeout(dev->config, data);
     } else if (data->touch_unknown_mask & BIT(idx)) {
         // 古くなって離れたとみなしていたが、「離れた」は届いていない。入力が来たので触れているに戻す
         data->touch_unknown_mask &= ~BIT(idx);
         data->touch_mask |= BIT(idx);
-        data->touch_last_ms[idx] = k_uptime_get();
+        data->touch_last_ms[idx] = now;
         restart_timeout(dev->config, data);
     } else if (data->touch_mask & BIT(idx)) {
         // 触れている間に届いた入力（カーソル移動など）で、まだ触れていることがわかる
-        data->touch_last_ms[idx] = k_uptime_get();
+        data->touch_last_ms[idx] = now;
+    } else if (evt->type == INPUT_EV_REL && evt->value != 0 && gap > TOUCH_GAP_MS &&
+               (((const struct auto_mouse_config *)dev->config)->touch_split_mask & BIT(idx))) {
+        // 子機からの中継で、触れていないはずなのに、途切れた後に動きが届いた: 「触れた」を取りこぼしたとみなす
+        // （直接つながったトラックパッドは「触れた」を取りこぼさない）。推測なので、短い時間で切れるようにする
+        LOG_DBG("Auto mouse: motion from touch device %d after %lld ms, treating as touched", idx,
+                gap);
+        data->touch_mask |= BIT(idx);
+        data->touch_inferred_mask |= BIT(idx);
+        data->touch_last_ms[idx] = now;
+        restart_timeout(dev->config, data);
     }
     k_mutex_unlock(&data->lock);
 }
@@ -432,7 +531,7 @@ static void handle_position(const struct device *dev,
     k_mutex_lock(&data->lock, K_FOREVER);
     data->pressed[ev->position] = ev->state;
     if (ev->state) {
-        if ((ev->position < TP_POS_FIRST || ev->position > TP_POS_LAST) &&
+        if ((ev->position < POS_TP_FIRST || ev->position > POS_TP_LAST) &&
             ev->timestamp > data->last_tapped) {
             data->last_tapped = ev->timestamp;
         }
@@ -443,8 +542,13 @@ static void handle_position(const struct device *dev,
                     data->held_count++;
                 }
                 restart_timeout(dev->config, data);
-            } else if (!is_locked(data) && !is_passive_key(dev, ev->position)) {
-                deactivate(data);
+            } else if (!is_locked(dev->config, data) && !is_passive_key(dev, ev->position)) {
+                // この出来事をほかの listener（ZMK の combo・keymap）に流し終えてから、すぐに解除する
+                // （auto_mouse_listener）。combo の判定中に預かっていた、マウスレイヤーで押したキーが、
+                // 解除の後に処理されて下のレイヤーのキーとして入力されないように。押したこのキーは、
+                // マウスレイヤーで &trans か、上のレイヤーのキーが働くので、解除の前でも後でも同じキーになる。
+                // ワークで後から解除すると、同じ処理でまとめて届いた次のキーがマウスレイヤーで処理されてしまう
+                data->deactivate_pending = true;
             }
         }
     } else if (data->held[ev->position]) {
@@ -469,12 +573,12 @@ static void handle_keycode(const struct device *dev, const struct zmk_keycode_st
 }
 
 static void handle_layer_state(const struct device *dev) {
+    const struct auto_mouse_config *cfg = dev->config;
     struct auto_mouse_data *data = dev->data;
     k_mutex_lock(&data->lock, K_FOREVER);
     // ほかの操作（&tog や &to など）でレイヤーが解除されたら、こちらの状態も合わせる。
     // 固定しているレイヤーは、すぐに有効にし直されるので、有効のままとして扱う（behavior_layer_lock.c）
-    if (data->active && !zmk_keymap_layer_active(data->layer) &&
-        !layer_lock_is_locked(data->layer)) {
+    if (data->active && !zmk_keymap_layer_active(cfg->layer) && !layer_lock_is_locked(cfg->layer)) {
         data->active = false;
         k_work_cancel_delayable(&data->disable_work);
     }
@@ -483,11 +587,12 @@ static void handle_layer_state(const struct device *dev) {
 
 /* 固定をやめた（システムワークキュー）: このインスタンスがそのレイヤーを有効にしていれば、時間を数え直す */
 static bool unlocked(const struct device *dev, zmk_keymap_layer_id_t layer) {
+    const struct auto_mouse_config *cfg = dev->config;
     struct auto_mouse_data *data = dev->data;
     k_mutex_lock(&data->lock, K_FOREVER);
-    const bool mine = data->active && data->layer == layer;
+    const bool mine = data->active && cfg->layer == layer;
     if (mine) {
-        restart_timeout(dev->config, data);
+        restart_timeout(cfg, data);
     }
     k_mutex_unlock(&data->lock);
     return mine;
@@ -517,11 +622,48 @@ static void dispatch(const struct device *dev, const zmk_event_t *eh) {
     }
 }
 
+/* 解除の予約を取り出す（予約を消す） */
+static bool take_deactivate_pending(const struct device *dev) {
+    struct auto_mouse_data *data = dev->data;
+    k_mutex_lock(&data->lock, K_FOREVER);
+    const bool pending = data->deactivate_pending;
+    data->deactivate_pending = false;
+    k_mutex_unlock(&data->lock);
+    return pending;
+}
+
+static void finish_deactivate(const struct device *dev) {
+    const struct auto_mouse_config *cfg = dev->config;
+    struct auto_mouse_data *data = dev->data;
+    k_mutex_lock(&data->lock, K_FOREVER);
+    if (!is_locked(cfg, data)) {
+        deactivate(cfg, data);
+    }
+    k_mutex_unlock(&data->lock);
+}
+
 #define AUTO_MOUSE_DISPATCH(n) dispatch(DEVICE_DT_INST_GET(n), eh);
+#define AUTO_MOUSE_TAKE_PENDING(n) pending_mask |= take_deactivate_pending(DEVICE_DT_INST_GET(n)) ? BIT(n) : 0;
+#define AUTO_MOUSE_FINISH(n)                                                                       \
+    if (pending_mask & BIT(n)) {                                                                   \
+        finish_deactivate(DEVICE_DT_INST_GET(n));                                                  \
+    }
 
 static int auto_mouse_listener(const zmk_event_t *eh) {
     DT_INST_FOREACH_STATUS_OKAY(AUTO_MOUSE_DISPATCH)
-    return ZMK_EV_EVENT_BUBBLE;
+    // 「マウス操作」でないキーを押した: この出来事を、この listener の次からほかの listener に流し終えてから
+    // 解除する（予約は先に取り出して消す。流している間に、ZMK の combo が預かっていたキーをこの listener に
+    // もう一度届けても、そのキーで二重に流さないように）
+    uint32_t pending_mask = 0;
+    DT_INST_FOREACH_STATUS_OKAY(AUTO_MOUSE_TAKE_PENDING)
+    const struct zmk_position_state_changed *pos = as_zmk_position_state_changed(eh);
+    if (pending_mask == 0 || pos == NULL) {
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+    struct zmk_position_state_changed_event copy = copy_raised_zmk_position_state_changed(pos);
+    ZMK_EVENT_RELEASE(copy);
+    DT_INST_FOREACH_STATUS_OKAY(AUTO_MOUSE_FINISH)
+    return ZMK_EV_EVENT_CAPTURED;
 }
 
 ZMK_LISTENER(auto_mouse_layer, auto_mouse_listener);
@@ -541,6 +683,8 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
                           auto_mouse_touch_cb_##n##_##idx);
 
 #define AUTO_MOUSE_TOUCH_DEV(node_id, prop, idx) DEVICE_DT_GET(DT_PHANDLE_BY_IDX(node_id, prop, idx)),
+#define AUTO_MOUSE_SPLIT_BIT(node_id, prop, idx)                                                   \
+    | (DT_NODE_HAS_COMPAT(DT_PHANDLE_BY_IDX(node_id, prop, idx), zmk_input_split) ? BIT(idx) : 0)
 
 /* excluded-layers・excluded-positions の値が範囲内か（設定の誤りをビルドで見つける） */
 #define AUTO_MOUSE_CHECK_LAYER(node_id, prop, idx)                                                 \
@@ -550,7 +694,12 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
     BUILD_ASSERT(DT_PROP_BY_IDX(node_id, prop, idx) < ZMK_KEYMAP_LEN,                              \
                  "auto mouse layer: excluded-positions / passive-positions is out of range");
 
+/* excluded-layers・excluded-positions・passive-positions が空（既定値）のときは、大きさ 0 の配列を作らない
+ * （NULL と 0 個にする） */
 #define AUTO_MOUSE_INST(n)                                                                         \
+    BUILD_ASSERT(DT_INST_PROP(n, layer) >= 0 && DT_INST_PROP(n, layer) < ZMK_KEYMAP_LAYERS_LEN,    \
+                 "auto mouse layer: layer is out of range");                                       \
+    BUILD_ASSERT(DT_INST_PROP(n, timeout_ms) >= 0, "auto mouse layer: timeout-ms must be >= 0");   \
     BUILD_ASSERT(DT_INST_PROP(n, require_prior_idle_ms) >= 0 &&                                    \
                      DT_INST_PROP(n, touch_stale_ms) >= 0,                                         \
                  "auto mouse layer: require-prior-idle-ms and touch-stale-ms must be >= 0");       \
@@ -569,22 +718,35 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
         .activity_work = Z_WORK_INITIALIZER(activity_work_cb),                                     \
         .disable_work = Z_WORK_DELAYABLE_INITIALIZER(disable_work_cb),                             \
     };                                                                                             \
-    static const uint16_t auto_mouse_excluded_##n[] = DT_INST_PROP(n, excluded_positions);         \
-    static const uint16_t auto_mouse_passive_##n[] = DT_INST_PROP(n, passive_positions);           \
-    static const zmk_keymap_layer_id_t auto_mouse_excluded_layers_##n[] = {                        \
-        DT_INST_FOREACH_PROP_ELEM_SEP(n, excluded_layers, DT_PROP_BY_IDX, (, ))};                   \
+    COND_CODE_0(DT_INST_PROP_LEN(n, excluded_positions), (),                                       \
+                (static const uint16_t auto_mouse_excluded_##n[] = {                               \
+                     DT_INST_FOREACH_PROP_ELEM_SEP(n, excluded_positions, DT_PROP_BY_IDX, (, ))};))\
+    COND_CODE_0(DT_INST_PROP_LEN(n, passive_positions), (),                                        \
+                (static const uint16_t auto_mouse_passive_##n[] = {                                \
+                     DT_INST_FOREACH_PROP_ELEM_SEP(n, passive_positions, DT_PROP_BY_IDX, (, ))};)) \
+    COND_CODE_0(DT_INST_PROP_LEN(n, excluded_layers), (),                                          \
+                (static const zmk_keymap_layer_id_t auto_mouse_excluded_layers_##n[] = {           \
+                     DT_INST_FOREACH_PROP_ELEM_SEP(n, excluded_layers, DT_PROP_BY_IDX, (, ))};))   \
     static const struct auto_mouse_config auto_mouse_config_##n = {                                \
+        .layer = DT_INST_PROP(n, layer),                                                           \
+        .timeout_ms = DT_INST_PROP(n, timeout_ms),                                                 \
         .require_prior_idle_ms = DT_INST_PROP(n, require_prior_idle_ms),                           \
-        .excluded_layers = auto_mouse_excluded_layers_##n,                                         \
+        .excluded_layers = COND_CODE_0(DT_INST_PROP_LEN(n, excluded_layers), (NULL),               \
+                                       (auto_mouse_excluded_layers_##n)),                          \
         .num_excluded_layers = DT_INST_PROP_LEN(n, excluded_layers),                               \
-        .excluded_positions = auto_mouse_excluded_##n,                                             \
+        .excluded_positions = COND_CODE_0(DT_INST_PROP_LEN(n, excluded_positions), (NULL),         \
+                                       (auto_mouse_excluded_##n)),                                 \
         .num_excluded_positions = DT_INST_PROP_LEN(n, excluded_positions),                         \
-        .passive_positions = auto_mouse_passive_##n,                                               \
+        .passive_positions = COND_CODE_0(DT_INST_PROP_LEN(n, passive_positions), (NULL),           \
+                                       (auto_mouse_passive_##n)),                                  \
         .num_passive_positions = DT_INST_PROP_LEN(n, passive_positions),                           \
         .touch_stale_ms = DT_INST_PROP(n, touch_stale_ms),                                         \
         .touch_devs = COND_CODE_1(DT_INST_NODE_HAS_PROP(n, touch_devices),                         \
                                   (auto_mouse_touch_devs_##n), (NULL)),                            \
         .num_touch_devs = DT_INST_PROP_LEN_OR(n, touch_devices, 0),                                \
+        .touch_split_mask = 0 IF_ENABLED(DT_INST_NODE_HAS_PROP(n, touch_devices),                  \
+                                         (DT_INST_FOREACH_PROP_ELEM(n, touch_devices,              \
+                                                                    AUTO_MOUSE_SPLIT_BIT))),       \
     };                                                                                             \
     DEVICE_DT_INST_DEFINE(n, NULL, NULL, &auto_mouse_data_##n, &auto_mouse_config_##n,             \
                           POST_KERNEL, AUTO_MOUSE_INIT_PRIORITY, &auto_mouse_driver_api);          \
@@ -592,3 +754,41 @@ static struct zmk_input_processor_driver_api auto_mouse_driver_api = {
                (DT_INST_FOREACH_PROP_ELEM_VARGS(n, touch_devices, AUTO_MOUSE_TOUCH_CB, n)))
 
 DT_INST_FOREACH_STATUS_OKAY(AUTO_MOUSE_INST)
+
+#if WATCH_SPLIT_LINK
+/* 右（子機）との接続が切れた: 子機からの中継のデバイスを、すぐに離れたとみなす（システムワークキュー） */
+#define AUTO_MOUSE_DATA_PTR(n) &auto_mouse_data_##n,
+static struct auto_mouse_data *const auto_mouse_instances[] = {
+    DT_INST_FOREACH_STATUS_OKAY(AUTO_MOUSE_DATA_PTR)};
+
+static void split_lost_work_cb(struct k_work *work) {
+    for (size_t i = 0; i < ARRAY_SIZE(auto_mouse_instances); i++) {
+        struct auto_mouse_data *data = auto_mouse_instances[i];
+        const struct auto_mouse_config *cfg = data->dev->config;
+        k_mutex_lock(&data->lock, K_FOREVER);
+        if (data->touch_mask & cfg->touch_split_mask) {
+            LOG_DBG("Auto mouse: split link lost, treating relayed touch devices as released");
+            data->touch_mask &= ~cfg->touch_split_mask;
+            restart_timeout(cfg, data);
+        }
+        data->touch_unknown_mask &= ~cfg->touch_split_mask;
+        data->touch_inferred_mask &= ~cfg->touch_split_mask;
+        k_mutex_unlock(&data->lock);
+    }
+}
+
+static K_WORK_DEFINE(split_lost_work, split_lost_work_cb);
+
+static void auto_mouse_split_disconnected(struct bt_conn *conn, uint8_t reason) {
+    ARG_UNUSED(reason);
+    if (is_split_link(conn)) {
+        // 先に印を立てる（入力スレッドで後から処理される、切れる前の右の入力を捨てる。split_link.h）
+        split_link_mark_lost();
+        k_work_submit(&split_lost_work);
+    }
+}
+
+BT_CONN_CB_DEFINE(auto_mouse_split_callbacks) = {
+    .disconnected = auto_mouse_split_disconnected,
+};
+#endif

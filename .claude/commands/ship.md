@@ -15,7 +15,7 @@ CLAUDE.md と AGENTS.md のルールに従い、以下を確認なしで最後�
 - メインのフォルダが main で最新であることを確認（`git pull --ff-only`）。
 
 ## 1. ブランチ作成（作業用フォルダ）
-- 依頼内容から短い英語スラッグを作り、CLAUDE.md「作業用フォルダ（git worktree）」の手順で `git worktree add .worktrees/feat-<slug> -b feat/<slug> main`（不具合修正なら `fix/<slug>`）。
+- 依頼内容から短い英語スラッグを作り、CLAUDE.md「作業用フォルダ（git worktree）」の手順で `git worktree add .worktrees/feat-<slug> -b feat/<slug> main`（不具合修正なら `git worktree add .worktrees/fix-<slug> -b fix/<slug> main`）。
 - 以降の編集・コミット・レビュー・push は作業用フォルダで行う。
 
 ## 2. 編集してコミット

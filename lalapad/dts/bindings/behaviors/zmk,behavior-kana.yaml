@@ -1,5 +1,7 @@
 # かな入力 behavior (&kana_key)。文字 ID (dt-bindings/kana/kana.h) を受け取り、ローマ字のキー列を送る。
 
+# マクロ（zmk,behavior-macro）の中には置かない（マクロを送る behavior queue の処理の中から、さらに同じキューに
+# 並べることになり、待ち時間が効かず、処理が入れ子になってスタックを使う）。
 description: Kana romaji output behavior
 
 compatible: "zmk,behavior-kana"

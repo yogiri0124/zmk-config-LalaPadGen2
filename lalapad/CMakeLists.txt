@@ -6,6 +6,9 @@
 # 右＝子機では各シンボルが n になる）。
 target_include_directories(app PRIVATE include)
 
+# 右（子機）とのつながりの状態（オートマウス・tp_keys・キー位置の中継が使う）
+target_sources_ifdef(CONFIG_LALAPAD_CENTRAL app PRIVATE src/split_link.c)
+
 # 最初に足す: 入力スレッドから出たキー位置の出来事を預かり、ほかのモジュール（と ZMK 本体）の処理を
 # システムワークキューで行わせるため（listener はリンクの順に呼ばれる）
 target_sources_ifdef(CONFIG_ZMK_POSITION_RELAY app PRIVATE src/position_relay.c)

@@ -14,7 +14,7 @@ Claude Code（編集担当）と Codex（レビュー担当）の両者がこの
 
 ## 作業の流れ
 
-1. Claude Code が main を最新化し（`git pull --ff-only`）、変更ごとにブランチを切る（例：`feat/xxx`、`fix/xxx`）。基準となる main の SHA を記録する。ブランチは**作業用フォルダ（git worktree、`.worktrees/<ブランチ名>/`）で開き**、メインのフォルダ（ユーザーが LaLapad-Gen2-Editor で開いているフォルダ）は常に main のままにする（詳細は CLAUDE.md）。
+1. Claude Code が main を最新化し（`git pull --ff-only`）、変更ごとにブランチを切る（例：`feat/xxx`、`fix/xxx`）。基準となる main の SHA を記録する。ブランチは**作業用フォルダ（git worktree、`.worktrees/<名前>/`。`<名前>` はブランチ名の `/` を `-` に置き換えたもの）で開き**、メインのフォルダ（ユーザーが LaLapad-Gen2-Editor で開いているフォルダ）は常に main のままにする（詳細は CLAUDE.md）。
 2. 編集してコミットする。
 3. Claude Code が `codex exec` で Codex にレビューさせ、結果を `.review/` に保存する（詳細は「レビューの実施と判定」）。
 4. 合格（「指摘の区分」参照）でなければ修正 → 再レビュー（ユーザーの判断が必要な確認事項は止めて報告）。レビューは**初回を含めて最大3回**。3回目でも合格しなければ、未解決の事項を添えて作業を止め、ユーザーに報告する。CI 失敗の修正やマージ競合の解消で回数はリセットしない。
@@ -87,14 +87,14 @@ Claude Code（編集担当）と Codex（レビュー担当）の両者がこの
 
 - **bindings の数と位置**
   - 各レイヤーの `bindings` が **68個ちょうど** あるか。引数の数ではなく、`&behavior` の参照1件を1個として数える。コメント・マクロ・include を考慮し、単純な文字検索だけで合格にしない。レイヤー以外（macros・behaviors など）の bindings にこの制約は適用しない。
-  - 個数が同じでも位置がずれていないか。依頼した位置以外の割り当てが変わっていないか。特に 52〜67 はトラックパッド由来の入力に対応する（`lalapadgen2.dtsi` の `POS_TP_*`：52〜54 左クリック群、55〜57 右クリック群、58〜62 左ジェスチャー群、63〜67 右ジェスチャー群）。
+  - 個数が同じでも位置がずれていないか。依頼した位置以外の割り当てが変わっていないか。特に 52〜67 はトラックパッド由来の入力に対応する（`lalapad/include/dt-bindings/lalapad/tp_positions.h` の `POS_TP_*`：52〜54 左クリック群、55〜57 右クリック群、58〜62 左ジェスチャー群、63〜67 右ジェスチャー群）。
   - 参照している behavior・キーコードが存在し、引数の個数・種類が正しいか（独自 behavior から呼ぶ内側の binding も含む）。
 - **独自定義と combos**
   - 独自 behavior（`mt2`、`zip_dyn_scale`、`zip_dyn_scale_set`、keymap で定義している `lalapad/` の behavior。一覧は [docs/reference/zmk-behaviors.md](docs/reference/zmk-behaviors.md)）と `combos` の各ノードが消えていないか。消失だけでなく、ラベル・引数・時間設定・参照先・キー位置が依頼なく変わっていないかを基準コミットと比較する。
   - エディタ管理の `&mc*` / `&td*` の定義・参照・番号対応が崩れていないか。
 - **レイヤー参照**
   - `&mo` / `&lt`（`&tog`、`&to`、`&sl`、タップダンス・マクロ内の参照、combos の `layers`、`conditional_layers` を含む）のレイヤー番号が実在するレイヤーを指しているか。
-  - レイヤー番号はキーマップ内の宣言順で決まる。レイヤーを追加・削除・並べ替えた場合は、編集範囲外の `lalapadgen2.dtsi` にあるオートマウスのレイヤー番号（`<&zip_auto_mouse_layer 5 …>` の 5。MOUSE）と、keymap の `&zip_auto_mouse_layer { excluded-layers = ... }`（SECONDARY・TERTIARY）も読み取りで確認し、ずれるなら指摘する。
+  - レイヤー番号はキーマップ内の宣言順で決まる。レイヤーを追加・削除・並べ替えた場合は、keymap の `&zip_auto_mouse_layer { layer = <MOUSE_LAYER>; excluded-layers = ... }`（MOUSE・SECONDARY・TERTIARY）が、#define を通して正しいレイヤーを指しているかも確認し、ずれるなら指摘する。
   - 各レイヤーへ到達でき、キーを離すなどで Default へ戻れるか。現行の `conditional_layers`（SECONDARY＝2 と TERTIARY＝3 の同時有効で SYSTEM＝4）と干渉しないか。
 - **combos**
   - `key-positions` が 0〜67 の範囲か。同じコンボ内での位置の重複、同じキー集合・同じ有効レイヤーでの競合がないか。

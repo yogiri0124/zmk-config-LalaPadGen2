@@ -9,6 +9,7 @@ config ZMK_SPLIT_ROLE_CENTRAL
 config ZMK_SPLIT_BLE_CENTRAL_PERIPHERALS
     default 1
 
+# 右（子機）1 台と、PC 4 台（keymap の &bt BT_SEL 0〜3）の分
 config BT_MAX_CONN
     default 5
 

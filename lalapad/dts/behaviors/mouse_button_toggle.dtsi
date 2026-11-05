@@ -1,5 +1,3 @@
-#include <dt-bindings/zmk/pointing.h>
-
 / {
     // マウスボタンの押しっぱなし切り替え（zmk,behavior-mouse-button-toggle）が、切り替えの依頼を
     // 入力イベントの列に並べるために使う入力デバイス（クリックと同じ列で、操作した順に処理するため）。

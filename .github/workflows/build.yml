@@ -3,4 +3,5 @@ on: [push, pull_request, workflow_dispatch]
 
 jobs:
   build:
-    uses: zmkfirmware/zmk/.github/workflows/build-user-config.yml@v0.3
+    # ZMK v0.3.0 のビルド手順の写し（ビルドに使う Docker イメージを v0.3 用に固定してある）
+    uses: ./.github/workflows/build-user-config.yml

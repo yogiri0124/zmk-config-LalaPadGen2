@@ -167,7 +167,7 @@
 
 - `zip_dyn_scale` 系の定数（`zip_dynamic_scale.h`）：対象 `ZDS_XY`（カーソル）`ZDS_SC`（スクロール）`ZDS_ALL`（両方）、操作 `ZDS_INC` `ZDS_DEC` `ZDS_RST`。
   `zip_dyn_scale_set` の値は 10 倍表記（`10`＝1.0 倍、`5`＝0.5 倍、`15`＝1.5 倍）。
-- トラックパッドのクリック・ジェスチャーは、ドライバの `trackpad-to-pos` によってキー位置 52〜67 の押下として届く（`lalapadgen2.dtsi` の `POS_TP_*`）。だから keymap の 52〜67 番目に書いたものが、それぞれのジェスチャーの動作になる。
+- トラックパッドのクリック・ジェスチャーは、ドライバの `trackpad-to-pos` によってキー位置 52〜67 の押下として届く（`lalapad/include/dt-bindings/lalapad/tp_positions.h` の `POS_TP_*`。shield の `lalapadgen2.dtsi`、keymap（オートマウスの `excluded-positions` など）、自作モジュールの C が読む）。だから keymap の 52〜67 番目に書いたものが、それぞれのジェスチャーの動作になる。
 - 出典：[zmk-driver-iqs9151 v1.0.0 behavior_input_processor_reference.md](https://github.com/ShiniNet/zmk-driver-iqs9151/blob/v1.0.0/documents/behavior_input_processor_reference.md)
 
 ### 自作モジュール `lalapad/` の behavior・入力処理
@@ -176,7 +176,7 @@
 
 | compatible | keymap での名前 | 引数 | 主なプロパティ | 働き |
 | --- | --- | --- | --- | --- |
-| `zmk,behavior-kana` | `kana_key` | 1（`KN_…` `KE_…`。`dt-bindings/kana/kana.h`） | `tap-ms` `wait-ms`（既定 5）、`ime-resync-ms`（既定 1000） | かな1文字のローマ字、Space・Enter・Backspace を送信キューで順に送る |
+| `zmk,behavior-kana` | `kana_key` | 1（`KN_…` `KE_…`。`dt-bindings/kana/kana.h`） | `tap-ms` `wait-ms`（既定 5）、`ime-resync-ms`（既定 1000） | かな1文字のローマ字、Space・Enter・Backspace・Esc・Tab を送信キューで順に送る |
 | `zmk,behavior-kana-mode` | `kana_sw` | 1（`KANA_SW_ON` `KANA_SW_OFF`） | `layer`（必須。かな単打面の番号）、`sub-layers`（抜けるときにいっしょに解除するレイヤー）、`tap-ms` `wait-ms` | かなモードのオン・オフ（IME とかなレイヤーの切り替え） |
 | `zmk,behavior-kana-seq` | `ks_…` `pair_kagi` `pair_nijukagi` `pair_paren` `pair_cquote_ime` `sym_…_ime` `sym_ellipsis` | 0 | `keys`（必須。キーコードの配列）、`ime-on`、`tap-ms` `wait-ms` `ime-resync-ms` | 決まった打鍵の列を、かなと同じ送信キューで送る |
 | `zmk,behavior-alt-code` | `sym_hbar` `sym_tilde` `pair_cquote` `kj_ji` `kj_hito` `kj_hi` | 0 | `codes`（必須）、`cursor-left`、`commit-ime`、`tap-ms` `wait-ms` `ime-wait-ms` | Windows の Alt コードで文字を送る（先に並んでいるかななどの送信を待ってから送る。送信中のほかのキー入力は預かり、送り終えてから届いた順に通す。押すと Num Word を終える） |
@@ -185,11 +185,11 @@
 | `zmk,behavior-cursor-slow` | `cur_slow_hold` `_toggle` `_once` | 0 | `mode`（必須。`CURSOR_SLOW_HOLD` など） | カーソル低速のオン・オフ |
 | `zmk,behavior-scroll-snap-hold` | `scr_snap_hold` | 0 | — | 押している間だけスクロールを縦か横にそろえる |
 | `zmk,behavior-word-layer` | `num_word` `num_hold` | 1（レイヤー番号） | `continue-list`、`ignore-numbers`、`ignore-alphas`、`ignore-modifiers`、`exit-layers`、`momentary` | 打っている間だけ続くレイヤー（Num Word）。continue-list と ignore のキー以外のキー（キーコード）を押したら解除する。有効な間にもう一度押すと解除。ほかの操作でレイヤーが解除されたら終わる。`exit-layers` のレイヤーが有効になったら終わる（このリポジトリでは記号レイヤー。数字＋記号でシステムレイヤーにならないように）。有効な間は始めない。Alt コードのキーが自分で送るキーでは終わらない。`momentary` を付けると押している間だけ有効（`&mo` と同じ。同じレイヤーの Num Word が有効なら、終えずに引き継ぐ）。ほかのプロパティは urob/zmk-auto-layer の auto-layer と同じ。keymap の hold-tap `num_mo`（タップで `&num_word`、長押しで `&num_hold`）から使う |
-| `zmk,behavior-layer-lock` | `lyr_lock` | 0 | — | 置いたレイヤーを固定する／固定をやめる（Layer Lock。固定している間は、そのレイヤーが解除されてもすぐ有効にし直す。固定をやめるとそのレイヤーを解除する。オートマウスレイヤーなら解除せず時間を数え直す。Default と conditional_layers の then-layer は固定しない。かなのレイヤー（kana_sw の layer・sub-layers）の固定は、かなモードを抜けるとやめる（layer_lock_forget）） |
-| `zmk,behavior-alt-tab` | `swap_next` `swap_prev` | 0 | `reverse`（Shift+Tab を送る） | ウィンドウの切り替え。最初に押したときに Alt を押したままにして Tab を送り、押すたびに Tab を送る。押し始めたレイヤーの解除、ほかのキー（キーコードを送るもの。Alt コードの送信が自分で送るキーを除く）の押下、接続先の切り替えで Alt を離す（順方向・逆方向で Alt を共有）。Default に置いたときと、コンボから押したときは、レイヤーの解除では離さない |
+| `zmk,behavior-layer-lock` | `lyr_lock` | 0 | — | 置いたレイヤーを固定する／固定をやめる（Layer Lock。固定している間は、そのレイヤーが解除されてもすぐ有効にし直す。固定をやめるとそのレイヤーを解除する。オートマウスレイヤーなら解除せず時間を数え直す。Default と conditional_layers の then-layer は固定しない。かなのレイヤー（kana_sw の layer・sub-layers）の固定は、かなモードを抜けるとやめる（layer_lock_forget）。combos・マクロ・hold-tap の中から押すと、ZMK v0.3.0 はレイヤーを Default として渡すので何もしない） |
+| `zmk,behavior-alt-tab` | `swap_next` `swap_prev` | 0 | `reverse`（Shift+Tab を送る） | ウィンドウの切り替え。最初に押したときに Alt を押したままにして Tab を送り、押すたびに Tab を送る。押し始めたレイヤーの解除、ほかのキー（キーコードを送るもの。Alt コードの送信が自分で送るキーを除く）の押下、接続先の切り替えで Alt を離す（順方向・逆方向で Alt を共有）。Default に置いたときと、コンボ・hold-tap（`&mt` など）の中から押したときは、レイヤーの解除では離さない |
 | `zmk,behavior-tp-keys` | `tp_arrow` `tp_dial` | 0 | `bindings`（必須。8 つ: 1 本指を上・下・左・右、2 本指を上・下・左・右へ動かしたとき）、`cursor-step` `scroll-step`（既定 150。トラックパッドの生の値）、`tap-ms`（既定 10） | 押している間だけ、トラックパッドを動かした量ごとに、その向きの binding を送る（4 つとも `&trans` の側はカーソル・スクロールのまま）。押している間のタップ・ジェスチャーは捨てる |
 | `zmk,behavior-tp-stroke` | `tp_draw` | 0 | `strokes`（必須。`TP_STROKE1`〜`4`。`dt-bindings/lalapad/tp_keys.h`）、`bindings`（必須。strokes と同じ数）、`stroke-step`（既定 300）、`tap-ms`（既定 10） | 押している間に 1 本指で描いた向きの並びを、指（またはキー）を離したときに binding に変える |
-| `zmk,input-processor-auto-mouse-layer` | `zip_auto_mouse_layer`（dtsi） | 2（レイヤー番号、解除までの ms。0 なら時間では解除しない） | `require-prior-idle-ms`、`excluded-layers`（keymap で指定）、`excluded-positions`、`passive-positions`、`touch-devices`、`touch-stale-ms` | カーソル移動・スクロールでマウスレイヤーを一時的に有効にする（タップ・ジェスチャーや触れただけでは有効にしない）。マウスレイヤーで `&trans` の位置、またはマウスレイヤーより上の有効なレイヤー（かな・左手用など）に割り当てのある位置を押すと解除。`excluded-positions` の位置は解除しない。`passive-positions` の位置は、割り当てが働いても解除も延長もしない。`&none` の位置は、押しても何も入力せず、解除もしない（押している間は時間切れにしない。`passive-positions` の位置は除く）。`excluded-layers` が有効な間は有効にしない。`require-prior-idle-ms` の「直前のキー入力」は、キーコードの押下と、トラックパッド由来でない位置の押下。Alt コードを送っている間も有効にしない |
+| `zmk,input-processor-auto-mouse-layer` | `zip_auto_mouse_layer`（dtsi） | 0 | `layer`（必須。有効にするレイヤー）・`timeout-ms`（解除までの ms。0 なら時間では解除しない）・`excluded-layers`・`excluded-positions`・`passive-positions`（keymap で指定）、`require-prior-idle-ms`、`touch-devices`（親機の overlay で指定）、`touch-stale-ms` | カーソル移動・スクロールでマウスレイヤーを一時的に有効にする（タップ・ジェスチャーや触れただけでは有効にしない）。マウスレイヤーで `&trans` の位置、またはマウスレイヤーより上の有効なレイヤー（かな・左手用など）に割り当てのある位置を押すと解除。`excluded-positions` の位置は解除せず、押している間は時間切れにしない（離してから数え直す）。`passive-positions` の位置は、割り当てが働いても解除も延長もしない。`&none` の位置は、押しても何も入力せず、解除もしない（押している間は時間切れにしない。`passive-positions` の位置は除く）。`excluded-layers` が有効な間は有効にしない。`require-prior-idle-ms` の「直前のキー入力」は、キーコードの押下と、トラックパッド由来でない位置の押下。Alt コードを送っている間も有効にしない |
 | `zmk,input-processor-cursor-slow` | `zip_cursor_slow`（`behaviors/cursor_slow.dtsi`） | 2（倍率の分子、分母） | — | カーソル低速の間、カーソル移動を遅くする |
 | `zmk,input-processor-scroll-snap-gate` | `zip_scroll_snap_gate_R` `_L`（dtsi） | 0 | `processor`（必須） | `scr_snap_hold` を押している間だけ、スクロールスナップにイベントを渡す |
 | `zmk,input-processor-tp-keys` | `zip_tp_keys`（`behaviors/tp_keys.dtsi`） | 0 | — | `tp_` のキーを押している間、トラックパッドの動きをキーに変える。リスナーの入力処理の並びの先頭に入れる |

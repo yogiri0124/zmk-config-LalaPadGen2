@@ -7,6 +7,8 @@
  * （オートマウスレイヤーが有効にしているレイヤーなら解除はせず、ふだんどおり時間を数え直す）。
  * 一番下のレイヤー（Default）と、conditional_layers が有効・解除するレイヤー（then-layer。数字＋記号でなる
  * システムレイヤーなど）は固定しない（条件で解除されるたびに有効にし直すと、条件の評価と取り合いになるため）。
+ * combos・マクロ・hold-tap（&mt など）の中から押すと、ZMK v0.3.0 はレイヤーを Default として渡すので、何もしない
+ * （キーマップのレイヤーに直接置く）。
  *
  * 状態はシステムワークキューで書き換える（behavior のコールバックと、レイヤーの出来事の listener）。
  * オートマウスレイヤーの入力処理（入力スレッド）からも読むので、atomic で持つ。
@@ -33,7 +35,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 BUILD_ASSERT(ZMK_KEYMAP_LAYERS_LEN <= 32, "layer lock: up to 32 layers");
 
-/* conditional_layers の then-layer（固定しないレイヤー）。keymap の宣言順の番号（起動時はレイヤー ID と同じ） */
+/* conditional_layers の then-layer（固定しないレイヤー）。レイヤー ID（keymap の宣言順の番号。ZMK Studio で並べ替えても変わらない） */
 #define LAYER_LOCK_CL_THEN(child) | BIT(DT_PROP(child, then_layer))
 #define LAYER_LOCK_CL_NODE(node) DT_FOREACH_CHILD(node, LAYER_LOCK_CL_THEN)
 static const uint32_t conditional_layers =

@@ -66,8 +66,7 @@
 #include <zmk/events/ble_active_profile_changed.h>
 #endif
 
-/* 右（子機）とのつながりを見るか（Bluetooth で分割している親機） */
-#define WATCH_SPLIT_LINK (IS_ENABLED(CONFIG_ZMK_SPLIT_BLE) && IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL))
+#include "split_link.h"
 
 #if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_BLE) || WATCH_SPLIT_LINK
 #include <zephyr/bluetooth/conn.h>
@@ -207,6 +206,8 @@ static int64_t flight_deadline;
 
 /* いま押されている位置（開始したときや、押されているキーの一覧で知らせるため） */
 static bool pressed[ZMK_KEYMAP_LEN];
+/* 位置ごとに、最後に受け取った出来事の時刻（出し直された古い出来事を見分ける） */
+static int64_t last_event_ts[ZMK_KEYMAP_LEN];
 
 /* 右（子機）との接続の数（Bluetooth の接続・切断の通知で数える。分割していなければ 0 のまま） */
 static atomic_t split_links;
@@ -246,7 +247,7 @@ static void kick_send(k_timeout_t delay) { k_work_reschedule_for_queue(&key_stre
 static void request_send(void) { k_work_schedule_for_queue(&key_stream_q, &send_work, K_NO_WAIT); }
 
 static bool position_wanted(uint8_t mask, uint32_t position) {
-    const uint8_t kind = position < TP_POS_FIRST ? STREAM_KEYS : STREAM_TRACKPAD;
+    const uint8_t kind = position < POS_TP_FIRST ? STREAM_KEYS : STREAM_TRACKPAD;
     return (mask & kind) != 0;
 }
 
@@ -320,7 +321,7 @@ static void build_status(uint8_t *report) {
     report[1] = MSG_STATUS;
     report[2] = atomic_get(&split_links) > 0 ? 1 : 0;
     report[3] = stream_mask;
-    report[4] = TP_POS_FIRST;
+    report[4] = POS_TP_FIRST;
     report[5] = ZMK_KEYMAP_LEN;
     // 次に届くキーの通し番号（送り待ちがあれば、その先頭。状態は送り待ちのキーより先に送るため）
     sys_put_le16(events_count > 0 ? events[events_head].seq : next_seq, &report[6]);
@@ -788,7 +789,15 @@ static int key_stream_listener(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
     k_spinlock_key_t key = k_spin_lock(&lock);
+    // 押した状態が変わらない出来事と、その位置で前に受け取った出来事より古い出来事は送らない（ZMK の combo は、
+    // 判定のために預かったキーを、元の時刻のまま listener の最初からもう一度出し直すので、同じキーの「押した」が
+    // もう一度届いたり、「離した」の後に古い「押した」が届いたりする）
+    if (pressed[pos->position] == pos->state || pos->timestamp < last_event_ts[pos->position]) {
+        k_spin_unlock(&lock, key);
+        return ZMK_EV_EVENT_BUBBLE;
+    }
     pressed[pos->position] = pos->state;
+    last_event_ts[pos->position] = pos->timestamp;
     const bool queued = streaming && position_wanted(stream_mask, pos->position);
     if (queued) {
         push_event((uint8_t)pos->position, pos->state ? FLAG_PRESSED : 0, (uint32_t)pos->timestamp);
@@ -809,10 +818,6 @@ ZMK_SUBSCRIPTION(key_stream, zmk_position_state_changed);
  * （zmk_split_peripheral_status_changed は子機の側でだけ出る）ため、自分で見る */
 
 #if WATCH_SPLIT_LINK
-static bool is_split_link(struct bt_conn *conn) {
-    struct bt_conn_info info;
-    return bt_conn_get_info(conn, &info) == 0 && info.role == BT_CONN_ROLE_CENTRAL;
-}
 
 /* つながりが変わった: 送っている間なら状態を送り直す（値は送るときに調べる）。Bluetooth の接続・切断の通知
  * （つながったときは Bluetooth の受信のスレッド、切れたときはシステムワークキュー）から呼ばれる。

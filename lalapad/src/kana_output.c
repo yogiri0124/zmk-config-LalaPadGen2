@@ -75,9 +75,9 @@ BUILD_ASSERT(DT_NODE_EXISTS(DT_NODELABEL(kana_sync)),
  * 登録できるまで順に再試行する。
  * 押しっぱなしのキー（スペースなど）の「離す」はキー位置ごとに1つまで。タップの「離す」と修飾キーを戻す
  * 合図は、再試行中に次のタップや列を受け付けない（-EBUSY）ので、1つの列の分（それぞれ1つ）まで。
- * 全キー位置に押しっぱなしのキーを置いても足りる数にする
+ * 全キー位置（と combos などの位置 KANA_HOLD_EXTRA_MAX 個）に押しっぱなしのキーを置いても足りる数にする
  * （足りないと、下の「その場で実行」が、まだキューにある「押す」より先に実行されてしまう） */
-#define PENDING_RELEASE_MAX (ZMK_KEYMAP_LEN + 2)
+#define PENDING_RELEASE_MAX (ZMK_KEYMAP_LEN + KANA_HOLD_EXTRA_MAX + 2)
 
 struct pending_release {
     struct zmk_behavior_binding binding;
@@ -319,6 +319,17 @@ static size_t off_sub_layers_len;
 static uint32_t off_tap_ms;
 static uint32_t off_wait_ms;
 
+/* かな単打面と sub-layers を解除する（固定していればやめてから。有効でなければ何も起きない） */
+static void drop_kana_layers(zmk_keymap_layer_id_t layer, const zmk_keymap_layer_id_t *sub_layers,
+                             size_t sub_layers_len) {
+    for (size_t i = 0; i < sub_layers_len; i++) {
+        layer_lock_forget(sub_layers[i]);
+        zmk_keymap_layer_deactivate(sub_layers[i]);
+    }
+    layer_lock_forget(layer);
+    zmk_keymap_layer_deactivate(layer);
+}
+
 static void kana_off_work_handler(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(kana_off_work, kana_off_work_handler);
 
@@ -408,12 +419,7 @@ void kana_output_on_sync(uint32_t token) {
     // 親指シフト面などを押したまま抜けた場合に備えて、それらも解除する
     // （後で親指を離したときの &mo の解除は、すでに解除済みなので何も起きない）
     // 固定していても抜ける（固定をやめてから解除する。固定したままだと、解除してもすぐ有効にし直される）
-    for (size_t i = 0; i < off_sub_layers_len; i++) {
-        layer_lock_forget(off_sub_layers[i]);
-        zmk_keymap_layer_deactivate(off_sub_layers[i]); // 有効でなければ何も起きない
-    }
-    layer_lock_forget(kana_layer);
-    zmk_keymap_layer_deactivate(kana_layer);
+    drop_kana_layers(kana_layer, off_sub_layers, off_sub_layers_len);
     kana_active = false;
     off_stage = KANA_OFF_NONE;
     LOG_DBG("Kana mode off");
@@ -446,8 +452,8 @@ static int kana_output_listener(const zmk_event_t *eh) {
     }
 
     const struct zmk_position_state_changed *pos = as_zmk_position_state_changed(eh);
-    if (pos != NULL && pos->state && pos->position >= TP_POS_FIRST &&
-        pos->position <= TP_POS_LAST) {
+    if (pos != NULL && pos->state && pos->position >= POS_TP_FIRST &&
+        pos->position <= POS_TP_LAST) {
         char_sent = false;
     }
     return ZMK_EV_EVENT_BUBBLE;
@@ -495,12 +501,7 @@ void kana_mode_off(const struct zmk_behavior_binding_event *event, zmk_keymap_la
     if (!kana_active) {
         // かな配列モードではないのに、かなのレイヤーが（Studio で割り当てた &tog などで）有効になっている:
         // &kana_key は何も送らないので、レイヤーだけ解除して抜けられるようにする（有効でなければ何も起きない）
-        for (size_t i = 0; i < sub_layers_len; i++) {
-            layer_lock_forget(sub_layers[i]);
-            zmk_keymap_layer_deactivate(sub_layers[i]);
-        }
-        layer_lock_forget(layer);
-        zmk_keymap_layer_deactivate(layer);
+        drop_kana_layers(layer, sub_layers, sub_layers_len);
         return;
     }
 

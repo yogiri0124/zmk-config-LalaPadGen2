@@ -3,6 +3,8 @@
 # 送信キューが満杯なら残りを打ち切る、かなと同じキューに並ぶので追い越さない、送る間は押している Shift・Ctrl を隠す。Alt・Win は隠さない）。
 # かな配列モードでないときも使える。
 
+# マクロ（zmk,behavior-macro）の中には置かない（マクロを送る behavior queue の処理の中から、さらに同じキューに
+# 並べることになり、待ち時間が効かず、処理が入れ子になってスタックを使う）。
 description: Fixed key sequence sent through the kana output queue
 
 compatible: "zmk,behavior-kana-seq"

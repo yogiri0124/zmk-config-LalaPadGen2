@@ -32,13 +32,8 @@
 #include <zmk/events/position_state_changed.h>
 #include <zmk/matrix.h>
 
+#include "split_link.h"
 #include "tp_positions.h"
-
-#define WATCH_SPLIT_LINK (IS_ENABLED(CONFIG_ZMK_SPLIT_BLE) && IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL))
-
-#if WATCH_SPLIT_LINK
-#include <zephyr/bluetooth/conn.h>
-#endif
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -48,17 +43,20 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 /* 満杯のときに、空くのを待つ時間 */
 #define RELAY_PUT_TIMEOUT_MS 50
 
-K_MSGQ_DEFINE(relay_queue, sizeof(struct zmk_position_state_changed_event), RELAY_QUEUE_SIZE, 4);
+/* 預かった出来事と、預かったときの右との接続が切れた回数（split_link_losses。処理するときに今の回数と違えば、
+ * 預かった後に切れた＝切れる前に届いたもの） */
+struct relayed_event {
+    struct zmk_position_state_changed_event ev;
+    uint32_t losses;
+};
+
+K_MSGQ_DEFINE(relay_queue, sizeof(struct relayed_event), RELAY_QUEUE_SIZE, 4);
 
 /* 預かって処理した出来事で、いま押されている位置（右との接続が切れたときに離す分と、押されていない位置の
  * 「離した」を知る） */
 static ATOMIC_DEFINE(relayed_pressed, ZMK_KEYMAP_LEN);
 /* 列に預けきれなかった「離した」の位置（relay_work_handler が、列の分を処理した後に離す） */
 static ATOMIC_DEFINE(deferred_release, ZMK_KEYMAP_LEN);
-#if WATCH_SPLIT_LINK
-/* 右との接続が切れているか */
-static atomic_t split_lost;
-#endif
 
 /* position が押されていたら、「離した」を出す（システムワークキューで呼ぶ。出した出来事はこの listener を素通りする） */
 static void release_if_pressed(uint32_t position) {
@@ -76,15 +74,17 @@ static void release_if_pressed(uint32_t position) {
 /* 預かった出来事を、届いた順に、預かった listener の次から処理し直す（システムワークキュー）。
  * 列に預けきれなかった「離した」は、列の分（その位置の「押した」を含む）を処理した後に出す */
 static void relay_work_handler(struct k_work *work) {
-    struct zmk_position_state_changed_event ev;
-    while (k_msgq_get(&relay_queue, &ev, K_NO_WAIT) == 0) {
+    struct relayed_event item;
+    while (k_msgq_get(&relay_queue, &item, K_NO_WAIT) == 0) {
+        struct zmk_position_state_changed_event ev = item.ev;
         const uint32_t position = ev.data.position;
         if (position < ZMK_KEYMAP_LEN) {
             if (ev.data.state) {
 #if WATCH_SPLIT_LINK
-                // 切れた後に処理する右のトラックパッドの「押した」（切れる前に並んでいた分）。切れたときの処理と
-                // 同じシステムワークキューで調べるので、取りこぼさない
-                if (atomic_get(&split_lost) && tp_position_is_right(position)) {
+                // 預かった後に切れた右のトラックパッドの「押した」（切れる前に並んでいた分。つながり直した後に
+                // 処理するときも）は捨てる。切断の回数は、切れたときの処理と同じシステムワークキューで増えるので、
+                // 取りこぼさない
+                if (item.losses != split_link_losses() && tp_position_is_right(position)) {
                     LOG_DBG("Split link lost, dropped press of right trackpad position %u", position);
                     continue;
                 }
@@ -118,8 +118,12 @@ static int position_relay_listener(const zmk_event_t *eh) {
         return ZMK_EV_EVENT_BUBBLE;
     }
 #if WATCH_SPLIT_LINK
-    // 早めに捨てる分（同じことは relay_work_handler でも調べる）
-    if (pos->state && atomic_get(&split_lost) && tp_position_is_right(pos->position)) {
+    // 切れた回数は、切断の確認より前に読む（確認の後に切れたら、処理するときに回数の違いで捨てられる。確認の前に
+    // 切れていたら、下の確認で捨てる）
+    const uint32_t losses = split_link_losses();
+    // 切れてから、つながり直した後の区切りの合図が処理されるまでに届いた右のトラックパッドの「押した」
+    // （切れる前に入力の列に並んでいた分）は捨てる（split_link.h）
+    if (pos->state && split_link_input_lost() && tp_position_is_right(pos->position)) {
         LOG_DBG("Split link lost, dropped press of right trackpad position %u", pos->position);
         return ZMK_EV_EVENT_HANDLED;
     }
@@ -133,10 +137,15 @@ static int position_relay_listener(const zmk_event_t *eh) {
                 pos->position);
         return ZMK_EV_EVENT_HANDLED;
     }
-    struct zmk_position_state_changed_event ev = copy_raised_zmk_position_state_changed(pos);
+    const struct relayed_event item = {
+        .ev = copy_raised_zmk_position_state_changed(pos),
+#if WATCH_SPLIT_LINK
+        .losses = losses,
+#endif
+    };
     // 満杯なら、空くのを少しだけ待つ（入力スレッドを止めるので長くは待たない。K_FOREVER にすると、システム
     // ワークキューが入力イベントの列の空きを待っているときに、互いに待ち合って止まる）
-    if (k_msgq_put(&relay_queue, &ev, K_MSEC(RELAY_PUT_TIMEOUT_MS)) != 0) {
+    if (k_msgq_put(&relay_queue, &item, K_MSEC(RELAY_PUT_TIMEOUT_MS)) != 0) {
         // それでも預けきれない（システムワークキューが長く止まったとき）。システムワークキューが止まる主な原因は、
         // behavior（&mkp など）が入力イベントの列の空きを K_FOREVER で待っていることで、&mkp は押すときも離すときも
         // 待つので、ここで入力スレッドのまま処理すると、その behavior が自分の列を待って止まる。そのため、この場では
@@ -162,22 +171,11 @@ ZMK_LISTENER(position_relay, position_relay_listener);
 ZMK_SUBSCRIPTION(position_relay, zmk_position_state_changed);
 
 #if WATCH_SPLIT_LINK
-/* 親機は、右とは自分が central 側（接続を始める側）、PC とは peripheral 側でつなぐので、接続の役割で見分ける */
-static bool is_split_link(struct bt_conn *conn) {
-    struct bt_conn_info info;
-    return bt_conn_get_info(conn, &info) == 0 && info.role == BT_CONN_ROLE_CENTRAL;
-}
-
-static void relay_split_connected(struct bt_conn *conn, uint8_t err) {
-    if (err == 0 && is_split_link(conn)) {
-        atomic_set(&split_lost, 0);
-    }
-}
 
 /* 右のトラックパッドの位置で押されたままのものを離す（システムワークキュー。出した「離した」はこの listener を
  * 素通りし、預かった出来事の処理（relay_work_handler）とも同じスレッドなので、順番が入れ替わらない） */
 static void split_release_work_handler(struct k_work *work) {
-    for (uint32_t position = TP_POS_FIRST; position <= TP_POS_LAST; position++) {
+    for (uint32_t position = POS_TP_FIRST; position <= POS_TP_LAST; position++) {
         if (tp_position_is_right(position)) {
             release_if_pressed(position);
         }
@@ -192,12 +190,11 @@ static void relay_split_disconnected(struct bt_conn *conn, uint8_t reason) {
     if (!is_split_link(conn)) {
         return;
     }
-    atomic_set(&split_lost, 1);
+    split_link_mark_lost();
     k_work_submit(&split_release_work);
 }
 
 BT_CONN_CB_DEFINE(position_relay_split_callbacks) = {
-    .connected = relay_split_connected,
     .disconnected = relay_split_disconnected,
 };
 #endif

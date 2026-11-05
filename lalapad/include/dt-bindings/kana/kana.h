@@ -5,7 +5,7 @@
  *
  * 名前の頭で種類を分けている（エディタの一覧で名前順に並んだときに、種類ごとにまとまる）。
  *   KN_ : かな（清音・濁音・半濁音・小書き）
- *   KE_ : 編集用のキー（スペース・エンター・バックスペース）
+ *   KE_ : 編集用のキー（スペース・エンター・バックスペース・Esc・Tab）
  * 記号（、。ー…！？「」（）― など）は、keymap で定義する zmk,behavior-kana-seq のキー
  * （ks_touten・sym_ellipsis・pair_kagi など）で送る。記号を足すときは、keymap に書き足すだけでよい。
  */
@@ -104,13 +104,15 @@
 /* 82〜89 は欠番（以前は記号。今は keymap の zmk,behavior-kana-seq のキーで送る）。
  * ZMK Studio に保存した古い配置が別のキーとして働かないよう、番号は詰めない */
 
-/* 編集用のキー（かなと同じ送信キューで順番どおりに送る。押している間は押しっぱなし（combos では1回タップ）。
+/* 編集用のキー（かなと同じ送信キューで順番どおりに送る。押している間は押しっぱなし（combos でも同じ。ただし combos で同時に KANA_HOLD_EXTRA_MAX（kana_output.h）個を超えて押したときは1回タップ）。
  * IME オンの再送はせず、押している修飾キーも隠さない） */
 #define KE_SPACE 90
 #define KE_ENTER 91
 #define KE_BSPC 92
+#define KE_ESC 93
+#define KE_TAB 94
 
-#define KN_MAX_ID 92
+#define KN_MAX_ID 94
 
 /* &kana_sw のパラメータ */
 #define KANA_SW_ON 1
