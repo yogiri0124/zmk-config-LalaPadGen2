@@ -160,14 +160,14 @@ static bool position_is_passive(const struct auto_mouse_config *cfg, uint32_t po
     return false;
 }
 
-/* そのレイヤーで &trans 以外が割り当ててあるキーか（&none も割り当てありとみなす。
- * keymap で &none にした位置は、マウスレイヤーの間は押しても何もせず、レイヤーも解除しない） */
 /* 有効にするレイヤーの ID（layer。keymap の宣言順の番号。&mo などと同じく ID として扱うので、
  * ZMK Studio でレイヤーの順番を入れ替えても同じレイヤーを指す） */
 static zmk_keymap_layer_id_t mouse_layer_id(const struct auto_mouse_data *data) {
     return ((const struct auto_mouse_config *)data->dev->config)->layer;
 }
 
+/* そのレイヤーで &trans 以外が割り当ててあるキーか（&none も割り当てありとみなす。
+ * keymap で &none にした位置は、マウスレイヤーの間は押しても何もせず、レイヤーも解除しない） */
 static bool position_is_bound(zmk_keymap_layer_id_t layer, uint32_t position) {
     const struct zmk_behavior_binding *binding =
         zmk_keymap_get_layer_binding_at_idx(layer, position);
