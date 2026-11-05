@@ -305,6 +305,9 @@
         // --- tp_: トラックパッドをキー操作に変える（自作モジュール lalapad/ の zmk,behavior-tp-keys・zmk,behavior-tp-stroke） ---
         // 押している間だけ、トラックパッドの動きを、カーソル・スクロールの代わりにキーの入力に変える
         // （押している間のタップ・ジェスチャーは捨てる）。実際の処理は lalapadgen2.dtsi のリスナーに入れた &zip_tp_keys。
+        // 送るものは子ノード（表）に書く。layers に書いたレイヤーで使い、layers のない表（base）はそれ以外のレイヤーで使う
+        // （このキーを押したときに有効なレイヤーを上から見る。表の &trans は下のレイヤーの表、最後に base を見る）。
+        // bindings は左右のトラックパッドで共通。左右で変えるときは left-bindings・right-bindings に書く。
         // tp-keys の bindings は 8 つ: 1 本指を上・下・左・右へ動かしたとき、2 本指を上・下・左・右へ動かしたとき
         // （2 本指も指を動かした向き。スクロールの向きではない）。4 つとも &trans にした側は、変えずにカーソル（スクロール）のまま。
         // 動き始めの向きで縦か横かを決め、指が触れ直す・離れるか、このキーを押す・離すまで変えない。
@@ -313,13 +316,15 @@
         tp_arrow: tp_arrow {
             compatible = "zmk,behavior-tp-keys";
             #binding-cells = <0>;
-            bindings
-                = <&kp UP>, <&kp DOWN>, <&kp LEFT>, <&kp RIGHT>
-                , <&kp PAGE_UP>, <&kp PAGE_DOWN>, <&kp HOME>, <&kp END>
-                ;
             cursor-step = <150>;
             scroll-step = <300>;
             display-name = "TP Arrow";
+            base {
+                bindings
+                    = <&kp UP>, <&kp DOWN>, <&kp LEFT>, <&kp RIGHT>
+                    , <&kp PAGE_UP>, <&kp PAGE_DOWN>, <&kp HOME>, <&kp END>
+                    ;
+            };
         };
         // ダイヤル: 1 本指で上下が音量、左右がタブ（Ctrl+Shift+Tab・Ctrl+Tab）。
         // 2 本指で上下がウィンドウの切り替え（指を上へ swap_prev・下へ swap_next。このキーを押したレイヤーが切れるか
@@ -328,15 +333,18 @@
         tp_dial: tp_dial {
             compatible = "zmk,behavior-tp-keys";
             #binding-cells = <0>;
-            bindings
-                = <&kp C_VOL_UP>, <&kp C_VOL_DN>, <&kp LC(LS(TAB))>, <&kp LC(TAB)>
-                , <&swap_prev>, <&swap_next>, <&kp LC(LG(LEFT))>, <&kp LC(LG(RIGHT))>
-                ;
             cursor-step = <300>;
             scroll-step = <300>;
             display-name = "TP Dial";
+            base {
+                bindings
+                    = <&kp C_VOL_UP>, <&kp C_VOL_DN>, <&kp LC(LS(TAB))>, <&kp LC(TAB)>
+                    , <&swap_prev>, <&swap_next>, <&kp LC(LG(LEFT))>, <&kp LC(LG(RIGHT))>
+                    ;
+            };
         };
         // 一筆書き: 押したまま 1 本指で線を描き、指（またはこのキー）を離すと、描いた向きの並びに合うものを送る。
+        // strokes（向きの並び）は全レイヤー共通。表の bindings は strokes と同じ数・同じ順番（表の書き方は上の tp-keys と同じ）。
         // ← 戻る、→ 進む、↑ 新しいタブ、↓ 再読み込み、↓→ タブを閉じる、↓← 閉じたタブを開き直す、
         // ↑← 前のタブ、↑→ 次のタブ、→↓ シークレットウィンドウ
         tp_draw: tp_draw {
@@ -353,19 +361,21 @@
                 TP_STROKE2(TP_UP, TP_RIGHT)
                 TP_STROKE2(TP_RIGHT, TP_DOWN)
                 >;
-            bindings
-                = <&kp LA(LEFT)>
-                , <&kp LA(RIGHT)>
-                , <&kp LC(T)>
-                , <&kp F5>
-                , <&kp LC(W)>
-                , <&kp LC(LS(T))>
-                , <&kp LC(LS(TAB))>
-                , <&kp LC(TAB)>
-                , <&kp LC(LS(N))>
-                ;
             stroke-step = <300>;
             display-name = "TP Draw";
+            base {
+                bindings
+                    = <&kp LA(LEFT)>
+                    , <&kp LA(RIGHT)>
+                    , <&kp LC(T)>
+                    , <&kp F5>
+                    , <&kp LC(W)>
+                    , <&kp LC(LS(T))>
+                    , <&kp LC(LS(TAB))>
+                    , <&kp LC(TAB)>
+                    , <&kp LC(LS(N))>
+                    ;
+            };
         };
 
         // --- sym_: 記号（Windows の Alt コードで送るもの。IME の状態やローマ字テーブルに関係なく入る） ---

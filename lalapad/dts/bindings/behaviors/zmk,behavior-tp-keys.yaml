@@ -1,5 +1,6 @@
 # トラックパッドの動きをキーに変える behavior（引数なし）。押している間だけ、指を動かした量 cursor-step
 # （2 本指は scroll-step）ごとに、その向きの binding を 1 回送る。押している間のタップ・ジェスチャーは捨てる。
+# 送るものは子ノード（表）に、レイヤーごと・左右のトラックパッドごとに書く（child-binding）。
 # 動き始めの向きで縦か横かを決め、指が触れ直す・離れるか、モードのキーを押す・離すまで変えない。
 # 実際に動きを変えるのは、トラックパッドのリスナーに入れた zmk,input-processor-tp-keys。
 
@@ -10,13 +11,6 @@ compatible: "zmk,behavior-tp-keys"
 include: zero_param.yaml
 
 properties:
-  bindings:
-    type: phandle-array
-    required: true
-    description: >
-      8 つ: 1 本指を上・下・左・右へ動かしたとき、2 本指を上・下・左・右へ動かしたとき（2 本指も指を動かした向き。
-      スクロールの向きではない）。1 本指（または 2 本指）の 4 つをすべて &trans にすると、そちらは変えずに
-      カーソル（スクロール）のまま通す
   cursor-step:
     type: int
     default: 150
@@ -29,3 +23,26 @@ properties:
     type: int
     default: 10
     description: 押してから離すまで、離してから次を押すまでの時間 (ms。0〜65535)
+
+child-binding:
+  description: >
+    出すものの表。bindings（left-bindings・right-bindings）は 8 つ: 1 本指を上・下・左・右へ動かしたとき、
+    2 本指を上・下・左・右へ動かしたとき（2 本指も指を動かした向き。スクロールの向きではない）。1 本指（または 2 本指）の
+    4 つがすべて &trans（下のレイヤーの表・既定の表もたどった結果）なら、そちらは変えずにカーソル（スクロール）のまま通す。
+    layers に書いたレイヤーで使う（layers を書かない表は既定。どのレイヤーの表にもないとき）。
+    このキーを押したときに有効なレイヤーを上から見て、そのレイヤーを layers に書いた表を使う。表の中の &trans は、
+    その下のレイヤーの表、最後に既定の表を見る。bindings は左右のトラックパッドで共通。left-bindings・right-bindings を
+    書くと、そちらのトラックパッドではそれを使う（bindings がないときは、left-bindings・right-bindings の両方が要る）
+  properties:
+    layers:
+      type: array
+      description: この表を使うレイヤー（keymap の宣言順の番号。#define の名前を書ける）
+    bindings:
+      type: phandle-array
+      description: 左右共通の出すもの
+    left-bindings:
+      type: phandle-array
+      description: 左のトラックパッドで出すもの（bindings の代わり）
+    right-bindings:
+      type: phandle-array
+      description: 右のトラックパッド（分割の通信で届くもの）で出すもの（bindings の代わり）

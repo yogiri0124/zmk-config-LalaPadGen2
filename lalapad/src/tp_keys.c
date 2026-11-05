@@ -10,6 +10,8 @@
  * - 速度の調整（scaler）より前で、動きの量を、速度の設定に関係なく、生の値で数える。
  * - オートマウスレイヤーより前なので、変えた動きではマウスレイヤーはオンにならない。
  *
+ * - 送るものは、モードの定義の表（子ノード）から、モードのキーを押したときに有効だったレイヤーと、動かした
+ *   トラックパッドの左右で決める（resolve。表の書き方は tp_keys.h）。右は zmk,input-split で届くトラックパッド。
  * - zmk,behavior-tp-keys: 指を動かした量 step ごとに、その向きの binding を 1 回送る（矢印キー、ダイヤルなど）。
  *   向きは指を動かした向き（2 本指も、スクロールの向きではなく指の向き）。動き始めの向きで縦か横かを決め、
  *   指が触れ直す・離れるか、モードのキーを押す・離すまで変えない（斜めに動いても混ざらない）。
@@ -106,9 +108,11 @@ struct held_mode {
     uint32_t position;
     /* 押すたびに変わる番号（同じキーを離してすぐ押し直したとき、前の押し方の分と見分ける） */
     uint32_t seq;
-    /* MOTION: 1 本指・2 本指を変えるか（その 4 つがすべて &trans なら変えずに通す） */
-    bool convert_cursor;
-    bool convert_scroll;
+    /* 押したときに有効だったレイヤー（zmk_keymap_layer_state。どの表を使うかを決める。resolve） */
+    zmk_keymap_layers_state_t layer_state;
+    /* MOTION: 左右それぞれ、1 本指・2 本指を変えるか（その 4 つがすべて &trans なら変えずに通す） */
+    bool convert_cursor[TP_KEYS_SIDES];
+    bool convert_scroll[TP_KEYS_SIDES];
 };
 
 enum axis_lock { AXIS_NONE, AXIS_X, AXIS_Y };
@@ -121,6 +125,8 @@ struct axis_acc {
 struct slot {
     /* この入力デバイスの分（NULL なら空き） */
     const struct device *dev;
+    /* 左右のどちらのトラックパッドか（TP_KEYS_SIDE_*。表の left-bindings・right-bindings のどちらを使うか） */
+    uint8_t side;
     /* INPUT_BTN_TOUCH が届いたことがあるか、いま触れているか */
     bool touch_known;
     bool touching;
@@ -196,13 +202,53 @@ static uint32_t dropped;
 
 /* ---- 以下はロックを取った状態で呼ぶ ---- */
 
+/* &trans（または送るものなし。resolve の NULL） */
 static bool is_trans(const struct zmk_behavior_binding *b) {
-    return b->behavior_dev == NULL || strcmp(b->behavior_dev, TRANS_BEHAVIOR_NAME) == 0;
+    return b == NULL || b->behavior_dev == NULL || strcmp(b->behavior_dev, TRANS_BEHAVIOR_NAME) == 0;
 }
 
-static bool any_converted(const struct zmk_behavior_binding *b) {
+/* layers に id を書いた表（なければ NULL） */
+static const struct tp_keys_table *table_for_layer(const struct tp_keys_mode *mode,
+                                                   zmk_keymap_layer_id_t id) {
+    for (size_t t = 0; t < mode->num_tables; t++) {
+        for (size_t i = 0; i < mode->tables[t].num_layers; i++) {
+            if (mode->tables[t].layers[i] == id) {
+                return &mode->tables[t];
+            }
+        }
+    }
+    return NULL;
+}
+
+/* 表の index 番目に送るもの。モードのキーを押したときに有効だったレイヤーを上から見て、そのレイヤーの表を使う。
+ * &trans なら下のレイヤーの表、最後に既定の表（layers のない表）を見る。どれも &trans なら NULL */
+static const struct zmk_behavior_binding *resolve(const struct held_mode *hm, uint8_t side,
+                                                  size_t index) {
+    const struct tp_keys_mode *mode = hm->mode;
+    const zmk_keymap_layer_id_t def = zmk_keymap_layer_default();
+    for (int i = ZMK_KEYMAP_LAYERS_LEN - 1; i >= 0; i--) {
+        const zmk_keymap_layer_id_t id = zmk_keymap_layer_index_to_id(i);
+        if (id >= 32 || (!(hm->layer_state & BIT(id)) && id != def)) {
+            continue;
+        }
+        const struct tp_keys_table *t = table_for_layer(mode, id);
+        if (t != NULL && !is_trans(&t->sides[side][index])) {
+            return &t->sides[side][index];
+        }
+    }
+    for (size_t t = 0; t < mode->num_tables; t++) {
+        const struct tp_keys_table *table = &mode->tables[t];
+        if (table->num_layers == 0 && !is_trans(&table->sides[side][index])) {
+            return &table->sides[side][index];
+        }
+    }
+    return NULL;
+}
+
+/* 上・下・左・右の 4 つ（first から）のどれかに送るものがあるか */
+static bool any_converted(const struct held_mode *hm, uint8_t side, size_t first) {
     for (int i = 0; i < TP_KEYS_DIRS; i++) {
-        if (!is_trans(&b[i])) {
+        if (resolve(hm, side, first + i) != NULL) {
             return true;
         }
     }
@@ -297,7 +343,10 @@ static bool finish_stroke(struct slot *s) {
     if (mode != NULL && s->len > 0 && !s->overflow) {
         for (size_t i = 0; i < mode->num_bindings; i++) {
             if (mode->strokes[i] == s->code) {
-                queued = enqueue(&s->stroke, &mode->bindings[i], false);
+                const struct zmk_behavior_binding *b = resolve(&s->stroke, s->side, i);
+                if (b != NULL) {
+                    queued = enqueue(&s->stroke, b, false);
+                }
                 break;
             }
         }
@@ -391,10 +440,13 @@ static void mode_pressed(const struct tp_keys_mode *mode,
             .layer = event->layer,
             .position = event->position,
             .seq = ++press_seq,
+            .layer_state = zmk_keymap_layer_state(),
         };
         if (mode->kind == TP_KEYS_KIND_MOTION) {
-            hm->convert_cursor = any_converted(&mode->bindings[TP_KEYS_CURSOR_FIRST]);
-            hm->convert_scroll = any_converted(&mode->bindings[TP_KEYS_SCROLL_FIRST]);
+            for (uint8_t side = 0; side < TP_KEYS_SIDES; side++) {
+                hm->convert_cursor[side] = any_converted(hm, side, TP_KEYS_CURSOR_FIRST);
+                hm->convert_scroll[side] = any_converted(hm, side, TP_KEYS_SCROLL_FIRST);
+            }
         }
         gen++;
         // 前のモードで動かした量で送るはずだった、まだ送っていない分は捨てる（後から押したモードが働いている間に、
@@ -498,6 +550,20 @@ static void reset_motion(struct slot *s) {
     s->scroll = (struct axis_acc){0};
 }
 
+#if IS_ENABLED(CONFIG_ZMK_INPUT_SPLIT) && IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
+#define TP_KEYS_IS_SPLIT_DEV(node_id) || dev == DEVICE_DT_GET(node_id)
+
+/* 右のトラックパッド（zmk,input-split で中継される入力デバイス）か */
+static bool is_split_dev(const struct device *dev) {
+    return false DT_FOREACH_STATUS_OKAY(zmk_input_split, TP_KEYS_IS_SPLIT_DEV);
+}
+#else
+static bool is_split_dev(const struct device *dev) {
+    ARG_UNUSED(dev);
+    return false;
+}
+#endif
+
 static struct slot *find_slot(const struct device *dev) {
     for (size_t i = 0; i < MAX_SLOTS; i++) {
         if (slots[i].dev == dev) {
@@ -507,6 +573,7 @@ static struct slot *find_slot(const struct device *dev) {
     for (size_t i = 0; i < MAX_SLOTS; i++) {
         if (slots[i].dev == NULL) {
             slots[i].dev = dev;
+            slots[i].side = is_split_dev(dev) ? TP_KEYS_SIDE_RIGHT : TP_KEYS_SIDE_LEFT;
             return &slots[i];
         }
     }
@@ -514,9 +581,9 @@ static struct slot *find_slot(const struct device *dev) {
 }
 
 /* 縦か横を決めて、step ごとにその向きの binding を送る。dx・dy は指を動かした向き（右・下が正）。
- * first は bindings の上・下・左・右の先頭。送るものを足したら true */
+ * side は左右のトラックパッド、first は表の上・下・左・右の先頭。送るものを足したら true */
 static bool convert_motion(struct axis_acc *acc, int32_t dx, int32_t dy, uint16_t step,
-                           const struct held_mode *hm, size_t first) {
+                           const struct held_mode *hm, uint8_t side, size_t first) {
     acc->x += dx;
     acc->y += dy;
 
@@ -534,10 +601,11 @@ static bool convert_motion(struct axis_acc *acc, int32_t dx, int32_t dy, uint16_
     }
 
     int32_t *v = acc->axis == AXIS_X ? &acc->x : &acc->y;
-    const struct zmk_behavior_binding *b = &hm->mode->bindings[first];
-    const struct zmk_behavior_binding *neg = acc->axis == AXIS_X ? &b[TP_KEYS_LEFT] : &b[TP_KEYS_UP];
+    // &trans（NULL）の向きは、送らずにその分を捨てる（enqueue。ほかの向きの待っている分も捨てる）
+    const struct zmk_behavior_binding *neg =
+        resolve(hm, side, first + (acc->axis == AXIS_X ? TP_KEYS_LEFT : TP_KEYS_UP));
     const struct zmk_behavior_binding *pos =
-        acc->axis == AXIS_X ? &b[TP_KEYS_RIGHT] : &b[TP_KEYS_DOWN];
+        resolve(hm, side, first + (acc->axis == AXIS_X ? TP_KEYS_RIGHT : TP_KEYS_DOWN));
     bool queued = false;
     for (int i = 0; i < MAX_STEPS_PER_EVENT && *v >= step; i++) {
         *v -= step;
@@ -640,12 +708,12 @@ static bool handle_rel(struct slot *s, const struct input_event *event, bool *qu
         return true;
     }
     if (hm != NULL && hm->mode->kind == TP_KEYS_KIND_MOTION &&
-        (is_cursor ? hm->convert_cursor : hm->convert_scroll)) {
+        (is_cursor ? hm->convert_cursor[s->side] : hm->convert_scroll[s->side])) {
         if (!coasting) {
             *queued |= is_cursor ? convert_motion(&s->cursor, dx, dy, hm->mode->cursor_step, hm,
-                                                  TP_KEYS_CURSOR_FIRST)
+                                                  s->side, TP_KEYS_CURSOR_FIRST)
                                  : convert_motion(&s->scroll, dx, dy, hm->mode->scroll_step, hm,
-                                                  TP_KEYS_SCROLL_FIRST);
+                                                  s->side, TP_KEYS_SCROLL_FIRST);
             *converted = true;
         }
         return true;
@@ -660,16 +728,6 @@ static bool handle_rel(struct slot *s, const struct input_event *event, bool *qu
 }
 
 /* KEY の入力（触れている／離れた、タップ・ジェスチャー）。捨てるなら true */
-#if WATCH_SPLIT_LINK
-#define TP_KEYS_IS_SPLIT_DEV(node_id) || dev == DEVICE_DT_GET(node_id)
-
-/* 右のトラックパッド（zmk,input-split で中継される入力デバイス）か */
-static bool is_split_dev(const struct device *dev) {
-    return false DT_FOREACH_STATUS_OKAY(zmk_input_split, TP_KEYS_IS_SPLIT_DEV);
-}
-
-#endif
-
 /* 右との接続が切れている間の、右のトラックパッドの分か */
 static bool split_slot_lost(const struct slot *s) {
 #if WATCH_SPLIT_LINK

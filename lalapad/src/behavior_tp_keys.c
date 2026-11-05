@@ -2,7 +2,8 @@
  * トラックパッドの動きをキーに変える behavior（zmk,behavior-tp-keys、引数なし）。
  *
  * 押している間だけ、トラックパッドで指を動かした量 cursor-step（2 本指は scroll-step）ごとに、
- * その向きの binding を 1 回送る。bindings は 8 つ: 1 本指を上・下・左・右、2 本指を上・下・左・右へ動かしたとき
+ * その向きの binding を 1 回送る。送るものは子ノード（表）に、レイヤーごと・左右のトラックパッドごとに書く
+ * （tp_keys.h）。表の bindings は 8 つ: 1 本指を上・下・左・右、2 本指を上・下・左・右へ動かしたとき
  * （2 本指も指を動かした向き。スクロールの向きではない）。
  * 1 本指（または 2 本指）の 4 つがすべて &trans なら、そちらは変えずにカーソル（スクロール）のまま通す。
  * 実際に動きを変えるのは、トラックパッドのリスナーに入れた zmk,input-processor-tp-keys（tp_keys.c）。
@@ -31,21 +32,22 @@ static const struct behavior_driver_api behavior_tp_keys_driver_api = {
 };
 
 #define TP_KEYS_INST(n)                                                                            \
-    BUILD_ASSERT(DT_INST_PROP_LEN(n, bindings) == TP_KEYS_BINDINGS_LEN,                            \
-                 "tp-keys: bindings needs 8 entries (1 finger up/down/left/right, "                \
-                 "2 fingers up/down/left/right)");                                                 \
+    DT_INST_FOREACH_CHILD_VARGS(n, TP_KEYS_TABLE_DEFINE, TP_KEYS_BINDINGS_LEN)                     \
+    static const struct tp_keys_table tp_keys_tables_##n[] = {                                     \
+        DT_INST_FOREACH_CHILD(n, TP_KEYS_TABLE_ENTRY)};                                            \
+    BUILD_ASSERT(ARRAY_SIZE(tp_keys_tables_##n) > 0,                                               \
+                 "tp-keys: needs at least one table (child node with bindings)");                  \
     BUILD_ASSERT(DT_INST_PROP(n, cursor_step) > 0 && DT_INST_PROP(n, cursor_step) <= UINT16_MAX,   \
                  "tp-keys: cursor-step must be 1..65535");                                         \
     BUILD_ASSERT(DT_INST_PROP(n, scroll_step) > 0 && DT_INST_PROP(n, scroll_step) <= UINT16_MAX,   \
                  "tp-keys: scroll-step must be 1..65535");                                         \
     BUILD_ASSERT(DT_INST_PROP(n, tap_ms) >= 0 && DT_INST_PROP(n, tap_ms) <= UINT16_MAX,            \
                  "tp-keys: tap-ms must be 0..65535");                                              \
-    static const struct zmk_behavior_binding tp_keys_bindings_##n[] = {LISTIFY(                    \
-        DT_INST_PROP_LEN(n, bindings), ZMK_KEYMAP_EXTRACT_BINDING, (, ), DT_DRV_INST(n))};         \
     static const struct tp_keys_mode tp_keys_mode_##n = {                                          \
         .kind = TP_KEYS_KIND_MOTION,                                                               \
-        .bindings = tp_keys_bindings_##n,                                                          \
-        .num_bindings = ARRAY_SIZE(tp_keys_bindings_##n),                                          \
+        .tables = tp_keys_tables_##n,                                                              \
+        .num_tables = ARRAY_SIZE(tp_keys_tables_##n),                                              \
+        .num_bindings = TP_KEYS_BINDINGS_LEN,                                                      \
         .cursor_step = DT_INST_PROP(n, cursor_step),                                               \
         .scroll_step = DT_INST_PROP(n, scroll_step),                                               \
         .tap_ms = DT_INST_PROP(n, tap_ms),                                                         \
