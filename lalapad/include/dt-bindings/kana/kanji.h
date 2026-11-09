@@ -12,7 +12,7 @@
 /* 番号の上限（符号が英字 2 文字なので 26 × 26 - 1。0 は使わない） */
 #define KJ_MAX_ID 675
 
-#define KJ_AU 1 /* 会（;ab） 単打面 あう */
+#define KJ_AU 1 /* 会（;ab） 単打面 あう・かい */
 #define KJ_BU 2 /* 部（;ac） 単打面 ぶ */
 #define KJ_BUN 3 /* 分（;ad） 単打面 ぶん */
 #define KJ_DERU 4 /* 出（;ae） 単打面 でる */
