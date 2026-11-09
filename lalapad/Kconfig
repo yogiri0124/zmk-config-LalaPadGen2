@@ -3,9 +3,9 @@ config LALAPAD_CENTRAL
     def_bool !ZMK_SPLIT || ZMK_SPLIT_ROLE_CENTRAL
 
 config ZMK_BEHAVIOR_KANA
-    bool "Kana romaji output behaviors (&kana_key, &kana_sw, zmk,behavior-kana-seq)"
+    bool "Kana romaji output behaviors (&kana_key, &kana_sw, zmk,behavior-kana-seq, &kanji_key)"
     default y
-    depends on LALAPAD_CENTRAL && (DT_HAS_ZMK_BEHAVIOR_KANA_ENABLED || DT_HAS_ZMK_BEHAVIOR_KANA_MODE_ENABLED || DT_HAS_ZMK_BEHAVIOR_KANA_SEQ_ENABLED)
+    depends on LALAPAD_CENTRAL && (DT_HAS_ZMK_BEHAVIOR_KANA_ENABLED || DT_HAS_ZMK_BEHAVIOR_KANA_MODE_ENABLED || DT_HAS_ZMK_BEHAVIOR_KANA_SEQ_ENABLED || DT_HAS_ZMK_BEHAVIOR_KANJI_ENABLED)
 
 config ZMK_BEHAVIOR_MOUSE_BUTTON_TOGGLE
     bool "Mouse button toggle behavior (zmk,behavior-mouse-button-toggle)"

@@ -1,4 +1,4 @@
-# このリポジトリの自作モジュール（かな入力・記号キー、マウスボタン・キーの押しっぱなし切り替え、カーソル低速、
+# このリポジトリの自作モジュール（かな入力・記号キー・漢字入力、マウスボタン・キーの押しっぱなし切り替え、カーソル低速、
 # オートマウスレイヤー、レイヤーの固定、Num Word、Alt コード入力、ウィンドウの切り替え、スクロールスナップの切り替え、
 # トラックパッドをキー操作に変えるモード、キー位置の送信、
 # トラックパッドのキー位置の出来事の中継）。
@@ -19,6 +19,7 @@ if(CONFIG_ZMK_BEHAVIOR_KANA)
     src/behavior_kana_seq.c
     src/behavior_kana_mode.c
     src/behavior_kana_sync.c
+    src/behavior_kanji.c
   )
 endif()
 target_sources_ifdef(CONFIG_ZMK_BEHAVIOR_MOUSE_BUTTON_TOGGLE app PRIVATE
