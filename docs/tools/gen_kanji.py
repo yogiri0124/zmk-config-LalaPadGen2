@@ -12,7 +12,8 @@
     python docs/tools/gen_kanji.py --check  # 作ったものが表と合っているかだけ確かめる（合っていなければ終了コード 1）
 
 表を変えたら、このスクリプトを実行し、romantable.txt を Google 日本語入力に読み込み直す。
-kanji.h が変わったとき（名前を足した・変えた・消したとき）は、ファームウェアのビルドも要る。
+kanji.h が変わったとき（名前を足した・変えた・消したとき、名前の番号を変えたとき）は、ファームウェアのビルドと書き込みも要る
+（キーボードはビルドしたときの番号の符号を送るため。ZMK Studio で番号で割り当てたキーは、Studio で番号を直す）。
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ PREFIX = ";"
 LETTERS = "abcdefghijklmnopqrstuvwxyz"
 MAX_ID = len(LETTERS) * len(LETTERS) - 1
 
+RESERVED_NAMES = {"KJ_MAX_ID"}
 NAME_RE = re.compile(r"^KJ_[A-Z0-9_]+$")
 CODE_LINE_RE = re.compile(r"^;[a-z]{2}\t")
 
@@ -63,6 +65,12 @@ def read_table() -> list[tuple[int, str, str, str]]:
         kanji_id = int(id_text)
         if not NAME_RE.match(name):
             errors.append(f"{lineno} 行目: 名前「{name}」は KJ_ で始まる英大文字・数字・_ にする")
+        elif name in RESERVED_NAMES:
+            errors.append(f"{lineno} 行目: 名前 {name} は kanji.h で使っているので使えない")
+        # 出力・メモは kanji.h のコメント（/* … */）に入るので、コメントを閉じたり入れ子にしたりする文字列は使えない
+        for label, value in (("出力", output), ("メモ", memo)):
+            if "*/" in value or "/*" in value:
+                errors.append(f"{lineno} 行目: {label}に「*/」「/*」は使えない")
         if output.strip() != output or output == "":
             errors.append(f"{lineno} 行目: 出力が空か、前後に空白がある")
         if kanji_id in seen_ids:
