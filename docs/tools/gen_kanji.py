@@ -129,7 +129,8 @@ def main() -> int:
     for path, content in outputs.items():
         current = path.read_bytes() if path.exists() else None
         data = content.encode("utf-8")
-        if current == data:
+        # 改行の違いだけなら書き換えない（git の core.autocrlf で取り出したときに CRLF になることがあるため）
+        if current is not None and current.replace(b"\r\n", b"\n") == data.replace(b"\r\n", b"\n"):
             continue
         stale.append(path)
         if not args.check:
