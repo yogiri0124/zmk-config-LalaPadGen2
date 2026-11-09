@@ -34,7 +34,7 @@ PREFIX = ";"
 LETTERS = "abcdefghijklmnopqrstuvwxyz"
 MAX_ID = len(LETTERS) * len(LETTERS) - 1
 
-RESERVED_NAMES = {"KJ_MAX_ID"}
+RESERVED_NAMES = {"KJ_MAX_ID", "KJ_COUNT"}
 NAME_RE = re.compile(r"^KJ_[A-Z0-9_]+$")
 CODE_LINE_RE = re.compile(r"^;[a-z]{2}\t")
 
