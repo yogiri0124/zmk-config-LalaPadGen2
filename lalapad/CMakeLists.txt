@@ -20,6 +20,7 @@ if(CONFIG_ZMK_BEHAVIOR_KANA)
     src/behavior_kana_mode.c
     src/behavior_kana_sync.c
     src/behavior_kanji.c
+    src/kanji_chord.c
   )
 endif()
 target_sources_ifdef(CONFIG_ZMK_BEHAVIOR_MOUSE_BUTTON_TOGGLE app PRIVATE

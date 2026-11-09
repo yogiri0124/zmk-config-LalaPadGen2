@@ -13,6 +13,8 @@
  * Alt・Win は隠さない。理由と制約は kana_output.c の先頭）。
  * 編集用のキーでは隠さない（Shift+Enter・Ctrl+Backspace・Shift+Tab などとして使えるように）。
  * キューへの登録・押しっぱなし防止・修飾キーを隠す処理・かな配列モードの状態は kana_output.c にまとめている。
+ * かなキーの同時押しで漢字を出す組み合わせ（docs/google-ime/kanji.tsv の「同時押し」）に入っているかなは、
+ * 同時押しかどうかが決まるまで送るのを預ける（kanji_chord.c）。
  */
 
 #define DT_DRV_COMPAT zmk_behavior_kana
@@ -28,6 +30,7 @@
 #include <dt-bindings/zmk/keys.h>
 
 #include "kana_output.h"
+#include "kanji_chord.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -207,6 +210,26 @@ static const struct behavior_parameter_metadata metadata = {
 
 #endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 
+/* かな 1 文字（KN_…）のローマ字を送る。&kana_key を押したときと、同時押しの判定で預けたかなが同時押しに
+ * ならなかったとき（kanji_chord.c）に使う。ctx は behavior_kana_config */
+static void send_kana(const struct zmk_behavior_binding_event *event, uint32_t id,
+                      const void *ctx) {
+    const struct behavior_kana_config *cfg = ctx;
+    // かなの前だけ、しばらく打っていなかったら IME オンを先に送る（LANGUAGE_1 はトグルではないので重ねても害がない。
+    // ime-resync-ms が 0 なら送らない）。
+    // 編集用のキーの前には送らない（IME オフのときに全角スペースなどにならないように）。
+    // IME オンを登録できなかったときは、順番を守るため、この文字は送らない（次の入力で改めて IME オンを試す）
+    const struct kana_entry *entry = &kana_table[id];
+    const int ret = kana_output_send_keys(event, entry->keys, entry->len, cfg->tap_ms,
+                                          cfg->wait_ms, cfg->ime_resync_ms > 0,
+                                          cfg->ime_resync_ms);
+    if (ret < 0) {
+        // -EBUSY / -ENOSPC: その打鍵から先は登録していない。-EAGAIN: 「離す」は自動で再試行される。
+        // いずれも同じ文字の残りは送っていない（順番が崩れないように）
+        LOG_WRN("Behavior queue busy/full (err %d), dropped (rest of) kana id %u", ret, id);
+    }
+}
+
 static int on_kana_binding_pressed(struct zmk_behavior_binding *binding,
                                    struct zmk_behavior_binding_event event) {
     const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
@@ -245,25 +268,20 @@ static int on_kana_binding_pressed(struct zmk_behavior_binding *binding,
         return ZMK_BEHAVIOR_OPAQUE;
     }
 
-    // かなの前だけ、しばらく打っていなかったら IME オンを先に送る（LANGUAGE_1 はトグルではないので重ねても害がない。
-    // ime-resync-ms が 0 なら送らない）。
-    // 編集用のキーの前には送らない（IME オフのときに全角スペースなどにならないように）。
-    // IME オンを登録できなかったときは、順番を守るため、この文字は送らない（次の入力で改めて IME オンを試す）
-    const struct kana_entry *entry = &kana_table[id];
-    const int ret = kana_output_send_keys(&event, entry->keys, entry->len, cfg->tap_ms,
-                                          cfg->wait_ms, cfg->ime_resync_ms > 0,
-                                          cfg->ime_resync_ms);
-    if (ret < 0) {
-        // -EBUSY / -ENOSPC: その打鍵から先は登録していない。-EAGAIN: 「離す」は自動で再試行される。
-        // いずれも同じ文字の残りは送っていない（順番が崩れないように）
-        LOG_WRN("Behavior queue busy/full (err %d), dropped (rest of) kana id %u", ret, id);
+    // かなキーの同時押しで漢字を出す組み合わせに入っているかなは、同時押しかどうかが決まるまで預ける
+    // （kanji_chord.c。同時押しにならなければ、後で send_kana が送る）
+    if (kanji_chord_kana_pressed(&event, id, send_kana, cfg)) {
+        return ZMK_BEHAVIOR_OPAQUE;
     }
-
+    send_kana(&event, id, cfg);
     return ZMK_BEHAVIOR_OPAQUE;
 }
 
 static int on_kana_binding_released(struct zmk_behavior_binding *binding,
                                     struct zmk_behavior_binding_event event) {
+    // 同時押しの判定で預けているかなのキーを離したら、そこで決める
+    kanji_chord_kana_released(&event);
+
     // 押しっぱなしのキーは、かな配列モードの解除中でも必ず離す
     uint32_t *slot = held_slot(event.position, false);
     if (slot != NULL && *slot != 0) {

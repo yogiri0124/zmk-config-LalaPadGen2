@@ -177,7 +177,7 @@
 | compatible | keymap での名前 | 引数 | 主なプロパティ | 働き |
 | --- | --- | --- | --- | --- |
 | `zmk,behavior-kana` | `kana_key` | 1（`KN_…` `KE_…`。`dt-bindings/kana/kana.h`） | `tap-ms` `wait-ms`（既定 5）、`ime-resync-ms`（既定 1000） | かな1文字のローマ字、Space・Enter・Backspace・Esc・Tab を送信キューで順に送る |
-| `zmk,behavior-kanji` | `kanji_key` | 1（`KJ_…`。`dt-bindings/kana/kanji.h`。1〜675） | `tap-ms` `wait-ms`（既定 5）、`ime-resync-ms`（既定 1000） | 漢字の番号の符号（`;`＋英字 2 文字）を、かなと同じ送信キューで送る（PC 側のローマ字テーブルが漢字に変える。かなモードの間だけ働く。ZMK Studio の一覧にはビルドしたときの表の漢字が出る。表は `docs/google-ime/kanji.tsv`、`docs/tools/gen_kanji.py` で作る） |
+| `zmk,behavior-kanji` | `kanji_key` | 1（`KJ_…`。`dt-bindings/kana/kanji.h`。1〜675） | `tap-ms` `wait-ms`（既定 5）、`ime-resync-ms`（既定 1000）、`chord-ms`（既定 40。かなキーの同時押しとみなす時間。0 で同時押しを使わない。最初の `kanji_key` の値を使う） | 漢字の番号の符号（`;`＋英字 2 文字）を、かなと同じ送信キューで送る（PC 側のローマ字テーブルが漢字に変える。かなモードの間だけ働く。ZMK Studio の一覧にはビルドしたときの表の漢字が出る。表は `docs/google-ime/kanji.tsv`、`docs/tools/gen_kanji.py` で作る。表の「同時押し」の列に書いたかなのキーを同時に押しても、その漢字を送る（lalapad/src/kanji_chord.c。レイヤーを使わない）） |
 | `zmk,behavior-kana-mode` | `kana_sw` | 1（`KANA_SW_ON` `KANA_SW_OFF`） | `layer`（必須。かな単打面の番号）、`sub-layers`（抜けるときにいっしょに解除するレイヤー）、`tap-ms` `wait-ms` | かなモードのオン・オフ（IME とかなレイヤーの切り替え） |
 | `zmk,behavior-kana-seq` | `ks_…` `pair_kagi` `pair_nijukagi` `pair_paren` `pair_cquote_ime` `sym_…_ime` `sym_ellipsis` | 0 | `keys`（必須。キーコードの配列）、`ime-on`、`tap-ms` `wait-ms` `ime-resync-ms` | 決まった打鍵の列を、かなと同じ送信キューで送る |
 | `zmk,behavior-alt-code` | `sym_hbar` `sym_tilde` `pair_cquote` `kj_ji` `kj_hito` `kj_hi` | 0 | `codes`（必須）、`cursor-left`、`commit-ime`、`tap-ms` `wait-ms` `ime-wait-ms` | Windows の Alt コードで文字を送る（先に並んでいるかななどの送信を待ってから送る。送信中のほかのキー入力は預かり、送り終えてから届いた順に通す。押すと Num Word を終える） |

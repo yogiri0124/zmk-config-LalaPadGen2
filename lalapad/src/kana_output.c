@@ -47,6 +47,7 @@
 #include <dt-bindings/zmk/keys.h>
 
 #include "kana_output.h"
+#include "kanji_chord.h"
 #include "layer_lock.h"
 #include "tp_positions.h"
 
@@ -164,6 +165,7 @@ static void retry_release_work_handler(struct k_work *work) {
 
 int kana_output_tap(const struct zmk_behavior_binding_event *event, uint32_t keycode,
                     uint32_t tap_ms, uint32_t wait_ms) {
+    kanji_chord_flush(); // 同時押しの判定で預かっているかなを、先に決めて並べる（追い越さないように）
     if (release_pending()) {
         return -EBUSY;
     }
@@ -184,6 +186,7 @@ int kana_output_tap(const struct zmk_behavior_binding_event *event, uint32_t key
 
 int kana_output_press(const struct zmk_behavior_binding_event *event, uint32_t keycode,
                       uint32_t tap_ms) {
+    kanji_chord_flush();
     if (release_pending()) {
         return -EBUSY;
     }
@@ -195,6 +198,7 @@ int kana_output_press(const struct zmk_behavior_binding_event *event, uint32_t k
 
 void kana_output_release(const struct zmk_behavior_binding_event *event, uint32_t keycode,
                          uint32_t wait_ms) {
+    kanji_chord_flush();
     queue_must(event, kp_binding(keycode), false, wait_ms);
 }
 
@@ -273,6 +277,7 @@ int kana_output_ime_on(const struct zmk_behavior_binding_event *event, uint32_t 
 int kana_output_send_keys(const struct zmk_behavior_binding_event *event, const uint32_t *keys,
                           size_t keys_len, uint32_t tap_ms, uint32_t wait_ms, bool ime_on,
                           uint32_t resync_ms) {
+    kanji_chord_flush();
     if (release_pending()) {
         return -EBUSY;
     }
@@ -371,6 +376,7 @@ static kana_output_marker_cb_t marker_cb;
 void kana_output_set_marker_handler(kana_output_marker_cb_t cb) { marker_cb = cb; }
 
 int kana_output_add_marker(const struct zmk_behavior_binding_event *event) {
+    kanji_chord_flush();
     // 「離す」などの再試行を待っている送信があれば、それより先に目印が処理されないよう登録しない
     if (release_pending()) {
         return -EBUSY;
@@ -497,6 +503,8 @@ void kana_mode_off(const struct zmk_behavior_binding_event *event, zmk_keymap_la
     if (off_stage != KANA_OFF_NONE) {
         return;
     }
+    // 同時押しの判定で預かっているかなは、受付を止める前に決めて並べる（IME オフより前に送る）
+    kanji_chord_flush();
 
     if (!kana_active) {
         // かな配列モードではないのに、かなのレイヤーが（Studio で割り当てた &tog などで）有効になっている:
