@@ -15,6 +15,8 @@
  * &kana_key と同じ送り方をする（同じ送信キューに並ぶので、直前のかなを追い越さない。かなと漢字が一続きの
  * 確定前の文字になる。送る間は Shift・Ctrl を隠す。しばらく打っていなかったら IME オンを先に送る）。
  * かな配列モードでないときと、解除処理中は送らずに捨てる（IME オフのときに「;ab」が入らないように）。
+ *
+ * かなキーの同時押しで漢字を出す仕組み（kanji_chord.c）も、ここの送り方（kanji_output_send）を使う。
  */
 
 #define DT_DRV_COMPAT zmk_behavior_kanji
@@ -29,6 +31,7 @@
 #include <dt-bindings/zmk/keys.h>
 
 #include "kana_output.h"
+#include "kanji_output.h"
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -46,7 +49,46 @@ struct behavior_kanji_config {
     uint32_t tap_ms;
     uint32_t wait_ms;
     uint32_t ime_resync_ms;
+    uint32_t chord_ms;
 };
+
+/* 漢字の番号 id の符号を送る（&kanji_key と、かなキーの同時押し（kanji_chord.c）から使う） */
+static int send_kanji(const struct behavior_kanji_config *cfg,
+                      const struct zmk_behavior_binding_event *event, uint32_t id) {
+    if (id == 0 || id > KJ_MAX_ID) {
+        LOG_WRN("Unknown kanji id %u", id);
+        return -EINVAL;
+    }
+
+    if (!kana_input_enabled()) {
+        // かな配列モードでない、または解除処理中（IME オフのときに符号がそのまま入らないよう捨てる）
+        LOG_DBG("Kana input disabled, dropped kanji id %u", id);
+        return -EPERM;
+    }
+
+    const uint32_t keys[] = {SEMICOLON, kanji_letters[id / 26], kanji_letters[id % 26]};
+
+    // かなと同じく、しばらく打っていなかったら IME オンを先に送る（ime-resync-ms が 0 なら送らない）。
+    // 登録できなかったときは、順番を守るため残りを送らない
+    const int ret = kana_output_send_keys(event, keys, ARRAY_SIZE(keys), cfg->tap_ms, cfg->wait_ms,
+                                          cfg->ime_resync_ms > 0, cfg->ime_resync_ms);
+    if (ret < 0) {
+        // -EBUSY / -ENOSPC: その打鍵から先は登録していない。-EAGAIN: 「離す」は自動で再試行される
+        LOG_WRN("Behavior queue busy/full (err %d), dropped (rest of) kanji id %u", ret, id);
+    }
+    return ret;
+}
+
+/* 同時押しは、最初の kanji_key（devicetree の 0 番目のインスタンス）の設定を使う */
+static const struct behavior_kanji_config *chord_config(void) {
+    return DEVICE_DT_INST_GET(0)->config;
+}
+
+int kanji_output_send(const struct zmk_behavior_binding_event *event, uint32_t id) {
+    return send_kanji(chord_config(), event, id);
+}
+
+uint32_t kanji_chord_ms(void) { return chord_config()->chord_ms; }
 
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 
@@ -82,32 +124,7 @@ static const struct behavior_parameter_metadata metadata = {
 static int on_kanji_binding_pressed(struct zmk_behavior_binding *binding,
                                     struct zmk_behavior_binding_event event) {
     const struct device *dev = zmk_behavior_get_binding(binding->behavior_dev);
-    const struct behavior_kanji_config *cfg = dev->config;
-    const uint32_t id = binding->param1;
-
-    if (id == 0 || id > KJ_MAX_ID) {
-        LOG_WRN("Unknown kanji id %u", id);
-        return ZMK_BEHAVIOR_OPAQUE;
-    }
-
-    if (!kana_input_enabled()) {
-        // かな配列モードでない、または解除処理中（IME オフのときに符号がそのまま入らないよう捨てる）
-        LOG_DBG("Kana input disabled, dropped kanji id %u", id);
-        return ZMK_BEHAVIOR_OPAQUE;
-    }
-
-    const uint32_t keys[] = {SEMICOLON, kanji_letters[id / 26], kanji_letters[id % 26]};
-
-    // かなと同じく、しばらく打っていなかったら IME オンを先に送る（ime-resync-ms が 0 なら送らない）。
-    // 登録できなかったときは、順番を守るため残りを送らない
-    const int ret = kana_output_send_keys(&event, keys, ARRAY_SIZE(keys), cfg->tap_ms,
-                                          cfg->wait_ms, cfg->ime_resync_ms > 0,
-                                          cfg->ime_resync_ms);
-    if (ret < 0) {
-        // -EBUSY / -ENOSPC: その打鍵から先は登録していない。-EAGAIN: 「離す」は自動で再試行される
-        LOG_WRN("Behavior queue busy/full (err %d), dropped (rest of) kanji id %u", ret, id);
-    }
-
+    send_kanji(dev->config, &event, binding->param1);
     return ZMK_BEHAVIOR_OPAQUE;
 }
 
@@ -128,10 +145,12 @@ static const struct behavior_driver_api behavior_kanji_driver_api = {
     KANA_CHECK_MS(n, tap_ms, 10000)                                                                \
     KANA_CHECK_MS(n, wait_ms, 10000)                                                               \
     KANA_CHECK_MS(n, ime_resync_ms, 60000)                                                         \
+    KANA_CHECK_MS(n, chord_ms, 200)                                                                \
     static const struct behavior_kanji_config behavior_kanji_config_##n = {                       \
         .tap_ms = DT_INST_PROP(n, tap_ms),                                                         \
         .wait_ms = DT_INST_PROP(n, wait_ms),                                                       \
         .ime_resync_ms = DT_INST_PROP(n, ime_resync_ms),                                           \
+        .chord_ms = DT_INST_PROP(n, chord_ms),                                                     \
     };                                                                                             \
     BEHAVIOR_DT_INST_DEFINE(n, NULL, NULL, NULL, &behavior_kanji_config_##n, POST_KERNEL,          \
                             CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &behavior_kanji_driver_api);

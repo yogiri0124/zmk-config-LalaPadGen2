@@ -452,7 +452,8 @@
         };
         // 漢字を送る（&kanji_key KJ_… など。名前と番号は lalapad/include/dt-bindings/kana/kanji.h。
         // docs/google-ime/kanji.tsv から docs/tools/gen_kanji.py で作る）。番号の符号（「;」＋英字 2 文字）を
-        // かなと同じ送信キューで送り、PC 側の Google 日本語入力のローマ字テーブルが漢字に変える。かなモードの間だけ働く
+        // かなと同じ送信キューで送り、PC 側の Google 日本語入力のローマ字テーブルが漢字に変える。かなモードの間だけ働く。
+        // kanji.tsv の「同時押し」に書いたかなのキーを同時に押しても漢字が出る（同時とみなす時間は chord-ms。既定 40 ms）
         kanji_key: kanji_key {
             compatible = "zmk,behavior-kanji";
             #binding-cells = <1>;

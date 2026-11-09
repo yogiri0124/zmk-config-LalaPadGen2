@@ -26,3 +26,10 @@ properties:
     description: >
       かな・記号・漢字をこの時間 (ms) 以上打っていなかった後の最初の 1 文字の前に IME オン (LANGUAGE_1) を送る
       （&kana_key の ime-resync-ms と同じ働き）。0 で無効
+  chord-ms:
+    type: int
+    default: 40
+    description: >
+      かなキーの同時押しで漢字を出すとき（docs/google-ime/kanji.tsv の「同時押し」の列）、同時に押したとみなす時間 (ms)。
+      最初のキーを押してから、この時間のうちに残りのキーを押すと同時押し。0 で同時押しを使わない
+      （最初の kanji_key の値を使う）。同時押しに使うかなキーは、単独で押したときもこの時間だけ待ってから送る

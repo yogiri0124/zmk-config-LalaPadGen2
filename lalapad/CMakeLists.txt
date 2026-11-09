@@ -64,3 +64,6 @@ target_sources_ifdef(CONFIG_ZMK_TP_KEYS app PRIVATE
 target_sources_ifdef(CONFIG_ZMK_KEY_STREAM app PRIVATE src/key_stream.c)
 target_sources_ifdef(CONFIG_ZMK_KEY_STREAM_USB app PRIVATE src/key_stream_usb.c)
 target_sources_ifdef(CONFIG_ZMK_KEY_STREAM_BLE app PRIVATE src/key_stream_ble.c)
+# 最後に足す: かなキーの同時押しの判定は、キー位置の出来事を見るほかの自作モジュール（オートマウスレイヤーなど）より
+# 後、ZMK のキーマップ・combos より前に見る（預かったキーの「押した」を、ほかのモジュールが見られるように）
+target_sources_ifdef(CONFIG_ZMK_BEHAVIOR_KANA app PRIVATE src/kanji_chord.c)

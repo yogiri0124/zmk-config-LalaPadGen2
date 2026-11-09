@@ -4,6 +4,7 @@
 - lalapad/include/dt-bindings/kana/kanji.h
     keymap で使う名前（`#define KJ_HI 1` など）。`&kanji_key KJ_HI` のように書く。
     あわせて、名前と出力の一覧 KANJI_LIST（ZMK Studio の一覧に漢字を出すため。Noxrix も読む）と、数 KJ_COUNT。
+    かなキーの同時押しの一覧 KANJI_CHORDS（lalapad/src/kanji_chord.c が使う）と、数 KJ_CHORD_COUNT。
 - docs/google-ime/romantable.txt の漢字の行
     符号（「;」＋英字 2 文字）を漢字に変える、Google 日本語入力のローマ字テーブルの行。
     ほかの行（かな・記号）はそのまま残し、漢字の行（「;」＋英字 2 文字の行）だけを入れ替えて末尾に並べる。
@@ -13,8 +14,9 @@
     python docs/tools/gen_kanji.py --check  # 作ったものが表と合っているかだけ確かめる（合っていなければ終了コード 1）
 
 表を変えたら、このスクリプトを実行し、romantable.txt を Google 日本語入力に読み込み直す。
-kanji.h が変わったとき（名前を足した・変えた・消したとき、名前の番号を変えたとき）は、ファームウェアのビルドと書き込みも要る
-（キーボードはビルドしたときの番号の符号を送るため。ZMK Studio で番号で割り当てたキーは、Studio で番号を直す）。
+kanji.h が変わったとき（名前を足した・変えた・消したとき、名前の番号を変えたとき、同時押しを変えたとき）は、
+ファームウェアのビルドと書き込みも要る（キーボードはビルドしたときの番号の符号と同時押しの組み合わせを使うため。
+ZMK Studio で番号で割り当てたキーは、Studio で番号を直す）。
 """
 
 from __future__ import annotations
@@ -22,33 +24,63 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 TABLE = ROOT / "docs" / "google-ime" / "kanji.tsv"
 HEADER = ROOT / "lalapad" / "include" / "dt-bindings" / "kana" / "kanji.h"
 ROMANTABLE = ROOT / "docs" / "google-ime" / "romantable.txt"
+KANA_H = ROOT / "lalapad" / "include" / "dt-bindings" / "kana" / "kana.h"
+KANA_C = ROOT / "lalapad" / "src" / "behavior_kana.c"
 
 # lalapad/src/behavior_kanji.c と合わせる（符号は「;」＋英字 2 文字。番号 0 は使わない）
 PREFIX = ";"
 LETTERS = "abcdefghijklmnopqrstuvwxyz"
 MAX_ID = len(LETTERS) * len(LETTERS) - 1
+# lalapad/src/kanji_chord.c の CHORD_MAX_KEYS と合わせる
+CHORD_MIN_KEYS = 2
+CHORD_MAX_KEYS = 3
 
-RESERVED_NAMES = {"KJ_MAX_ID", "KJ_COUNT"}
+RESERVED_NAMES = {"KJ_MAX_ID", "KJ_COUNT", "KJ_CHORD_COUNT"}
 NAME_RE = re.compile(r"^KJ_[A-Z0-9_]+$")
 CODE_LINE_RE = re.compile(r"^;[a-z]{2}\t")
+
+
+@dataclass
+class Row:
+    kanji_id: int
+    name: str
+    output: str
+    chord: list[str]  # かなの名前（KN_…。ID の小さい順）。同時押しがなければ空
+    chord_text: str  # 表に書いた同時押し（例: か+く）
+    memo: str
 
 
 def code_of(kanji_id: int) -> str:
     return PREFIX + LETTERS[kanji_id // len(LETTERS)] + LETTERS[kanji_id % len(LETTERS)]
 
 
-def read_table() -> list[tuple[int, str, str, str]]:
-    """表を読む。戻り値は (番号, 名前, 出力, メモ) の番号順の一覧。誤りがあれば止める"""
+def read_kana() -> tuple[dict[str, str], dict[str, int]]:
+    """かなの文字 → 名前（KN_…）と、名前 → ID。behavior_kana.c の KANA_LIST と kana.h から読む"""
+    ids = {m[1]: int(m[2]) for m in re.finditer(r"#define (KN_\w+) (\d+)", KANA_H.read_text(encoding="utf-8"))}
+    names = {}
+    for m in re.finditer(r'ENTRY\((KN_\w+), "([^"]+)"', KANA_C.read_text(encoding="utf-8")):
+        if m[1] != "KN_MAX_ID" and m[1] in ids:
+            names[m[2]] = m[1]
+    if not names:
+        sys.exit(f"{KANA_C.relative_to(ROOT)} からかなの一覧を読めなかった")
+    return names, ids
+
+
+def read_table() -> list[Row]:
+    """表を読む。番号順の一覧を返す。誤りがあれば止める"""
+    kana_names, kana_ids = read_kana()
     errors: list[str] = []
-    rows: list[tuple[int, str, str, str]] = []
+    rows: list[Row] = []
     seen_ids: dict[int, int] = {}
     seen_names: dict[str, int] = {}
+    seen_chords: dict[tuple[str, ...], int] = {}
     text = TABLE.read_text(encoding="utf-8-sig")
     for lineno, raw in enumerate(text.splitlines(), start=1):
         line = raw.rstrip("\r")
@@ -59,7 +91,8 @@ def read_table() -> list[tuple[int, str, str, str]]:
             errors.append(f"{lineno} 行目: 番号・名前・出力の 3 つが要る（タブ区切り）")
             continue
         id_text, name, output = cols[0].strip(), cols[1].strip(), cols[2]
-        memo = "\t".join(cols[3:]).strip()
+        chord_text = cols[3].strip() if len(cols) > 3 else ""
+        memo = "\t".join(cols[4:]).strip()
         if not id_text.isdigit() or not 1 <= int(id_text) <= MAX_ID:
             errors.append(f"{lineno} 行目: 番号「{id_text}」は 1〜{MAX_ID} の整数にする")
             continue
@@ -80,16 +113,41 @@ def read_table() -> list[tuple[int, str, str, str]]:
             errors.append(f"{lineno} 行目: 名前 {name} は {seen_names[name]} 行目と同じ")
         seen_ids.setdefault(kanji_id, lineno)
         seen_names.setdefault(name, lineno)
-        rows.append((kanji_id, name, output, memo))
+
+        chord: list[str] = []
+        if chord_text:
+            parts = [p.strip() for p in chord_text.split("+")]
+            unknown = [p for p in parts if p not in kana_names]
+            if unknown:
+                errors.append(f"{lineno} 行目: 同時押し「{chord_text}」の「{'」「'.join(unknown)}」はかなのキーにない"
+                              "（かなを + でつなぐ。例: か+く）")
+            elif not CHORD_MIN_KEYS <= len(parts) <= CHORD_MAX_KEYS:
+                errors.append(f"{lineno} 行目: 同時押し「{chord_text}」は {CHORD_MIN_KEYS}〜{CHORD_MAX_KEYS} 個のかなにする")
+            elif len(set(parts)) != len(parts):
+                errors.append(f"{lineno} 行目: 同時押し「{chord_text}」に同じかなが 2 回ある")
+            else:
+                chord = sorted((kana_names[p] for p in parts), key=lambda n: kana_ids[n])
+                key = tuple(chord)
+                if key in seen_chords:
+                    errors.append(f"{lineno} 行目: 同時押し「{chord_text}」は {seen_chords[key]} 行目と同じ組み合わせ")
+                seen_chords.setdefault(key, lineno)
+        rows.append(Row(kanji_id, name, output, chord, chord_text, memo))
     if errors:
         sys.exit(f"{TABLE.relative_to(ROOT)} に誤りがある:\n" + "\n".join(errors))
-    return sorted(rows)
+    return sorted(rows, key=lambda r: r.kanji_id)
 
 
-def make_header(rows: list[tuple[int, str, str, str]]) -> str:
+def macro_lines(name: str, entries: list[str]) -> list[str]:
+    """関数形式のマクロ name を、1 行に 1 つずつ entries を並べて書く（空なら中身なし）"""
+    if not entries:
+        return [f"#define {name}"]
+    return [f"#define {name} \\"] + [f"    {e} \\" for e in entries[:-1]] + [f"    {entries[-1]}"]
+
+
+def make_header(rows: list[Row]) -> str:
     lines = [
         "/*",
-        " * 漢字入力 (&kanji_key) の漢字の番号。",
+        " * 漢字入力 (&kanji_key・かなキーの同時押し) の漢字の番号。",
         " * このファイルは docs/tools/gen_kanji.py が docs/google-ime/kanji.tsv から作る。直接書き換えないこと。",
         " * keymap では `&kanji_key KJ_…` のように使う。どの番号がどの漢字になるかは、PC 側のローマ字テーブル",
         " * （docs/google-ime/romantable.txt）で決まる（キーボードは番号の符号「;」＋英字 2 文字を送るだけ）。",
@@ -97,26 +155,39 @@ def make_header(rows: list[tuple[int, str, str, str]]) -> str:
         "",
         "#pragma once",
         "",
+        "#include <dt-bindings/kana/kana.h>",
+        "",
         "/* 番号の上限（符号が英字 2 文字なので 26 × 26 - 1。0 は使わない） */",
         f"#define KJ_MAX_ID {MAX_ID}",
     ]
     if rows:
         lines.append("")
-        for kanji_id, name, output, memo in rows:
-            comment = f"{output}（{code_of(kanji_id)}）" + (f" {memo}" if memo else "")
-            lines.append(f"#define {name} {kanji_id} /* {comment} */")
+        for r in rows:
+            comment = f"{r.output}（{code_of(r.kanji_id)}）"
+            if r.chord_text:
+                comment += f" 同時押し {r.chord_text}"
+            if r.memo:
+                comment += f" {r.memo}"
+            lines.append(f"#define {r.name} {r.kanji_id} /* {comment} */")
     lines += [
         "",
         "/* 表にある漢字の数と、名前・出力の一覧（behavior_kanji.c が ZMK Studio の一覧を作るのに使う。Noxrix も読む）。",
         " * 出力を変えただけなら、ファームウェアを書き換えなくても入る漢字は変わるが、Studio に出る文字は書き換えるまで前のまま */",
         f"#define KJ_COUNT {len(rows)}",
     ]
-    if rows:
-        entries = [f'    ENTRY({name}, "{c_string(output)}")' for _, name, output, _ in rows]
-        lines.append("#define KANJI_LIST(ENTRY) \\")
-        lines += [entry + " \\" for entry in entries[:-1]] + [entries[-1]]
-    else:
-        lines.append("#define KANJI_LIST(ENTRY)")
+    lines += macro_lines("KANJI_LIST(ENTRY)", [f'ENTRY({r.name}, "{c_string(r.output)}")' for r in rows])
+    chords = [r for r in rows if r.chord]
+    lines += [
+        "",
+        "/* かなキーの同時押しの数と一覧（lalapad/src/kanji_chord.c が使う。Noxrix も読む）。",
+        f" * CHORD(漢字の名前, かなの数, かな 1, かな 2, かな 3)。かなは ID の小さい順、使わない分は 0 */",
+        f"#define KJ_CHORD_COUNT {len(chords)}",
+    ]
+    entries = []
+    for r in chords:
+        kana = r.chord + ["0"] * (CHORD_MAX_KEYS - len(r.chord))
+        entries.append(f"CHORD({r.name}, {len(r.chord)}, {', '.join(kana)})")
+    lines += macro_lines("KANJI_CHORDS(CHORD)", entries)
     return "\n".join(lines) + "\n"
 
 
@@ -125,7 +196,7 @@ def c_string(text: str) -> str:
     return text.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def make_romantable(rows: list[tuple[int, str, str, str]]) -> str:
+def make_romantable(rows: list[Row]) -> str:
     text = ROMANTABLE.read_text(encoding="utf-8")
     kept: list[str] = []
     errors: list[str] = []
@@ -140,7 +211,7 @@ def make_romantable(rows: list[tuple[int, str, str, str]]) -> str:
         kept.append(line)
     if errors:
         sys.exit(f"{ROMANTABLE.relative_to(ROOT)} に誤りがある:\n" + "\n".join(errors))
-    kept += [f"{code_of(kanji_id)}\t{output}" for kanji_id, _, output, _ in rows]
+    kept += [f"{code_of(r.kanji_id)}\t{r.output}" for r in rows]
     return "\r\n".join(kept) + "\r\n"
 
 
@@ -166,7 +237,8 @@ def main() -> int:
         verb = "表と合っていない" if args.check else "書き換えた"
         print(f"{verb}: {path.relative_to(ROOT)}")
     if not stale:
-        print(f"表と合っている（漢字 {len(rows)} 個）")
+        chords = sum(1 for r in rows if r.chord)
+        print(f"表と合っている（漢字 {len(rows)} 個、同時押し {chords} 個）")
     return 1 if args.check and stale else 0
 
 
