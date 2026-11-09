@@ -3,6 +3,7 @@
 
 - lalapad/include/dt-bindings/kana/kanji.h
     keymap で使う名前（`#define KJ_HI 1` など）。`&kanji_key KJ_HI` のように書く。
+    あわせて、名前と出力の一覧 KANJI_LIST（ZMK Studio の一覧に漢字を出すため。Noxrix も読む）と、数 KJ_COUNT。
 - docs/google-ime/romantable.txt の漢字の行
     符号（「;」＋英字 2 文字）を漢字に変える、Google 日本語入力のローマ字テーブルの行。
     ほかの行（かな・記号）はそのまま残し、漢字の行（「;」＋英字 2 文字の行）だけを入れ替えて末尾に並べる。
@@ -104,7 +105,24 @@ def make_header(rows: list[tuple[int, str, str, str]]) -> str:
         for kanji_id, name, output, memo in rows:
             comment = f"{output}（{code_of(kanji_id)}）" + (f" {memo}" if memo else "")
             lines.append(f"#define {name} {kanji_id} /* {comment} */")
+    lines += [
+        "",
+        "/* 表にある漢字の数と、名前・出力の一覧（behavior_kanji.c が ZMK Studio の一覧を作るのに使う。Noxrix も読む）。",
+        " * 出力を変えただけなら、ファームウェアを書き換えなくても入る漢字は変わるが、Studio に出る文字は書き換えるまで前のまま */",
+        f"#define KJ_COUNT {len(rows)}",
+    ]
+    if rows:
+        entries = [f'    ENTRY({name}, "{c_string(output)}")' for _, name, output, _ in rows]
+        lines.append("#define KANJI_LIST(ENTRY) \\")
+        lines += [entry + " \\" for entry in entries[:-1]] + [entries[-1]]
+    else:
+        lines.append("#define KANJI_LIST(ENTRY)")
     return "\n".join(lines) + "\n"
+
+
+def c_string(text: str) -> str:
+    """C の文字列リテラルの中身にする（\\ と " を逃がす）"""
+    return text.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def make_romantable(rows: list[tuple[int, str, str, str]]) -> str:
