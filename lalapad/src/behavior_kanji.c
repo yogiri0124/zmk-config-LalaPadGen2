@@ -3,8 +3,9 @@
  *
  * `&kanji_key KJ_…` のように漢字の番号（1〜KJ_MAX_ID）を受け取り、その番号の「符号」をローマ字と同じく
  * キーの打鍵として送る。符号を漢字に変えるのは PC 側の IME のローマ字テーブル（Google 日本語入力）で、
- * キーボードは漢字そのものを知らない（どの番号がどの漢字かは docs/google-ime/kanji.tsv に書き、
- * docs/tools/gen_kanji.py でローマ字テーブルと dt-bindings/kana/kanji.h を作る）。
+ * キーボードは漢字を送らない（どの番号がどの漢字かは docs/google-ime/kanji.tsv に書き、
+ * docs/tools/gen_kanji.py でローマ字テーブルと dt-bindings/kana/kanji.h を作る。kanji.h の漢字は、
+ * ZMK Studio の一覧に名前として出すためだけに使う）。
  * そのため、番号に対応する漢字を変えただけなら、ファームウェアの書き換えは要らない（ローマ字テーブルを PC に
  * 読み込み直すだけ）。名前（KJ_…）の番号を変えたときは、ビルドしたときの番号の符号を送るので、書き換えが要る。
  *
@@ -49,13 +50,22 @@ struct behavior_kanji_config {
 
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 
-/* ZMK Studio からは番号で割り当てる（どの番号がどの漢字かは PC 側のローマ字テーブルで決まり、
- * キーボードは知らないため） */
+/* ZMK Studio の一覧。表に漢字があれば、表の漢字を名前に出して選べるようにする（kanji.h の KANJI_LIST。
+ * 出す文字はビルドしたときの表のもの。実際に入る漢字は PC 側のローマ字テーブルで決まる）。
+ * 表が空のときは、番号の範囲で割り当てられるようにする */
+#if KJ_COUNT > 0
+#define KANJI_METADATA_ENTRY(id, name)                                                             \
+    {.display_name = name, .value = id, .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE},
+
+static const struct behavior_parameter_value_metadata param_values[] = {
+    KANJI_LIST(KANJI_METADATA_ENTRY)};
+#else
 static const struct behavior_parameter_value_metadata param_values[] = {{
     .display_name = "漢字の番号",
     .range = {.min = 1, .max = KJ_MAX_ID},
     .type = BEHAVIOR_PARAMETER_VALUE_TYPE_RANGE,
 }};
+#endif
 
 static const struct behavior_parameter_metadata_set param_metadata_set[] = {{
     .param1_values = param_values,
