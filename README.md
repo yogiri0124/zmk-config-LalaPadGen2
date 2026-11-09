@@ -445,6 +445,18 @@ Racket 配列は、親指に文字（R）を置く配列です。
 | かな | `&kana_key KN_…` | `KN_A`（あ）、`KN_KA`（か）、`KN_XTU`（っ） |
 | Space・Enter・Backspace・Esc・Tab | `&kana_key KE_…` | `KE_SPACE`、`KE_ENTER`、`KE_BSPC`、`KE_ESC`、`KE_TAB`（押しっぱなしで連続入力できる。単打の面の Esc・Tab の同時押しはこれを使う） |
 | 記号・カッコ | `&ks_…` `&sym_…` `&pair_…` | `ks_touten`（、）、`sym_ellipsis`（…）、`pair_kagi`（「」） |
+| 漢字 | `&kanji_key KJ_…` | [漢字入力](#漢字入力)（今はどのキーにも置いていない） |
+
+### 漢字入力
+
+よく使う漢字だけを、変換せずに 1 キーで入れるための仕組みです（部分漢直）。今は仕組みだけで、漢字はまだどのキーにも置いていません。
+
+- キーボードは漢字そのものを知りません。`&kanji_key` のキーは、漢字の番号を「符号」（`;` と英字 2 文字。番号 1 なら `;ab`）にして、かなと同じ列で送ります。符号を漢字に変えるのは、PC 側の Google 日本語入力のローマ字テーブルです（[docs/google-ime/](docs/google-ime/README.md)）。
+- かなと同じ列で送るので、直前のかなを追い越さず、かなと漢字が一続きの確定前の文字になります（例: 「日」のキーと「よう」で「日よう」）。
+- かなモードの間だけ働きます（かなモードでないときは何もしません。IME オフのときに `;ab` が入らないように）。
+- どの番号をどの漢字にするかは [docs/google-ime/kanji.tsv](docs/google-ime/kanji.tsv) に書き、`python docs/tools/gen_kanji.py` を実行します。ローマ字テーブル（`romantable.txt`）の漢字の行と、keymap で使う名前（`lalapad/include/dt-bindings/kana/kanji.h` の `KJ_…`）ができます。
+- 漢字だけを変えたときは、ローマ字テーブルを PC に読み込み直すだけです（ファームウェアの書き込みは要りません）。名前を足した・変えたときは、ファームウェアのビルドも要ります。
+- ZMK Studio からは、番号（1〜675）で割り当てます。
 
 ## キーマップを変える
 

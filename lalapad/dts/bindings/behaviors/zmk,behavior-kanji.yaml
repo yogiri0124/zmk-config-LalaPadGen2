@@ -1,0 +1,28 @@
+# 漢字入力 behavior (&kanji_key)。漢字の番号 (dt-bindings/kana/kanji.h の KJ_…。1〜675) を受け取り、
+# その番号の符号（「;」＋英字 2 文字）を送る。符号を漢字に変えるのは PC 側の IME のローマ字テーブル
+# （docs/google-ime/kanji.tsv から docs/tools/gen_kanji.py で作る）。
+# &kana_key と同じ送信キューで送り、かな配列モードでないときは捨てる。
+
+# マクロ（zmk,behavior-macro）の中には置かない（マクロを送る behavior queue の処理の中から、さらに同じキューに
+# 並べることになり、待ち時間が効かず、処理が入れ子になってスタックを使う）。
+description: Kanji code output behavior (converted by the host IME romaji table)
+
+compatible: "zmk,behavior-kanji"
+
+include: one_param.yaml
+
+properties:
+  tap-ms:
+    type: int
+    default: 5
+    description: 1キーを押してから離すまでの時間 (ms)
+  wait-ms:
+    type: int
+    default: 5
+    description: キーを離してから次のキーを押すまでの時間 (ms)
+  ime-resync-ms:
+    type: int
+    default: 1000
+    description: >
+      かな・記号・漢字をこの時間 (ms) 以上打っていなかった後の最初の 1 文字の前に IME オン (LANGUAGE_1) を送る
+      （&kana_key の ime-resync-ms と同じ働き）。0 で無効

@@ -6,6 +6,7 @@
 #include <dt-bindings/zmk/outputs.h>
 #include <dt-bindings/zmk/pointing.h>
 #include <behaviors/kana.dtsi>
+#include <dt-bindings/kana/kanji.h>
 #include <behaviors/mouse_button_toggle.dtsi>
 #include <dt-bindings/lalapad/cursor_slow.h>
 #include <dt-bindings/lalapad/tp_keys.h>
@@ -448,6 +449,14 @@
             compatible = "zmk,behavior-kana";
             #binding-cells = <1>;
             display-name = "Kana";
+        };
+        // 漢字を送る（&kanji_key KJ_… など。名前と番号は lalapad/include/dt-bindings/kana/kanji.h。
+        // docs/google-ime/kanji.tsv から docs/tools/gen_kanji.py で作る）。番号の符号（「;」＋英字 2 文字）を
+        // かなと同じ送信キューで送り、PC 側の Google 日本語入力のローマ字テーブルが漢字に変える。かなモードの間だけ働く
+        kanji_key: kanji_key {
+            compatible = "zmk,behavior-kanji";
+            #binding-cells = <1>;
+            display-name = "Kanji";
         };
         // かな配列モードのオン／オフ（&kana_sw KANA_SW_ON / KANA_SW_OFF）。layer はかな単打面。
         // sub-layers は、かなモードを抜けるときにいっしょに解除するレイヤー（親指を押したまま抜けても残らないように）
