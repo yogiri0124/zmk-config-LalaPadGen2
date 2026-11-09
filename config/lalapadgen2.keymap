@@ -778,7 +778,7 @@
             &kp Q  &kp W  &kp E  &kp R  &kp T  &none  &none  &none  &none  &none
             &kp A  &kp S  &kp D  &kp F  &kp G  &none  &none  &none  &none  &none
             &kp Z  &kp X  &kp C  &kp V  &kp B  &none  &none  &none  &none  &none
-            &kp LWIN  &kp LANGUAGE_2  &kp LANGUAGE_1  &lt LEFT_HAND4_LAYER SPACE  &mo 11  &mo 12  &none  &none  &none  &none  &none  &none
+            &kp LWIN  &kp LANGUAGE_2  &kp LANGUAGE_1  &lt LEFT_HAND4_LAYER SPACE  &mo LEFT_HAND2_LAYER  &mo LEFT_HAND3_LAYER  &none  &none  &none  &none  &none  &none
             &none  &trans  &trans  &trans  &trans  &none  &none  &none  &none  &none
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
