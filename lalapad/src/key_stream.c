@@ -356,7 +356,8 @@ static void build_pressed_list(uint8_t *report) {
 /* 有効なレイヤーのレポートを作る */
 static void build_layers(uint8_t *report) {
     report[1] = MSG_LAYERS;
-    sys_put_le32(zmk_keymap_layer_state(), &report[2]);
+    // Default は ZMK の状態のビットには入らず、常に有効として扱われるので、足して送る
+    sys_put_le32(zmk_keymap_layer_state() | BIT(zmk_keymap_layer_default()), &report[2]);
     report[6] = ZMK_KEYMAP_LAYERS_LEN;
     sys_put_le32((uint32_t)k_uptime_get(), &report[7]);
 }
@@ -390,6 +391,10 @@ static void send_work_handler(struct k_work *work) {
     report[0] = KEY_STREAM_PROTOCOL_VERSION;
     // 送る順: 状態 → レイヤー → 送り待ちのキー → 押されているキーの一覧（一覧は、それより前のキーを送り終えた時点のもの）。
     // レイヤーはキーより先に送る（アプリが今のレイヤーを早く出せるように。送るのは作った時点の状態）
+    // レイヤーを頼まれていなければ、前に頼まれていた分（止める前・種類を変える前のもの、見切った送り直し）は送らない
+    if (!(stream_mask & STREAM_LAYERS)) {
+        layers_sent = layers_requested;
+    }
     uint8_t kind;
     uint32_t gen = 0;
     uint16_t first_seq = 0;
@@ -528,7 +533,10 @@ static void flight_work_handler(struct k_work *work) {
             if (in_flight_kind == MSG_STATUS) {
                 status_requested++;
             } else if (in_flight_kind == MSG_LAYERS) {
-                layers_requested++;
+                // 今もレイヤーを頼まれているときだけ（種類を変えて始め直した後に、前の分を送り直さない）
+                if (stream_mask & STREAM_LAYERS) {
+                    layers_requested++;
+                }
             } else {
                 pressed_list_requested++;
             }
