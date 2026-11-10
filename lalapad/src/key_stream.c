@@ -3,7 +3,8 @@
  *
  * キーが押された／離されたときに、その位置番号と押した／離したを、raw HID で PC に送る。
  * 右手側のキーも、親機（左）にはほかのキーと同じ zmk_position_state_changed として届くので、
- * 左右を区別せずにまとめて送る。どの文字が出たか・どのレイヤーかは送らない。
+ * 左右を区別せずにまとめて送る。どの文字が出たかは送らない。頼まれたら、今有効なレイヤーも送る
+ * （アプリが今のレイヤーを出せるように。キーの押し離しからは、トラックパッドで入るオートマウスレイヤーなどが分からないため）。
  *
  * 送るのは、PC のアプリから「開始」を受けている間だけ（USB でも Bluetooth でも、OS の HID の仕組みが
  * 常にデータを読むので、キーボード側からはアプリが開いているかどうかが分からないため）。
@@ -33,10 +34,14 @@
  *               キーの列の順番どおりに（それより前のキーを送り終えてから）送るので、通し番号は前のキーの続きになる。
  *               「開始」したとき、問い合わせに答えるとき、送り待ちがあふれてキーを捨てたとき、
  *               送り終わったの知らせが来ないキー・一覧のレポートを見切ったときに送る
+ *   0x04 レイヤー:  [2..5] 有効なレイヤー（u32 LE。レイヤー ID ごとのビット。Default と条件付きレイヤーを含む）
+ *               [6] レイヤーの数  [7..10] 作った時刻（起動してからのミリ秒、u32 LE）
+ *               開始で bit2 を頼んだときだけ。「開始」したとき、問い合わせに答えるとき、レイヤーが変わったとき、
+ *               送り終わったの知らせが来ないまま見切ったときに送る（そのときの状態。続けて変わったら最後のものだけ）
  * PC → キーボード
- *   0x81 開始・生存確認: [2] 送ってほしい種類（bit0: キー、bit1: トラックパッドのタップ・ジェスチャー）
+ *   0x81 開始・生存確認: [2] 送ってほしい種類（bit0: キー、bit1: トラックパッドのタップ・ジェスチャー、bit2: レイヤー）
  *   0x82 終了
- *   0x83 状態の問い合わせ（送っている間だけ答える。状態と、押されているキーの一覧を送る）
+ *   0x83 状態の問い合わせ（送っている間だけ答える。状態と、押されているキーの一覧（レイヤーを頼んでいればレイヤーも）を送る）
  * 知らない種類は無視する（あとで種類を足しても、古いアプリ・ファームウェアと組み合わせられる）。
  *
  * ふだんの入力に影響しないよう、キーの出来事は見るだけで止めない。送る処理と命令の処理は専用の
@@ -57,8 +62,10 @@
 #include <zmk/endpoints.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/endpoint_changed.h>
+#include <zmk/events/layer_state_changed.h>
 #include <zmk/events/position_state_changed.h>
 #include <zmk/hid.h>
+#include <zmk/keymap.h>
 #include <zmk/matrix.h>
 
 #if IS_ENABLED(CONFIG_ZMK_KEY_STREAM_BLE)
@@ -87,13 +94,15 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define MSG_KEYS 0x01
 #define MSG_STATUS 0x02
 #define MSG_PRESSED 0x03
+#define MSG_LAYERS 0x04
 #define CMD_START 0x81
 #define CMD_STOP 0x82
 #define CMD_STATUS 0x83
 
 #define STREAM_KEYS BIT(0)
 #define STREAM_TRACKPAD BIT(1)
-#define STREAM_ALL (STREAM_KEYS | STREAM_TRACKPAD)
+#define STREAM_LAYERS BIT(2)
+#define STREAM_ALL (STREAM_KEYS | STREAM_TRACKPAD | STREAM_LAYERS)
 
 #define FLAG_PRESSED BIT(0)
 #define FLAG_SNAPSHOT BIT(1)
@@ -143,6 +152,7 @@ const size_t key_stream_report_desc_size = sizeof(key_stream_report_desc);
 BUILD_ASSERT(5 + 6 * KEYS_PER_REPORT <= KEY_STREAM_REPORT_SIZE, "keys report too large");
 BUILD_ASSERT(ZMK_KEYMAP_LEN <= 255, "positions must fit in one byte");
 BUILD_ASSERT(5 + (ZMK_KEYMAP_LEN + 7) / 8 <= KEY_STREAM_REPORT_SIZE, "pressed list report too large");
+BUILD_ASSERT(ZMK_KEYMAP_LAYERS_LEN <= 32, "layers must fit in 32 bits");
 
 /* ---- 状態（lock で守る。キーの出来事・PC からの命令・送り終わりの知らせ・右とのつながりの変化は、
  *      それぞれ別のスレッドから届くため） ---- */
@@ -188,6 +198,9 @@ static uint32_t status_sent;
 /* 押されているキーの一覧も同じく回数で持つ（送り待ちのキーを送り終えてから送る） */
 static uint32_t pressed_list_requested;
 static uint32_t pressed_list_sent;
+/* 有効なレイヤーも同じく回数で持つ（送るときの状態を送る。続けて変わっても、送るのは最後の状態の1つだけ） */
+static uint32_t layers_requested;
+static uint32_t layers_sent;
 /* 送っている最中のレポートがある（送り終わるまで次を送らない）。送るたびに番号を付け、「送り終わった」は
  * その番号で照合する（送る先を変えた後や見切った後に、遅れて届いた「送り終わった」と取り違えないように）。
  * 送った送り道と接続も覚えておき、その送り道が切れたら待つのをやめる。接続は見分ける（ポインタを比べる）
@@ -278,6 +291,7 @@ static struct bt_conn *stop_locked(void) {
     events_count = 0;
     status_sent = status_requested;
     pressed_list_sent = pressed_list_requested;
+    layers_sent = layers_requested;
     retrying = false;
     return conn;
 }
@@ -339,6 +353,14 @@ static void build_pressed_list(uint8_t *report) {
     }
 }
 
+/* 有効なレイヤーのレポートを作る */
+static void build_layers(uint8_t *report) {
+    report[1] = MSG_LAYERS;
+    sys_put_le32(zmk_keymap_layer_state(), &report[2]);
+    report[6] = ZMK_KEYMAP_LAYERS_LEN;
+    sys_put_le32((uint32_t)k_uptime_get(), &report[7]);
+}
+
 /* キーのレポートを作る。入れた件数を返す */
 static size_t build_keys(uint8_t *report) {
     const size_t n = MIN(events_count, KEYS_PER_REPORT);
@@ -366,7 +388,8 @@ static void send_work_handler(struct k_work *work) {
     }
     memset(report, 0, sizeof(report));
     report[0] = KEY_STREAM_PROTOCOL_VERSION;
-    // 送る順: 状態 → 送り待ちのキー → 押されているキーの一覧（一覧は、それより前のキーを送り終えた時点のもの）
+    // 送る順: 状態 → レイヤー → 送り待ちのキー → 押されているキーの一覧（一覧は、それより前のキーを送り終えた時点のもの）。
+    // レイヤーはキーより先に送る（アプリが今のレイヤーを早く出せるように。送るのは作った時点の状態）
     uint8_t kind;
     uint32_t gen = 0;
     uint16_t first_seq = 0;
@@ -375,6 +398,10 @@ static void send_work_handler(struct k_work *work) {
         build_status(report);
         kind = MSG_STATUS;
         gen = status_requested;
+    } else if (layers_requested != layers_sent) {
+        build_layers(report);
+        kind = MSG_LAYERS;
+        gen = layers_requested;
     } else if (events_count > 0) {
         first_seq = events[events_head].seq;
         n = build_keys(report);
@@ -421,6 +448,8 @@ static void send_work_handler(struct k_work *work) {
         // 送り始めた分を取り除く（送っている間にあふれて先頭が進んでいたら、その分は数えない）
         if (kind == MSG_STATUS) {
             status_sent = gen;
+        } else if (kind == MSG_LAYERS) {
+            layers_sent = gen;
         } else if (kind == MSG_PRESSED) {
             pressed_list_sent = gen;
         } else {
@@ -484,7 +513,7 @@ void key_stream_sent(uint32_t id) {
 }
 
 /* 送り終わったの知らせが来ないまま時間が過ぎた: そのレポートを見切って次へ進む（専用のワークキュー）。
- * 見切ったレポートは届いていないかもしれないので、状態ならもう一度送り、キー・一覧なら押されているキーの一覧を
+ * 見切ったレポートは届いていないかもしれないので、状態・レイヤーならもう一度送り、キー・一覧なら押されているキーの一覧を
  * 送り直す（キーが届かなければ、アプリでは通し番号が飛ぶ）。後から「送り終わった」が届いても、番号が違うので無視する。
  * 前のレポートの分の予約が、次のレポートを送った後に動くこともある（予約し直しても、すでに並んだ処理は
  * 取り消されない）ので、見切る時刻も確かめる */
@@ -498,6 +527,8 @@ static void flight_work_handler(struct k_work *work) {
         if (streaming) {
             if (in_flight_kind == MSG_STATUS) {
                 status_requested++;
+            } else if (in_flight_kind == MSG_LAYERS) {
+                layers_requested++;
             } else {
                 pressed_list_requested++;
             }
@@ -664,6 +695,9 @@ static void start(enum key_stream_transport transport, struct bt_conn *conn, uin
             }
         }
         pressed_list_requested++;
+        if (mask & STREAM_LAYERS) {
+            layers_requested++;
+        }
         LOG_DBG("Key stream started (transport %d, mask 0x%02x)", transport, mask);
     }
     k_spin_unlock(&lock, key);
@@ -707,6 +741,9 @@ static void command_work_handler(struct k_work *work) {
             if (same) {
                 status_requested++;
                 pressed_list_requested++;
+                if (stream_mask & STREAM_LAYERS) {
+                    layers_requested++;
+                }
             }
             k_spin_unlock(&lock, key);
             release_conn(cmd.conn);
@@ -811,6 +848,27 @@ static int key_stream_listener(const zmk_event_t *eh) {
 
 ZMK_LISTENER(key_stream, key_stream_listener);
 ZMK_SUBSCRIPTION(key_stream, zmk_position_state_changed);
+
+/* ---- レイヤーの変化（見るだけで、止めない） ----
+ * 知らせを出したスレッドで呼ばれるので、送り待ちの印だけ付ける（状態は送るときに読む） */
+static int key_stream_layer_listener(const zmk_event_t *eh) {
+    if (as_zmk_layer_state_changed(eh) == NULL) {
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    const bool queued = streaming && (stream_mask & STREAM_LAYERS);
+    if (queued) {
+        layers_requested++;
+    }
+    k_spin_unlock(&lock, key);
+    if (queued) {
+        request_send();
+    }
+    return ZMK_EV_EVENT_BUBBLE;
+}
+
+ZMK_LISTENER(key_stream_layer, key_stream_layer_listener);
+ZMK_SUBSCRIPTION(key_stream_layer, zmk_layer_state_changed);
 
 /* ---- 右（子機）とのつながり ----
  * 親機は、右とは自分が central 側（接続を始める側）、PC とは peripheral 側でつなぐので、接続の役割で
