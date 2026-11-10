@@ -645,7 +645,7 @@
             &kp F  &kp D  &kp L  &kp W  &kp J  &kp SEMI  &kp B  &kp O  &kp U  &kp COMMA
             &kp S  &kp T  &kp H  &kp C  &kp Y  &kp Q  &kp N  &kp A  &kp E  &kp I
             &mt2 LEFT_SHIFT X  &kp K  &kp M  &kp G  &kp V  &kp Z  &kp P  &kp SQT  &kp SLASH  &kp PERIOD
-            &kp LEFT_CONTROL  &kp LWIN  &kp LEFT_ALT  &num_mo SECONDARY_LAYER SECONDARY_LAYER  &mt2 LEFT_SHIFT R  &kp ENTER  &kp BACKSPACE  &mt2 RIGHT_CONTROL SPACE  &mo TERTIARY_LAYER  &none  &none  &mod_once_ctrl
+            &kp LEFT_CONTROL  &kp LWIN  &kp LEFT_ALT  &num_mo SECONDARY_LAYER SECONDARY_LAYER  &mt2 LEFT_SHIFT R  &kp ENTER  &kp BACKSPACE  &mt2 RIGHT_CONTROL SPACE  &mo TERTIARY_LAYER  &none  &kp K_APP  &mod_once_ctrl
             &tog CONTROL_LAYER  &kp RIGHT  &kp DOWN  &kp LEFT  &kp UP  &kp UP  &kp LEFT  &kp DOWN  &kp RIGHT  &kana_sw KANA_SW_ON
             &mkp LCLK  &mkp RCLK  &mkp MCLK  &mkp LCLK  &mkp RCLK  &mkp MCLK
             &mkp MB4  &mkp MB5  &kp LG(TAB)  &kp LG(D)  &kp LEFT_CONTROL  &mkp MB4  &mkp MB5  &kp LG(TAB)  &kp LG(D)  &kp LEFT_CONTROL
