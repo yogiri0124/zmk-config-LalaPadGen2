@@ -36,7 +36,10 @@
  *               送り終わったの知らせが来ないキー・一覧のレポートを見切ったときに送る
  *   0x04 レイヤー:  [2..5] 有効なレイヤー（u32 LE。レイヤー ID ごとのビット。Default と条件付きレイヤーを含む）
  *               [6] レイヤーの数  [7..10] 作った時刻（起動してからのミリ秒、u32 LE）
- *               開始で bit2 を頼んだときだけ。「開始」したとき、問い合わせに答えるとき、レイヤーが変わったとき、
+ *               [11] 押している修飾キー（HID の修飾キーのビット。bit0 左 Ctrl、bit1 左 Shift、bit2 左 Alt、bit3 左 GUI、
+ *               bit4〜7 右の同じ順。修飾キーそのものを押しているもの（&kp LSHIFT、長押しの Shift、&sk など）だけ。
+ *               LS(N1) のようにキーに付いた修飾キーは含まない）
+ *               開始で bit2 を頼んだときだけ。「開始」したとき、問い合わせに答えるとき、レイヤー・修飾キーが変わったとき、
  *               送り終わったの知らせが来ないまま見切ったときに送る（そのときの状態。続けて変わったら最後のものだけ）
  * PC → キーボード
  *   0x81 開始・生存確認: [2] 送ってほしい種類（bit0: キー、bit1: トラックパッドのタップ・ジェスチャー、bit2: レイヤー）
@@ -62,6 +65,7 @@
 #include <zmk/endpoints.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/endpoint_changed.h>
+#include <zmk/events/keycode_state_changed.h>
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/events/position_state_changed.h>
 #include <zmk/hid.h>
@@ -360,6 +364,7 @@ static void build_layers(uint8_t *report) {
     sys_put_le32(zmk_keymap_layer_state() | BIT(zmk_keymap_layer_default()), &report[2]);
     report[6] = ZMK_KEYMAP_LAYERS_LEN;
     sys_put_le32((uint32_t)k_uptime_get(), &report[7]);
+    report[11] = zmk_hid_get_explicit_mods();
 }
 
 /* キーのレポートを作る。入れた件数を返す */
@@ -857,10 +862,23 @@ static int key_stream_listener(const zmk_event_t *eh) {
 ZMK_LISTENER(key_stream, key_stream_listener);
 ZMK_SUBSCRIPTION(key_stream, zmk_position_state_changed);
 
-/* ---- レイヤーの変化（見るだけで、止めない） ----
- * 知らせを出したスレッドで呼ばれるので、送り待ちの印だけ付ける（状態は送るときに読む） */
+/* ---- レイヤー・修飾キーの変化（見るだけで、止めない） ----
+ * 知らせを出したスレッドで呼ばれるので、送り待ちの印だけ付ける（状態は送るときに、専用のワークキューで読む）。
+ * ZMK v0.3.0 は修飾キーが変わったの知らせ（zmk_modifiers_state_changed）を出さないので、修飾キーのキーコード
+ * （キーボードのページの 0xE0〜0xE7）の押し離しで送る。修飾キーの状態は、この知らせを受けた ZMK の hid_listener が
+ * 書き換えるので、送るときに読めば、書き換えた後の状態になる（専用のワークキューは、知らせを出したスレッドより後に動く） */
+#define HID_PAGE_KEYBOARD 0x07
+#define HID_KEY_FIRST_MOD 0xE0
+#define HID_KEY_LAST_MOD 0xE7
+
+static bool is_modifier_event(const struct zmk_keycode_state_changed *kc) {
+    return kc->usage_page == HID_PAGE_KEYBOARD && kc->keycode >= HID_KEY_FIRST_MOD &&
+           kc->keycode <= HID_KEY_LAST_MOD;
+}
+
 static int key_stream_layer_listener(const zmk_event_t *eh) {
-    if (as_zmk_layer_state_changed(eh) == NULL) {
+    const struct zmk_keycode_state_changed *kc = as_zmk_keycode_state_changed(eh);
+    if (as_zmk_layer_state_changed(eh) == NULL && (kc == NULL || !is_modifier_event(kc))) {
         return ZMK_EV_EVENT_BUBBLE;
     }
     k_spinlock_key_t key = k_spin_lock(&lock);
@@ -877,6 +895,7 @@ static int key_stream_layer_listener(const zmk_event_t *eh) {
 
 ZMK_LISTENER(key_stream_layer, key_stream_layer_listener);
 ZMK_SUBSCRIPTION(key_stream_layer, zmk_layer_state_changed);
+ZMK_SUBSCRIPTION(key_stream_layer, zmk_keycode_state_changed);
 
 /* ---- 右（子機）とのつながり ----
  * 親機は、右とは自分が central 側（接続を始める側）、PC とは peripheral 側でつなぐので、接続の役割で
