@@ -26,6 +26,7 @@
  *   0x02 状態:  [2] 右との Bluetooth の接続がある（1/0。右からキーが届く準備ができているとは限らない）
  *               [3] 送っている種類（開始で指定したもの）
  *               [4] キーの位置の数（この番号より前がキー） [5] 位置の数の合計 [6..7] 次の通し番号（u16 LE）
+ *               [8] できること（bit0: 書き込み待ちの命令 0x84・0x85 を受け付ける）
  *               「開始」したとき、問い合わせに答えるとき、右とのつながりが変わったとき、
  *               送り終わったの知らせが来ない状態のレポートを見切ったときに送る
  *   0x03 押されているキーの一覧:  [2..3] 通し番号（u16 LE。この番号より前のキーまでを反映した一覧）
@@ -45,6 +46,12 @@
  *   0x81 開始・生存確認: [2] 送ってほしい種類（bit0: キー、bit1: トラックパッドのタップ・ジェスチャー、bit2: レイヤー）
  *   0x82 終了
  *   0x83 状態の問い合わせ（送っている間だけ答える。状態と、押されているキーの一覧（レイヤーを頼んでいればレイヤーも）を送る）
+ *   0x84 書き込み待ちの準備: [2] どちら（0: 親機（左）、1: 子機（右））。3 秒の間だけ、次の 0x85 を受け付ける
+ *   0x85 書き込み待ちにする: [2] どちら（0x84 と同じであること）。親機は自分で、子機には親機から &bootloader を押したことにして伝える
+ *   （どちらも送っている間（入力先からの「開始」を受けている間）だけ。答えは 0x05）
+ * キーボード → PC（命令の答え）
+ *   0x05 書き込み待ちの答え: [2] どちら [3] 結果（0: 書き込み待ちにする（決めてから 0.5 秒後に入る。答えは届かないこともある）、1: 準備した、
+ *               2: 準備していない・時間切れ・どちらが違う・もう入ると決めた、3: 子機とつながっていない、4: できない（&bootloader がない））
  * 知らない種類は無視する（あとで種類を足しても、古いアプリ・ファームウェアと組み合わせられる）。
  *
  * ふだんの入力に影響しないよう、キーの出来事は見るだけで止めない。送る処理と命令の処理は専用の
@@ -62,6 +69,7 @@
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/usb/class/hid.h>
 
+#include <zmk/behavior.h>
 #include <zmk/endpoints.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/endpoint_changed.h>
@@ -99,10 +107,31 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define MSG_STATUS 0x02
 #define MSG_PRESSED 0x03
 #define MSG_LAYERS 0x04
+#define MSG_BOOT 0x05
 #define CMD_START 0x81
 #define CMD_STOP 0x82
 #define CMD_STATUS 0x83
+#define CMD_BOOT_ARM 0x84
+#define CMD_BOOT_RUN 0x85
 
+/* 書き込み待ち（0x84・0x85）。キーマップに &bootloader があるときだけ（子機にも同じキーマップが入るので、子機でも動く） */
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(bootloader), okay)
+#define KS_HAS_BOOT 1
+#else
+#define KS_HAS_BOOT 0
+#endif
+#define BOOT_TARGET_CENTRAL 0
+#define BOOT_TARGET_PERIPHERAL 1
+#define BOOT_OK 0
+#define BOOT_ARMED 1
+#define BOOT_NOT_ARMED 2
+#define BOOT_NO_PERIPHERAL 3
+#define BOOT_UNSUPPORTED 4
+/* 準備（0x84）から実行（0x85）までに待つ時間。うっかり 1 つの命令で入らないように、2 つそろったときだけ入る */
+#define BOOT_ARM_MS 3000
+/* 入ると決めてから入るまでの時間（答えが PC に届くように） */
+#define BOOT_DELAY_MS 500
+#define CAP_BOOT BIT(0)
 #define STREAM_KEYS BIT(0)
 #define STREAM_TRACKPAD BIT(1)
 #define STREAM_LAYERS BIT(2)
@@ -210,6 +239,18 @@ static uint32_t layers_requested;
 static uint32_t layers_sent;
 /* 最後に送った（または送るよう頼んだ）修飾キー。見直したときに、これと違えばレイヤーの報告を送る */
 static uint8_t mods_seen;
+/* 書き込み待ちの答え（送り待ちの回数と、送る中身）。準備（0x84）は、どちらと時刻を覚える（専用のワークキューだけで触る） */
+static uint32_t boot_reply_requested;
+static uint32_t boot_reply_sent;
+static uint8_t boot_reply_target;
+static uint8_t boot_reply_result;
+static int boot_armed_target = -1;
+static int64_t boot_armed_at;
+static uint32_t boot_armed_session;
+/* 送り先の世代（始め直す・やめるたびに 1 つ進む。lock で守る）。準備（0x84）はこの世代に結びつけ、世代が変われば使えない */
+static uint32_t session_gen;
+/* 書き込み待ちに入ると決めた（入るまでの間、ほかの書き込み待ちの命令は受け付けない。専用のワークキューだけで触る） */
+static bool boot_scheduled;
 /* 送っている最中のレポートがある（送り終わるまで次を送らない）。送るたびに番号を付け、「送り終わった」は
  * その番号で照合する（送る先を変えた後や見切った後に、遅れて届いた「送り終わった」と取り違えないように）。
  * 送った送り道と接続も覚えておき、その送り道が切れたら待つのをやめる。接続は見分ける（ポインタを比べる）
@@ -304,6 +345,9 @@ static struct bt_conn *stop_locked(void) {
     status_sent = status_requested;
     pressed_list_sent = pressed_list_requested;
     layers_sent = layers_requested;
+    boot_reply_sent = boot_reply_requested;
+    // やめたら、準備を使えなくする（別の送り先・別の始め方に引き継がない）
+    session_gen++;
     retrying = false;
     return conn;
 }
@@ -351,6 +395,7 @@ static void build_status(uint8_t *report) {
     report[5] = ZMK_KEYMAP_LEN;
     // 次に届くキーの通し番号（送り待ちがあれば、その先頭。状態は送り待ちのキーより先に送るため）
     sys_put_le16(events_count > 0 ? events[events_head].seq : next_seq, &report[6]);
+    report[8] = KS_HAS_BOOT ? CAP_BOOT : 0;
 }
 
 /* 押されているキーの一覧のレポートを作る。送り待ちのキーがない（すべて送り始めた）ときに呼ぶ */
@@ -417,6 +462,12 @@ static void send_work_handler(struct k_work *work) {
         build_status(report);
         kind = MSG_STATUS;
         gen = status_requested;
+    } else if (boot_reply_requested != boot_reply_sent) {
+        report[1] = MSG_BOOT;
+        report[2] = boot_reply_target;
+        report[3] = boot_reply_result;
+        kind = MSG_BOOT;
+        gen = boot_reply_requested;
     } else if (layers_requested != layers_sent) {
         build_layers(report);
         kind = MSG_LAYERS;
@@ -469,6 +520,8 @@ static void send_work_handler(struct k_work *work) {
             status_sent = gen;
         } else if (kind == MSG_LAYERS) {
             layers_sent = gen;
+        } else if (kind == MSG_BOOT) {
+            boot_reply_sent = gen;
         } else if (kind == MSG_PRESSED) {
             pressed_list_sent = gen;
         } else {
@@ -546,6 +599,8 @@ static void flight_work_handler(struct k_work *work) {
         if (streaming) {
             if (in_flight_kind == MSG_STATUS) {
                 status_requested++;
+            } else if (in_flight_kind == MSG_BOOT) {
+                // 書き込み待ちの答えは送り直さない（アプリは答えが来なければ、時間で見切る）
             } else if (in_flight_kind == MSG_LAYERS) {
                 // 今もレイヤーを頼まれているときだけ（種類を変えて始め直した後に、前の分を送り直さない）
                 if (stream_mask & STREAM_LAYERS) {
@@ -734,6 +789,108 @@ static void start(enum key_stream_transport transport, struct bt_conn *conn, uin
     }
 }
 
+/* 書き込み待ちの答えを送る（専用のワークキュー）。答えは届けるよう努めるだけ（書き込み待ちに入るのは答えと関係なく、決めてから 0.5 秒後） */
+static void boot_reply(uint8_t target, uint8_t result) {
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    const bool send = streaming;
+    if (send) {
+        boot_reply_target = target;
+        boot_reply_result = result;
+        boot_reply_requested++;
+    }
+    k_spin_unlock(&lock, key);
+    if (send) {
+        request_send();
+    }
+}
+
+#if KS_HAS_BOOT
+/* 書き込み待ちにする（答えを送ってから。専用のワークキュー）。キーマップの &bootloader を押して離したことにする:
+ * 親機は自分で（ZMK の reset behavior が、ブートローダーに入る印を付けて再起動する）、子機には ZMK の分割の仕組みで伝える
+ * （子機の &bootloader のキーを押したときと同じ道。子機のファームウェアは変えなくてよい） */
+static uint8_t boot_target;
+static void boot_work_handler(struct k_work *work) {
+    const struct zmk_behavior_binding binding = {
+        .behavior_dev = DEVICE_DT_NAME(DT_NODELABEL(bootloader)),
+    };
+    struct zmk_behavior_binding_event event = {
+        .layer = 0,
+        .position = 0,
+        .timestamp = k_uptime_get(),
+#if IS_ENABLED(CONFIG_ZMK_SPLIT)
+        // 子機は 1 つ（source 0）。親機は自分（LOCAL）
+        .source = boot_target == BOOT_TARGET_PERIPHERAL ? 0 : ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL,
+#endif
+    };
+    LOG_INF("Key stream: entering bootloader (%s)", boot_target == BOOT_TARGET_PERIPHERAL ? "peripheral" : "central");
+    zmk_behavior_invoke_binding(&binding, event, true);
+    zmk_behavior_invoke_binding(&binding, event, false);
+    // 子機のときは親機は再起動しないので、次の命令（親機の書き込み待ちなど）を受け付けられるようにする
+    if (boot_target == BOOT_TARGET_PERIPHERAL) {
+        boot_scheduled = false;
+    }
+}
+static K_WORK_DELAYABLE_DEFINE(boot_work, boot_work_handler);
+#endif
+
+/* 書き込み待ちの命令（0x84・0x85。専用のワークキュー）。送っている相手（入力先）からのものだけ */
+static void boot_command(const struct command *cmd) {
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    // 入力先が変わったの知らせを照合し終えていること（照合待ちの間は、前の入力先からの命令を受け付けない）
+    const bool same = streaming && stream_transport == cmd->transport && stream_conn == cmd->conn && route_requested == route_checked;
+    const uint32_t session = session_gen;
+    k_spin_unlock(&lock, key);
+    if (!same || cmd->len < 3) {
+        return;
+    }
+    // 今も入力先であること（照合の後に入力先が変わっていても、知らせの処理より先にここへ来ることがあるため、確かめ直す）
+    if (!route_selected(cmd->transport, cmd->conn)) {
+        return;
+    }
+    const uint8_t target = cmd->data[2];
+    if (target != BOOT_TARGET_CENTRAL && target != BOOT_TARGET_PERIPHERAL) {
+        return;
+    }
+    // もう書き込み待ちに入ると決めていれば、入るまでほかの命令は受け付けない（入る相手を変えられないように）
+    if (boot_scheduled) {
+        boot_reply(target, BOOT_NOT_ARMED);
+        return;
+    }
+    if (!KS_HAS_BOOT || (target == BOOT_TARGET_PERIPHERAL && !IS_ENABLED(CONFIG_ZMK_SPLIT))) {
+        boot_reply(target, BOOT_UNSUPPORTED);
+        return;
+    }
+    const int64_t now = k_uptime_get();
+    if (cmd->data[1] == CMD_BOOT_ARM) {
+        boot_armed_target = target;
+        boot_armed_at = now;
+        boot_armed_session = session;
+        boot_reply(target, BOOT_ARMED);
+        return;
+    }
+    // 実行（0x85）: 同じ送り先・同じ始め方（世代）で、同じどちらの準備が、3 秒以内にあること。準備は 1 回で使い切る
+    const bool armed = boot_armed_target == target && boot_armed_session == session && now - boot_armed_at <= BOOT_ARM_MS;
+    boot_armed_target = -1;
+    if (!armed) {
+        boot_reply(target, BOOT_NOT_ARMED);
+        return;
+    }
+    if (target == BOOT_TARGET_PERIPHERAL && atomic_get(&split_links) == 0) {
+        boot_reply(target, BOOT_NO_PERIPHERAL);
+        return;
+    }
+    // 決めた: 答えを送り、0.5 秒後に入る（答えが PC に届くよう努めるが、届いたかどうかには結びつけない。
+    // USB の送り終わりの知らせは転送を見分けられないため）。入る相手はここで決め、入るまで変えない
+    boot_scheduled = true;
+#if KS_HAS_BOOT
+    boot_target = target;
+#endif
+    boot_reply(target, BOOT_OK);
+#if KS_HAS_BOOT
+    k_work_reschedule_for_queue(&key_stream_q, &boot_work, K_MSEC(BOOT_DELAY_MS));
+#endif
+}
+
 static void command_work_handler(struct k_work *work) {
     struct command cmd;
     while (k_msgq_get(&command_queue, &cmd, K_NO_WAIT) == 0) {
@@ -774,6 +931,11 @@ static void command_work_handler(struct k_work *work) {
             }
             break;
         }
+        case CMD_BOOT_ARM:
+        case CMD_BOOT_RUN:
+            boot_command(&cmd);
+            release_conn(cmd.conn);
+            break;
         default:
             release_conn(cmd.conn);
             break;
