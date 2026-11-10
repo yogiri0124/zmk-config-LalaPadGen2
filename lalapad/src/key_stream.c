@@ -36,7 +36,10 @@
  *               送り終わったの知らせが来ないキー・一覧のレポートを見切ったときに送る
  *   0x04 レイヤー:  [2..5] 有効なレイヤー（u32 LE。レイヤー ID ごとのビット。Default と条件付きレイヤーを含む）
  *               [6] レイヤーの数  [7..10] 作った時刻（起動してからのミリ秒、u32 LE）
- *               開始で bit2 を頼んだときだけ。「開始」したとき、問い合わせに答えるとき、レイヤーが変わったとき、
+ *               [11] 押している修飾キー（HID の修飾キーのビット。bit0 左 Ctrl、bit1 左 Shift、bit2 左 Alt、bit3 左 GUI、
+ *               bit4〜7 右の同じ順。修飾キーそのものを押しているもの（&kp LSHIFT、長押しの Shift、&sk など）だけ。
+ *               LS(N1) のようにキーに付いた修飾キーは含まない）
+ *               開始で bit2 を頼んだときだけ。「開始」したとき、問い合わせに答えるとき、レイヤー・修飾キーが変わったとき、
  *               送り終わったの知らせが来ないまま見切ったときに送る（そのときの状態。続けて変わったら最後のものだけ）
  * PC → キーボード
  *   0x81 開始・生存確認: [2] 送ってほしい種類（bit0: キー、bit1: トラックパッドのタップ・ジェスチャー、bit2: レイヤー）
@@ -62,6 +65,7 @@
 #include <zmk/endpoints.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/endpoint_changed.h>
+#include <zmk/events/keycode_state_changed.h>
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/events/position_state_changed.h>
 #include <zmk/hid.h>
@@ -125,6 +129,9 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define IN_FLIGHT_TIMEOUT_USB_MS 500
 #define IN_FLIGHT_TIMEOUT_BLE_MS 3000
 /* 送る処理と命令の処理をする専用のワークキュー（スレッド） */
+/* キーを押している間・修飾キーが残っている間に、修飾キーを見直す間隔（ZMK の hold-tap が預かって出し直した修飾キーの
+ * 押し離しは、こちらの listener に届かないことがあるため） */
+#define MODS_WATCH_MS 20
 #define THREAD_STACK_SIZE 1536
 #define THREAD_PRIORITY 6
 
@@ -201,6 +208,8 @@ static uint32_t pressed_list_sent;
 /* 有効なレイヤーも同じく回数で持つ（送るときの状態を送る。続けて変わっても、送るのは最後の状態の1つだけ） */
 static uint32_t layers_requested;
 static uint32_t layers_sent;
+/* 最後に送った（または送るよう頼んだ）修飾キー。見直したときに、これと違えばレイヤーの報告を送る */
+static uint8_t mods_seen;
 /* 送っている最中のレポートがある（送り終わるまで次を送らない）。送るたびに番号を付け、「送り終わった」は
  * その番号で照合する（送る先を変えた後や見切った後に、遅れて届いた「送り終わった」と取り違えないように）。
  * 送った送り道と接続も覚えておき、その送り道が切れたら待つのをやめる。接続は見分ける（ポインタを比べる）
@@ -246,11 +255,14 @@ static void command_work_handler(struct k_work *work);
 static void timeout_work_handler(struct k_work *work);
 static void flight_work_handler(struct k_work *work);
 static void route_work_handler(struct k_work *work);
+static void mods_work_handler(struct k_work *work);
+static void watch_mods(void);
 static K_WORK_DELAYABLE_DEFINE(send_work, send_work_handler);
 static K_WORK_DEFINE(command_work, command_work_handler);
 static K_WORK_DELAYABLE_DEFINE(timeout_work, timeout_work_handler);
 static K_WORK_DELAYABLE_DEFINE(flight_work, flight_work_handler);
 static K_WORK_DEFINE(route_work, route_work_handler);
+static K_WORK_DELAYABLE_DEFINE(mods_work, mods_work_handler);
 
 static void kick_send(k_timeout_t delay) { k_work_reschedule_for_queue(&key_stream_q, &send_work, delay); }
 
@@ -360,6 +372,8 @@ static void build_layers(uint8_t *report) {
     sys_put_le32(zmk_keymap_layer_state() | BIT(zmk_keymap_layer_default()), &report[2]);
     report[6] = ZMK_KEYMAP_LAYERS_LEN;
     sys_put_le32((uint32_t)k_uptime_get(), &report[7]);
+    report[11] = zmk_hid_get_explicit_mods();
+    mods_seen = report[11];
 }
 
 /* キーのレポートを作る。入れた件数を返す */
@@ -847,20 +861,67 @@ static int key_stream_listener(const zmk_event_t *eh) {
     if (queued) {
         push_event((uint8_t)pos->position, pos->state ? FLAG_PRESSED : 0, (uint32_t)pos->timestamp);
     }
+    const bool watch = streaming && (stream_mask & STREAM_LAYERS);
     k_spin_unlock(&lock, key);
     if (queued) {
         request_send();
     }
+    if (watch) {
+        watch_mods();
+    }
     return ZMK_EV_EVENT_BUBBLE;
+}
+
+/* 修飾キーを見直す（専用のワークキュー）。ZMK の hold-tap は、判定の間に預かったキーの出来事（修飾キーの押し離しを含む）を、
+ * 判定の後に自分より後ろの listener にだけ出し直すので、こちらの listener には届かないことがある。そのため、キーを押している間と、
+ * 修飾キーが残っている間（&sk など）は、短い間隔で修飾キーを読み、前に送ったものと違えばレイヤーの報告を送る */
+static void mods_work_handler(struct k_work *work) {
+    const uint8_t mods = zmk_hid_get_explicit_mods();
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    const bool active = streaming && (stream_mask & STREAM_LAYERS);
+    const bool changed = active && mods != mods_seen;
+    if (changed) {
+        mods_seen = mods;
+        layers_requested++;
+    }
+    bool any = false;
+    for (uint32_t pos = 0; pos < ZMK_KEYMAP_LEN && !any; pos++) {
+        any = pressed[pos];
+    }
+    k_spin_unlock(&lock, key);
+    if (changed) {
+        request_send();
+    }
+    if (active && (any || mods != 0)) {
+        k_work_schedule_for_queue(&key_stream_q, &mods_work, K_MSEC(MODS_WATCH_MS));
+    }
+}
+
+/* 修飾キーの見直しを始める（すでに予約があれば何もしない） */
+static void watch_mods(void) {
+    k_work_schedule_for_queue(&key_stream_q, &mods_work, K_MSEC(MODS_WATCH_MS));
 }
 
 ZMK_LISTENER(key_stream, key_stream_listener);
 ZMK_SUBSCRIPTION(key_stream, zmk_position_state_changed);
 
-/* ---- レイヤーの変化（見るだけで、止めない） ----
- * 知らせを出したスレッドで呼ばれるので、送り待ちの印だけ付ける（状態は送るときに読む） */
+/* ---- レイヤー・修飾キーの変化（見るだけで、止めない） ----
+ * 知らせを出したスレッドで呼ばれるので、送り待ちの印だけ付ける（状態は送るときに、専用のワークキューで読む）。
+ * ZMK v0.3.0 は修飾キーが変わったの知らせ（zmk_modifiers_state_changed）を出さないので、修飾キーのキーコード
+ * （キーボードのページの 0xE0〜0xE7）の押し離しで送る。修飾キーの状態は、この知らせを受けた ZMK の hid_listener が
+ * 書き換えるので、送るときに読めば、書き換えた後の状態になる（専用のワークキューは、知らせを出したスレッドより後に動く） */
+#define HID_PAGE_KEYBOARD 0x07
+#define HID_KEY_FIRST_MOD 0xE0
+#define HID_KEY_LAST_MOD 0xE7
+
+static bool is_modifier_event(const struct zmk_keycode_state_changed *kc) {
+    return kc->usage_page == HID_PAGE_KEYBOARD && kc->keycode >= HID_KEY_FIRST_MOD &&
+           kc->keycode <= HID_KEY_LAST_MOD;
+}
+
 static int key_stream_layer_listener(const zmk_event_t *eh) {
-    if (as_zmk_layer_state_changed(eh) == NULL) {
+    const struct zmk_keycode_state_changed *kc = as_zmk_keycode_state_changed(eh);
+    if (as_zmk_layer_state_changed(eh) == NULL && (kc == NULL || !is_modifier_event(kc))) {
         return ZMK_EV_EVENT_BUBBLE;
     }
     k_spinlock_key_t key = k_spin_lock(&lock);
@@ -871,12 +932,15 @@ static int key_stream_layer_listener(const zmk_event_t *eh) {
     k_spin_unlock(&lock, key);
     if (queued) {
         request_send();
+        // 修飾キーが残る間（&sk など）も見直す
+        watch_mods();
     }
     return ZMK_EV_EVENT_BUBBLE;
 }
 
 ZMK_LISTENER(key_stream_layer, key_stream_layer_listener);
 ZMK_SUBSCRIPTION(key_stream_layer, zmk_layer_state_changed);
+ZMK_SUBSCRIPTION(key_stream_layer, zmk_keycode_state_changed);
 
 /* ---- 右（子機）とのつながり ----
  * 親機は、右とは自分が central 側（接続を始める側）、PC とは peripheral 側でつなぐので、接続の役割で
