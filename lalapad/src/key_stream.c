@@ -50,8 +50,8 @@
  *   0x85 書き込み待ちにする: [2] どちら（0x84 と同じであること）。親機は自分で、子機には親機から &bootloader を押したことにして伝える
  *   （どちらも送っている間（入力先からの「開始」を受けている間）だけ。答えは 0x05）
  * キーボード → PC（命令の答え）
- *   0x05 書き込み待ちの答え: [2] どちら [3] 結果（0: 書き込み待ちにする（この答えを送り終えてから 0.3 秒後に入る）、1: 準備した、
- *               2: 準備していない・時間切れ・どちらが違う、3: 子機とつながっていない、4: できない（&bootloader がない））
+ *   0x05 書き込み待ちの答え: [2] どちら [3] 結果（0: 書き込み待ちにする（決めてから 0.5 秒後に入る。答えは届かないこともある）、1: 準備した、
+ *               2: 準備していない・時間切れ・どちらが違う・もう入ると決めた、3: 子機とつながっていない、4: できない（&bootloader がない））
  * 知らない種類は無視する（あとで種類を足しても、古いアプリ・ファームウェアと組み合わせられる）。
  *
  * ふだんの入力に影響しないよう、キーの出来事は見るだけで止めない。送る処理と命令の処理は専用の
@@ -129,8 +129,8 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define BOOT_UNSUPPORTED 4
 /* 準備（0x84）から実行（0x85）までに待つ時間。うっかり 1 つの命令で入らないように、2 つそろったときだけ入る */
 #define BOOT_ARM_MS 3000
-/* 答えを送ってから再起動するまでの時間（答えが PC に届くように） */
-#define BOOT_DELAY_MS 300
+/* 入ると決めてから入るまでの時間（答えが PC に届くように） */
+#define BOOT_DELAY_MS 500
 #define CAP_BOOT BIT(0)
 #define STREAM_KEYS BIT(0)
 #define STREAM_TRACKPAD BIT(1)
@@ -249,10 +249,8 @@ static int64_t boot_armed_at;
 static uint32_t boot_armed_session;
 /* 送り先の世代（始め直す・やめるたびに 1 つ進む。lock で守る）。準備（0x84）はこの世代に結びつけ、世代が変われば使えない */
 static uint32_t session_gen;
-/* 書き込み待ちにする答え（結果 0）を送り待ち・送っている最中か（lock で守る）。送り終わったの知らせが来てから入る */
-static bool boot_go_pending;
-static bool in_flight_boot_go;
-static void boot_go(void);
+/* 書き込み待ちに入ると決めた（入るまでの間、ほかの書き込み待ちの命令は受け付けない。専用のワークキューだけで触る） */
+static bool boot_scheduled;
 /* 送っている最中のレポートがある（送り終わるまで次を送らない）。送るたびに番号を付け、「送り終わった」は
  * その番号で照合する（送る先を変えた後や見切った後に、遅れて届いた「送り終わった」と取り違えないように）。
  * 送った送り道と接続も覚えておき、その送り道が切れたら待つのをやめる。接続は見分ける（ポインタを比べる）
@@ -348,10 +346,8 @@ static struct bt_conn *stop_locked(void) {
     pressed_list_sent = pressed_list_requested;
     layers_sent = layers_requested;
     boot_reply_sent = boot_reply_requested;
-    // やめたら、準備も、書き込み待ちに入る予定も消す（別の送り先・別の始め方に引き継がない）
+    // やめたら、準備を使えなくする（別の送り先・別の始め方に引き継がない）
     session_gen++;
-    boot_go_pending = false;
-    in_flight_boot_go = false;
     retrying = false;
     return conn;
 }
@@ -375,7 +371,6 @@ static bool in_flight_on_locked(enum key_stream_transport transport, struct bt_c
 /* 送っている最中の印を外す（lock の中で呼ぶ） */
 static void finish_in_flight_locked(void) {
     in_flight = false;
-    in_flight_boot_go = false;
     in_flight_transport = KEY_STREAM_TRANSPORT_NONE;
     in_flight_conn = NULL;
 }
@@ -473,9 +468,6 @@ static void send_work_handler(struct k_work *work) {
         report[3] = boot_reply_result;
         kind = MSG_BOOT;
         gen = boot_reply_requested;
-        // この答えを送り終えたら、書き込み待ちに入る（送れなかった・見切ったときは入らない）
-        in_flight_boot_go = boot_go_pending && boot_reply_result == BOOT_OK;
-        boot_go_pending = false;
     } else if (layers_requested != layers_sent) {
         build_layers(report);
         kind = MSG_LAYERS;
@@ -583,14 +575,10 @@ static void send_work_handler(struct k_work *work) {
 void key_stream_sent(uint32_t id) {
     k_spinlock_key_t key = k_spin_lock(&lock);
     const bool finished = in_flight && in_flight_id == id;
-    const bool go = finished && in_flight_kind == MSG_BOOT && in_flight_boot_go;
     if (finished) {
         finish_in_flight_locked();
     }
     k_spin_unlock(&lock, key);
-    if (go) {
-        boot_go();
-    }
     if (finished) {
         kick_send(K_NO_WAIT);
     }
@@ -801,7 +789,7 @@ static void start(enum key_stream_transport transport, struct bt_conn *conn, uin
     }
 }
 
-/* 書き込み待ちの答えを送る（専用のワークキュー）。結果 0 なら、送り終わったの知らせが来てから入る（boot_go） */
+/* 書き込み待ちの答えを送る（専用のワークキュー）。答えは届けるよう努めるだけ（書き込み待ちに入るのは答えと関係なく、決めてから 0.5 秒後） */
 static void boot_reply(uint8_t target, uint8_t result) {
     k_spinlock_key_t key = k_spin_lock(&lock);
     const bool send = streaming;
@@ -809,7 +797,6 @@ static void boot_reply(uint8_t target, uint8_t result) {
         boot_reply_target = target;
         boot_reply_result = result;
         boot_reply_requested++;
-        boot_go_pending = result == BOOT_OK;
     }
     k_spin_unlock(&lock, key);
     if (send) {
@@ -838,16 +825,13 @@ static void boot_work_handler(struct k_work *work) {
     LOG_INF("Key stream: entering bootloader (%s)", boot_target == BOOT_TARGET_PERIPHERAL ? "peripheral" : "central");
     zmk_behavior_invoke_binding(&binding, event, true);
     zmk_behavior_invoke_binding(&binding, event, false);
+    // 子機のときは親機は再起動しないので、次の命令（親機の書き込み待ちなど）を受け付けられるようにする
+    if (boot_target == BOOT_TARGET_PERIPHERAL) {
+        boot_scheduled = false;
+    }
 }
 static K_WORK_DELAYABLE_DEFINE(boot_work, boot_work_handler);
 #endif
-
-/* 答えを送り終えた: 少し待ってから（PC が答えを読めるように）書き込み待ちに入る。どのスレッドから呼んでもよい */
-static void boot_go(void) {
-#if KS_HAS_BOOT
-    k_work_reschedule_for_queue(&key_stream_q, &boot_work, K_MSEC(BOOT_DELAY_MS));
-#endif
-}
 
 /* 書き込み待ちの命令（0x84・0x85。専用のワークキュー）。送っている相手（入力先）からのものだけ */
 static void boot_command(const struct command *cmd) {
@@ -865,6 +849,11 @@ static void boot_command(const struct command *cmd) {
     }
     const uint8_t target = cmd->data[2];
     if (target != BOOT_TARGET_CENTRAL && target != BOOT_TARGET_PERIPHERAL) {
+        return;
+    }
+    // もう書き込み待ちに入ると決めていれば、入るまでほかの命令は受け付けない（入る相手を変えられないように）
+    if (boot_scheduled) {
+        boot_reply(target, BOOT_NOT_ARMED);
         return;
     }
     if (!KS_HAS_BOOT || (target == BOOT_TARGET_PERIPHERAL && !IS_ENABLED(CONFIG_ZMK_SPLIT))) {
@@ -890,11 +879,16 @@ static void boot_command(const struct command *cmd) {
         boot_reply(target, BOOT_NO_PERIPHERAL);
         return;
     }
+    // 決めた: 答えを送り、0.5 秒後に入る（答えが PC に届くよう努めるが、届いたかどうかには結びつけない。
+    // USB の送り終わりの知らせは転送を見分けられないため）。入る相手はここで決め、入るまで変えない
+    boot_scheduled = true;
 #if KS_HAS_BOOT
     boot_target = target;
 #endif
-    // 答えを送り終えてから入る（key_stream_sent → boot_go）
     boot_reply(target, BOOT_OK);
+#if KS_HAS_BOOT
+    k_work_reschedule_for_queue(&key_stream_q, &boot_work, K_MSEC(BOOT_DELAY_MS));
+#endif
 }
 
 static void command_work_handler(struct k_work *work) {
