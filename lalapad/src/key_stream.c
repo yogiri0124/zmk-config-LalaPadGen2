@@ -129,6 +129,9 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define IN_FLIGHT_TIMEOUT_USB_MS 500
 #define IN_FLIGHT_TIMEOUT_BLE_MS 3000
 /* 送る処理と命令の処理をする専用のワークキュー（スレッド） */
+/* キーを押している間・修飾キーが残っている間に、修飾キーを見直す間隔（ZMK の hold-tap が預かって出し直した修飾キーの
+ * 押し離しは、こちらの listener に届かないことがあるため） */
+#define MODS_WATCH_MS 20
 #define THREAD_STACK_SIZE 1536
 #define THREAD_PRIORITY 6
 
@@ -205,6 +208,8 @@ static uint32_t pressed_list_sent;
 /* 有効なレイヤーも同じく回数で持つ（送るときの状態を送る。続けて変わっても、送るのは最後の状態の1つだけ） */
 static uint32_t layers_requested;
 static uint32_t layers_sent;
+/* 最後に送った（または送るよう頼んだ）修飾キー。見直したときに、これと違えばレイヤーの報告を送る */
+static uint8_t mods_seen;
 /* 送っている最中のレポートがある（送り終わるまで次を送らない）。送るたびに番号を付け、「送り終わった」は
  * その番号で照合する（送る先を変えた後や見切った後に、遅れて届いた「送り終わった」と取り違えないように）。
  * 送った送り道と接続も覚えておき、その送り道が切れたら待つのをやめる。接続は見分ける（ポインタを比べる）
@@ -250,11 +255,14 @@ static void command_work_handler(struct k_work *work);
 static void timeout_work_handler(struct k_work *work);
 static void flight_work_handler(struct k_work *work);
 static void route_work_handler(struct k_work *work);
+static void mods_work_handler(struct k_work *work);
+static void watch_mods(void);
 static K_WORK_DELAYABLE_DEFINE(send_work, send_work_handler);
 static K_WORK_DEFINE(command_work, command_work_handler);
 static K_WORK_DELAYABLE_DEFINE(timeout_work, timeout_work_handler);
 static K_WORK_DELAYABLE_DEFINE(flight_work, flight_work_handler);
 static K_WORK_DEFINE(route_work, route_work_handler);
+static K_WORK_DELAYABLE_DEFINE(mods_work, mods_work_handler);
 
 static void kick_send(k_timeout_t delay) { k_work_reschedule_for_queue(&key_stream_q, &send_work, delay); }
 
@@ -365,6 +373,7 @@ static void build_layers(uint8_t *report) {
     report[6] = ZMK_KEYMAP_LAYERS_LEN;
     sys_put_le32((uint32_t)k_uptime_get(), &report[7]);
     report[11] = zmk_hid_get_explicit_mods();
+    mods_seen = report[11];
 }
 
 /* キーのレポートを作る。入れた件数を返す */
@@ -852,11 +861,45 @@ static int key_stream_listener(const zmk_event_t *eh) {
     if (queued) {
         push_event((uint8_t)pos->position, pos->state ? FLAG_PRESSED : 0, (uint32_t)pos->timestamp);
     }
+    const bool watch = streaming && (stream_mask & STREAM_LAYERS);
     k_spin_unlock(&lock, key);
     if (queued) {
         request_send();
     }
+    if (watch) {
+        watch_mods();
+    }
     return ZMK_EV_EVENT_BUBBLE;
+}
+
+/* 修飾キーを見直す（専用のワークキュー）。ZMK の hold-tap は、判定の間に預かったキーの出来事（修飾キーの押し離しを含む）を、
+ * 判定の後に自分より後ろの listener にだけ出し直すので、こちらの listener には届かないことがある。そのため、キーを押している間と、
+ * 修飾キーが残っている間（&sk など）は、短い間隔で修飾キーを読み、前に送ったものと違えばレイヤーの報告を送る */
+static void mods_work_handler(struct k_work *work) {
+    const uint8_t mods = zmk_hid_get_explicit_mods();
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    const bool active = streaming && (stream_mask & STREAM_LAYERS);
+    const bool changed = active && mods != mods_seen;
+    if (changed) {
+        mods_seen = mods;
+        layers_requested++;
+    }
+    bool any = false;
+    for (uint32_t pos = 0; pos < ZMK_KEYMAP_LEN && !any; pos++) {
+        any = pressed[pos];
+    }
+    k_spin_unlock(&lock, key);
+    if (changed) {
+        request_send();
+    }
+    if (active && (any || mods != 0)) {
+        k_work_schedule_for_queue(&key_stream_q, &mods_work, K_MSEC(MODS_WATCH_MS));
+    }
+}
+
+/* 修飾キーの見直しを始める（すでに予約があれば何もしない） */
+static void watch_mods(void) {
+    k_work_schedule_for_queue(&key_stream_q, &mods_work, K_MSEC(MODS_WATCH_MS));
 }
 
 ZMK_LISTENER(key_stream, key_stream_listener);
@@ -889,6 +932,8 @@ static int key_stream_layer_listener(const zmk_event_t *eh) {
     k_spin_unlock(&lock, key);
     if (queued) {
         request_send();
+        // 修飾キーが残る間（&sk など）も見直す
+        watch_mods();
     }
     return ZMK_EV_EVENT_BUBBLE;
 }
