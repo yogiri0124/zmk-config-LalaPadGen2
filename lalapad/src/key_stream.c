@@ -621,6 +621,7 @@ static void send_work_handler(struct k_work *work) {
 #endif
     }
 
+    bool retry_order_now = false;
     key = k_spin_lock(&lock);
     if (err == 0) {
         retrying = false;
@@ -633,7 +634,12 @@ static void send_work_handler(struct k_work *work) {
                 // 順番が入れ替えの途中だった: 少し後で送り直す
                 order_unstable = false;
                 order_retries++;
-                order_retry_id = id;
+                // 送り終わったの知らせが、もう届いていることがある（送る関数から戻る前に届く）。そのときは、ここから数える
+                if (in_flight && in_flight_id == id) {
+                    order_retry_id = id;
+                } else {
+                    retry_order_now = true;
+                }
             }
         } else if (kind == MSG_BOOT) {
             boot_reply_sent = gen;
@@ -656,6 +662,9 @@ static void send_work_handler(struct k_work *work) {
         }
         k_spin_unlock(&lock, key);
         release_conn(conn);
+        if (retry_order_now) {
+            k_work_reschedule_for_queue(&key_stream_q, &order_work, K_MSEC(LAYER_ORDER_RETRY_MS));
+        }
         // 送り終わったの知らせが来なければ、時間で見切る（知らせが先に届いていれば、見切るときに番号が合わない）
         const int32_t timeout_ms = transport == KEY_STREAM_TRANSPORT_USB ? IN_FLIGHT_TIMEOUT_USB_MS
                                                                          : IN_FLIGHT_TIMEOUT_BLE_MS;
