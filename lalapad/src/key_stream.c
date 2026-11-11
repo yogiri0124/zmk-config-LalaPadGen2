@@ -26,7 +26,7 @@
  *   0x02 状態:  [2] 右との Bluetooth の接続がある（1/0。右からキーが届く準備ができているとは限らない）
  *               [3] 送っている種類（開始で指定したもの）
  *               [4] キーの位置の数（この番号より前がキー） [5] 位置の数の合計 [6..7] 次の通し番号（u16 LE）
- *               [8] できること（bit0: 書き込み待ちの命令 0x84・0x85 を受け付ける）
+ *               [8] できること（bit0: 書き込み待ちの命令 0x84・0x85 を受け付ける、bit1: レイヤーの見分けの番号 0x86 に答える）
  *               「開始」したとき、問い合わせに答えるとき、右とのつながりが変わったとき、
  *               送り終わったの知らせが来ない状態のレポートを見切ったときに送る
  *   0x03 押されているキーの一覧:  [2..3] 通し番号（u16 LE。この番号より前のキーまでを反映した一覧）
@@ -42,12 +42,17 @@
  *               LS(N1) のようにキーに付いた修飾キーは含まない）
  *               開始で bit2 を頼んだときだけ。「開始」したとき、問い合わせに答えるとき、レイヤー・修飾キーが変わったとき、
  *               送り終わったの知らせが来ないまま見切ったときに送る（そのときの状態。続けて変わったら最後のものだけ）
+ *   0x06 レイヤーの見分けの番号（0x86 の答え）:  [2] このレポートの先頭のレイヤー ID  [3] レイヤーの数（番号がなければ 0）
+ *               [4] このレポートの件数 n（0〜27）  [5..4+n] レイヤー ID ごとの見分けの番号（lalapad,layer-ids。1〜255）
+ *               レイヤーの数が 27 を超えるときは、続きを次のレポートで送る。送り終わったの知らせが来ないまま見切ったときは、
+ *               先頭から送り直す
  * PC → キーボード
  *   0x81 開始・生存確認: [2] 送ってほしい種類（bit0: キー、bit1: トラックパッドのタップ・ジェスチャー、bit2: レイヤー）
  *   0x82 終了
  *   0x83 状態の問い合わせ（送っている間だけ答える。状態と、押されているキーの一覧（レイヤーを頼んでいればレイヤーも）を送る）
  *   0x84 書き込み待ちの準備: [2] どちら（0: 親機（左）、1: 子機（右））。3 秒の間だけ、次の 0x85 を受け付ける
  *   0x85 書き込み待ちにする: [2] どちら（0x84 と同じであること）。親機は自分で、子機には親機から &bootloader を押したことにして伝える
+ *   0x86 レイヤーの見分けの番号の問い合わせ（送っている間だけ答える。答えは 0x06）
  *   （どちらも送っている間（入力先からの「開始」を受けている間）だけ。答えは 0x05）
  * キーボード → PC（命令の答え）
  *   0x05 書き込み待ちの答え: [2] どちら [3] 結果（0: 書き込み待ちにする（決めてから 0.5 秒後に入る。答えは届かないこともある）、1: 準備した、
@@ -94,6 +99,10 @@
 #include "key_stream.h"
 #include "tp_positions.h"
 
+#if IS_ENABLED(CONFIG_ZMK_LAYER_IDS)
+#include "layer_ids.h"
+#endif
+
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 /* PC のアプリとの取り決め（docs/key-stream.md） */
@@ -108,11 +117,13 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define MSG_PRESSED 0x03
 #define MSG_LAYERS 0x04
 #define MSG_BOOT 0x05
+#define MSG_LAYER_IDS 0x06
 #define CMD_START 0x81
 #define CMD_STOP 0x82
 #define CMD_STATUS 0x83
 #define CMD_BOOT_ARM 0x84
 #define CMD_BOOT_RUN 0x85
+#define CMD_LAYER_IDS 0x86
 
 /* 書き込み待ち（0x84・0x85）。キーマップに &bootloader があるときだけ（子機にも同じキーマップが入るので、子機でも動く） */
 #if DT_NODE_HAS_STATUS(DT_NODELABEL(bootloader), okay)
@@ -132,6 +143,9 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 /* 入ると決めてから入るまでの時間（答えが PC に届くように） */
 #define BOOT_DELAY_MS 500
 #define CAP_BOOT BIT(0)
+#define CAP_LAYER_IDS BIT(1)
+/* 1 つのレポートに入れるレイヤーの見分けの番号の数 */
+#define LAYER_IDS_PER_REPORT 27
 #define STREAM_KEYS BIT(0)
 #define STREAM_TRACKPAD BIT(1)
 #define STREAM_LAYERS BIT(2)
@@ -189,6 +203,7 @@ BUILD_ASSERT(5 + 6 * KEYS_PER_REPORT <= KEY_STREAM_REPORT_SIZE, "keys report too
 BUILD_ASSERT(ZMK_KEYMAP_LEN <= 255, "positions must fit in one byte");
 BUILD_ASSERT(5 + (ZMK_KEYMAP_LEN + 7) / 8 <= KEY_STREAM_REPORT_SIZE, "pressed list report too large");
 BUILD_ASSERT(ZMK_KEYMAP_LAYERS_LEN <= 32, "layers must fit in 32 bits");
+BUILD_ASSERT(5 + LAYER_IDS_PER_REPORT <= KEY_STREAM_REPORT_SIZE, "layer ids report too large");
 
 /* ---- 状態（lock で守る。キーの出来事・PC からの命令・送り終わりの知らせ・右とのつながりの変化は、
  *      それぞれ別のスレッドから届くため） ---- */
@@ -237,6 +252,11 @@ static uint32_t pressed_list_sent;
 /* 有効なレイヤーも同じく回数で持つ（送るときの状態を送る。続けて変わっても、送るのは最後の状態の1つだけ） */
 static uint32_t layers_requested;
 static uint32_t layers_sent;
+/* レイヤーの見分けの番号も回数で持つ。数回のレポートに分けて送るので、次に送るレイヤー ID も持つ
+ * （頼まれ直したら先頭から送り直す） */
+static uint32_t layer_ids_requested;
+static uint32_t layer_ids_sent;
+static uint8_t layer_ids_next;
 /* 最後に送った（または送るよう頼んだ）修飾キー。見直したときに、これと違えばレイヤーの報告を送る */
 static uint8_t mods_seen;
 /* 書き込み待ちの答え（送り待ちの回数と、送る中身）。準備（0x84）は、どちらと時刻を覚える（専用のワークキューだけで触る） */
@@ -345,6 +365,8 @@ static struct bt_conn *stop_locked(void) {
     status_sent = status_requested;
     pressed_list_sent = pressed_list_requested;
     layers_sent = layers_requested;
+    layer_ids_sent = layer_ids_requested;
+    layer_ids_next = 0;
     boot_reply_sent = boot_reply_requested;
     // やめたら、準備を使えなくする（別の送り先・別の始め方に引き継がない）
     session_gen++;
@@ -387,6 +409,19 @@ static void stop(void) {
 
 /* ---- 送る（専用のワークキュー） ---- */
 
+/* レイヤー ID ごとの見分けの番号（lalapad,layer-ids）。ないときは 0 */
+static size_t layer_ids_get(const uint8_t **ids) {
+    const uint8_t *p = NULL;
+    size_t n = 0;
+#if IS_ENABLED(CONFIG_ZMK_LAYER_IDS)
+    n = lalapad_layer_ids(&p);
+#endif
+    if (ids != NULL) {
+        *ids = p;
+    }
+    return n;
+}
+
 static void build_status(uint8_t *report) {
     report[1] = MSG_STATUS;
     report[2] = atomic_get(&split_links) > 0 ? 1 : 0;
@@ -395,7 +430,23 @@ static void build_status(uint8_t *report) {
     report[5] = ZMK_KEYMAP_LEN;
     // 次に届くキーの通し番号（送り待ちがあれば、その先頭。状態は送り待ちのキーより先に送るため）
     sys_put_le16(events_count > 0 ? events[events_head].seq : next_seq, &report[6]);
-    report[8] = KS_HAS_BOOT ? CAP_BOOT : 0;
+    report[8] = (KS_HAS_BOOT ? CAP_BOOT : 0) | (layer_ids_get(NULL) > 0 ? CAP_LAYER_IDS : 0);
+}
+
+/* レイヤーの見分けの番号のレポートを作る（layer_ids_next から）。入れた件数を返す */
+static size_t build_layer_ids(uint8_t *report) {
+    const uint8_t *ids;
+    const size_t total = layer_ids_get(&ids);
+    const size_t first = MIN(layer_ids_next, total);
+    const size_t n = MIN(total - first, LAYER_IDS_PER_REPORT);
+    report[1] = MSG_LAYER_IDS;
+    report[2] = (uint8_t)first;
+    report[3] = (uint8_t)total;
+    report[4] = (uint8_t)n;
+    for (size_t i = 0; i < n; i++) {
+        report[5 + i] = ids[first + i];
+    }
+    return n;
 }
 
 /* 押されているキーの一覧のレポートを作る。送り待ちのキーがない（すべて送り始めた）ときに呼ぶ */
@@ -448,7 +499,7 @@ static void send_work_handler(struct k_work *work) {
     }
     memset(report, 0, sizeof(report));
     report[0] = KEY_STREAM_PROTOCOL_VERSION;
-    // 送る順: 状態 → レイヤー → 送り待ちのキー → 押されているキーの一覧（一覧は、それより前のキーを送り終えた時点のもの）。
+    // 送る順: 状態 → 書き込み待ちの答え → レイヤー → レイヤーの見分けの番号 → 送り待ちのキー → 押されているキーの一覧（一覧は、それより前のキーを送り終えた時点のもの）。
     // レイヤーはキーより先に送る（アプリが今のレイヤーを早く出せるように。送るのは作った時点の状態）
     // レイヤーを頼まれていなければ、前に頼まれていた分（止める前・種類を変える前のもの、見切った送り直し）は送らない
     if (!(stream_mask & STREAM_LAYERS)) {
@@ -472,6 +523,10 @@ static void send_work_handler(struct k_work *work) {
         build_layers(report);
         kind = MSG_LAYERS;
         gen = layers_requested;
+    } else if (layer_ids_requested != layer_ids_sent) {
+        n = build_layer_ids(report);
+        kind = MSG_LAYER_IDS;
+        gen = layer_ids_requested;
     } else if (events_count > 0) {
         first_seq = events[events_head].seq;
         n = build_keys(report);
@@ -522,6 +577,15 @@ static void send_work_handler(struct k_work *work) {
             layers_sent = gen;
         } else if (kind == MSG_BOOT) {
             boot_reply_sent = gen;
+        } else if (kind == MSG_LAYER_IDS) {
+            // 送っている間に頼まれ直していたら（先頭に戻してある）、進めない
+            if (gen == layer_ids_requested) {
+                layer_ids_next += n;
+                if (layer_ids_next >= layer_ids_get(NULL)) {
+                    layer_ids_sent = gen;
+                    layer_ids_next = 0;
+                }
+            }
         } else if (kind == MSG_PRESSED) {
             pressed_list_sent = gen;
         } else {
@@ -601,6 +665,10 @@ static void flight_work_handler(struct k_work *work) {
                 status_requested++;
             } else if (in_flight_kind == MSG_BOOT) {
                 // 書き込み待ちの答えは送り直さない（アプリは答えが来なければ、時間で見切る）
+            } else if (in_flight_kind == MSG_LAYER_IDS) {
+                // 先頭から送り直す
+                layer_ids_requested++;
+                layer_ids_next = 0;
             } else if (in_flight_kind == MSG_LAYERS) {
                 // 今もレイヤーを頼まれているときだけ（種類を変えて始め直した後に、前の分を送り直さない）
                 if (stream_mask & STREAM_LAYERS) {
@@ -923,6 +991,20 @@ static void command_work_handler(struct k_work *work) {
                 if (stream_mask & STREAM_LAYERS) {
                     layers_requested++;
                 }
+            }
+            k_spin_unlock(&lock, key);
+            release_conn(cmd.conn);
+            if (same) {
+                request_send();
+            }
+            break;
+        }
+        case CMD_LAYER_IDS: {
+            k_spinlock_key_t key = k_spin_lock(&lock);
+            const bool same = streaming && stream_transport == cmd.transport && stream_conn == cmd.conn;
+            if (same) {
+                layer_ids_requested++;
+                layer_ids_next = 0;
             }
             k_spin_unlock(&lock, key);
             release_conn(cmd.conn);
