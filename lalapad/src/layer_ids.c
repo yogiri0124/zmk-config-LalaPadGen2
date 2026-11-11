@@ -364,20 +364,32 @@ static int delete_saved(bool (*keep)(uint32_t layer)) {
             continue;
         }
         snprintf(key, sizeof(key), "keymap/l/%u/%u", saved[i].layer, saved[i].position);
-        ret = MIN(ret, delete_one(key));
+        {
+            const int e = delete_one(key);
+            ret = e < ret ? e : ret;
+        }
     }
     for (int l = 0; l < MAX_LAYERS; l++) {
         if ((saved_name_mask & BIT(l)) && (keep == NULL || !keep(l))) {
             snprintf(key, sizeof(key), "keymap/l_n/%d", l);
-            ret = MIN(ret, delete_one(key));
+            {
+                const int e = delete_one(key);
+                ret = e < ret ? e : ret;
+            }
         }
     }
     for (size_t i = 0; i < big_names_len; i++) {
         snprintf(key, sizeof(key), "keymap/l_n/%lu", big_names[i]);
-        ret = MIN(ret, delete_one(key));
+        {
+            const int e = delete_one(key);
+            ret = e < ret ? e : ret;
+        }
     }
     if (keep == NULL && saved_order_found) {
-        ret = MIN(ret, delete_one("keymap/layer_order"));
+        {
+            const int e = delete_one("keymap/layer_order");
+            ret = e < ret ? e : ret;
+        }
     }
     return ret;
 }
