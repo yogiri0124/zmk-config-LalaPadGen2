@@ -24,13 +24,21 @@
  *   古いものを全部消す（1 つでも消せなければ、そこでやめる。並びは覚え直さないので、次に起動したときにまた付け替える。
  *   残っているのは古い並びのものだけなので、付け替え直せる）→ 新しい並びを覚える → 新しい ID で書く
  *   （並びを覚えた後に切れれば、一部の変更がなくなるだけ）。読めなかった変更は、消して書き直さない。
+ *   引数がレイヤー ID かどうかを確かめられなかったキー（behavior が見つからない・metadata がない）も、書き直さない。
  * 付け替えきれないほど変更が多いときは、Studio の「Restore Stock Settings」と同じく、保存した変更を全部消す。
  *
+ * 付け替えられなかった起動（消せなかった・覚えていた並びが読めなかった）では、その起動の間、ZMK に Studio の変更
+ * （キー・名前・順番）を読ませない（キーマップの割り当てのまま動く）。ZMK の keymap の設定の受け口（"keymap"）より
+ * 細かい受け口（"keymap/l"・"keymap/l_n"・"keymap/layer_order"）をここで持ち、通してよいものだけを ZMK の受け口に
+ * 渡す（Zephyr の設定は、名前がいちばん長く合う受け口に渡す）。どの起動でも、今のレイヤーの数以上の ID の変更は
+ * 通さない（ZMK v0.3.0 は、範囲外の ID の名前を配列の外に書いてしまうため）。
+ *
  * 初めて起動したとき（覚えている並びがない）は、今の並びを覚えるだけ（それまでの変更は、今の並びのものとみなす）。
- * どの起動でも、今のレイヤーの数より大きい ID の変更は消す（ZMK v0.3.0 は、範囲外の ID の名前を配列の外に書いてしまうため）。
+ * 覚えている並びの長さが壊れているときは、元に戻せないので、Studio の変更を全部消してから今の並びを覚える。
  */
 
 #include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -99,8 +107,8 @@ size_t lalapad_layer_ids(const uint8_t **ids) {
 #define NO_LAYER 0xFF
 /* 全部消すときに、読み出し直して消す回数の上限（多すぎて一度に読み出せないため） */
 #define RESET_PASSES 16
-/* レイヤー ID を引数に取る behavior の数の上限 */
-#define LAYER_BEHAVIORS_MAX 24
+/* 付け替えるキーで使っている behavior の種類の数の上限（超えた分は確かめられないので、そのキーは書き直さない） */
+#define BEHAVIOR_KINDS_MAX 48
 
 /* ZMK が保存するキーの形（app/src/keymap.c の zmk_behavior_binding_setting と同じ。後ろの 0 の引数は省いて保存する） */
 struct binding_setting {
@@ -119,7 +127,10 @@ struct saved_binding {
 /* 前回起動したときの並び（設定から読んだもの） */
 static uint8_t stored_ids[MAX_LAYERS];
 static size_t stored_len;
-static bool stored_found;
+static enum { STORED_NONE, STORED_OK, STORED_UNREADABLE, STORED_BROKEN } stored_state;
+
+/* この起動の間、ZMK に Studio の変更を読ませない（付け替えられなかった） */
+static bool block_all;
 
 /* 読み出した ZMK Studio の変更（初期化の中だけで触る） */
 static struct saved_binding saved[CONFIG_ZMK_LAYER_IDS_MIGRATE_MAX];
@@ -139,27 +150,36 @@ static bool saved_order_ok;
 /* 古い ID → 新しい ID（NO_LAYER は、なくなった） */
 static uint8_t id_map[MAX_LAYERS];
 
-/* レイヤー ID を引数に取る behavior（local ID と、どの引数か） */
-struct layer_behavior {
+/* 付け替えるキーで使っている behavior（local ID）と、引数がレイヤー ID か。
+ * 確かめられたものだけ known（引数がレイヤー ID でないものも含む）。確かめられなければ、そのキーは書き直さない */
+struct behavior_kind {
     zmk_behavior_local_id_t local_id;
+    bool known;
     bool param1;
     bool param2;
 };
-static struct layer_behavior layer_behaviors[LAYER_BEHAVIORS_MAX];
-static size_t layer_behaviors_len;
+static struct behavior_kind behavior_kinds[BEHAVIOR_KINDS_MAX];
+static size_t behavior_kinds_len;
 
 static int read_stored_cb(const char *key, size_t len, settings_read_cb read_cb, void *cb_arg,
                           void *param) {
     const char *next;
     if (settings_name_steq(key, "layer_ids", &next) && !next) {
-        // 長さ 0 は消した印。長すぎるものは壊れている（覚えていないものとして扱う）
-        if (len == 0 || len > sizeof(stored_ids)) {
-            stored_found = false;
+        if (len == 0) {
+            stored_state = STORED_NONE; // 消した印
+            return 0;
+        }
+        if (len > sizeof(stored_ids)) {
+            stored_state = STORED_BROKEN;
             return 0;
         }
         const int n = read_cb(cb_arg, stored_ids, len);
-        stored_found = n > 0;
-        stored_len = n > 0 ? n : 0;
+        if (n <= 0) {
+            stored_state = STORED_UNREADABLE;
+            return 0;
+        }
+        stored_len = n;
+        stored_state = STORED_OK;
     }
     return 0;
 }
@@ -300,6 +320,20 @@ static int delete_all(void) {
 
 static uint8_t map_layer(uint32_t old_id) { return old_id < stored_len ? id_map[old_id] : NO_LAYER; }
 
+/* その behavior の分け方（なければ足す。足せなければ NULL） */
+static struct behavior_kind *kind_of(zmk_behavior_local_id_t local_id, bool add) {
+    for (size_t k = 0; k < behavior_kinds_len; k++) {
+        if (behavior_kinds[k].local_id == local_id) {
+            return &behavior_kinds[k];
+        }
+    }
+    if (!add || behavior_kinds_len == ARRAY_SIZE(behavior_kinds)) {
+        return NULL;
+    }
+    behavior_kinds[behavior_kinds_len] = (struct behavior_kind){.local_id = local_id};
+    return &behavior_kinds[behavior_kinds_len++];
+}
+
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 /* その引数の取りうる値に「レイヤー ID」があるか */
 static bool values_have_layer(const struct behavior_parameter_value_metadata *values, size_t len) {
@@ -311,27 +345,19 @@ static bool values_have_layer(const struct behavior_parameter_value_metadata *va
     return false;
 }
 
-/* behavior の名前から、レイヤー ID を引数に取るなら覚える */
-static void note_behavior(zmk_behavior_local_id_t local_id, const char *name) {
+/* behavior の名前から、引数がレイヤー ID かを確かめる（behavior が見つからない・metadata がなければ、確かめられない） */
+static void classify(struct behavior_kind *kind, const char *name) {
     const struct device *dev = zmk_behavior_get_binding(name);
     struct behavior_parameter_metadata meta = {0};
     if (dev == NULL || behavior_get_parameter_metadata(dev, &meta) < 0) {
+        LOG_WRN("Cannot check the parameters of %s; its saved keys are dropped", name);
         return;
     }
-    bool p1 = false;
-    bool p2 = false;
     for (size_t s = 0; s < meta.sets_len; s++) {
-        p1 = p1 || values_have_layer(meta.sets[s].param1_values, meta.sets[s].param1_values_len);
-        p2 = p2 || values_have_layer(meta.sets[s].param2_values, meta.sets[s].param2_values_len);
+        kind->param1 = kind->param1 || values_have_layer(meta.sets[s].param1_values, meta.sets[s].param1_values_len);
+        kind->param2 = kind->param2 || values_have_layer(meta.sets[s].param2_values, meta.sets[s].param2_values_len);
     }
-    if (!p1 && !p2) {
-        return;
-    }
-    if (layer_behaviors_len < ARRAY_SIZE(layer_behaviors)) {
-        layer_behaviors[layer_behaviors_len++] = (struct layer_behavior){local_id, p1, p2};
-    } else {
-        LOG_WRN("Too many behaviors with layer parameters; keys of %s are dropped", name);
-    }
+    kind->known = true;
 }
 
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_ID_TYPE_SETTINGS_TABLE)
@@ -343,64 +369,68 @@ static int behavior_ids_cb(const char *key, size_t len, settings_read_cb read_cb
         char *end;
         const unsigned long id = strtoul(next, &end, 10);
         char name[64];
-        if (end == next || *end != '\0' || len == 0 || len >= sizeof(name)) {
+        if (end == next || *end != '\0' || id > UINT16_MAX || len == 0 || len >= sizeof(name)) {
             return 0;
+        }
+        struct behavior_kind *kind = kind_of(id, false);
+        if (kind == NULL || kind->known) {
+            return 0; // 付け替えるキーで使っていない
         }
         const int n = read_cb(cb_arg, name, len);
         if (n > 0) {
             name[n] = '\0';
-            note_behavior(id, name);
+            classify(kind, name);
         }
     }
     return 0;
 }
 #endif
 
-static void find_layer_behaviors(void) {
-    layer_behaviors_len = 0;
+/* 付け替えるキーで使っている behavior を、それぞれ確かめる */
+static void classify_behaviors(void) {
+    behavior_kinds_len = 0;
+    for (size_t i = 0; i < saved_count; i++) {
+        if (saved[i].ok && kind_of(saved[i].value.behavior_local_id, true) == NULL) {
+            LOG_WRN("Too many kinds of saved keys; some are dropped");
+        }
+    }
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_LOCAL_ID_TYPE_SETTINGS_TABLE)
     settings_load_subtree_direct("behavior", behavior_ids_cb, NULL);
 #else
     // CRC16 の local ID は、ここより前の初期化（APPLICATION の既定の優先度）で決まっている
-    for (size_t i = 0; i < saved_count; i++) {
-        const zmk_behavior_local_id_t id = saved[i].value.behavior_local_id;
-        bool seen = false;
-        for (size_t k = 0; k < layer_behaviors_len; k++) {
-            seen = seen || layer_behaviors[k].local_id == id;
-        }
-        const char *name = zmk_behavior_find_behavior_name_from_local_id(id);
-        if (!seen && saved[i].ok && name != NULL) {
-            note_behavior(id, name);
+    for (size_t k = 0; k < behavior_kinds_len; k++) {
+        const char *name = zmk_behavior_find_behavior_name_from_local_id(behavior_kinds[k].local_id);
+        if (name != NULL) {
+            classify(&behavior_kinds[k], name);
         }
     }
 #endif
 }
 #else
-static void find_layer_behaviors(void) { layer_behaviors_len = 0; }
+/* metadata がなければ、引数がレイヤー ID か確かめられない（どのキーも書き直さない） */
+static void classify_behaviors(void) { behavior_kinds_len = 0; }
 #endif
 
-/* キーの引数がレイヤー ID なら、新しい ID に書き直す。指すレイヤーが消えていれば false（キーは捨てる） */
+/* キーの引数がレイヤー ID なら、新しい ID に書き直す。書き直せない（引数を確かめられない・指すレイヤーが消えた）
+ * なら false（キーは捨てる。キーマップの割り当てに戻る） */
 static bool remap_params(struct binding_setting *value) {
-    for (size_t k = 0; k < layer_behaviors_len; k++) {
-        const struct layer_behavior *b = &layer_behaviors[k];
-        if (b->local_id != value->behavior_local_id) {
-            continue;
+    const struct behavior_kind *b = kind_of(value->behavior_local_id, false);
+    if (b == NULL || !b->known) {
+        return false;
+    }
+    if (b->param1) {
+        const uint8_t l = map_layer(value->param1);
+        if (l == NO_LAYER) {
+            return false;
         }
-        if (b->param1) {
-            const uint8_t l = map_layer(value->param1);
-            if (l == NO_LAYER) {
-                return false;
-            }
-            value->param1 = l;
+        value->param1 = l;
+    }
+    if (b->param2) {
+        const uint8_t l = map_layer(value->param2);
+        if (l == NO_LAYER) {
+            return false;
         }
-        if (b->param2) {
-            const uint8_t l = map_layer(value->param2);
-            if (l == NO_LAYER) {
-                return false;
-            }
-            value->param2 = l;
-        }
-        return true;
+        value->param2 = l;
     }
     return true;
 }
@@ -481,24 +511,46 @@ static int layer_ids_init(void) {
         LOG_ERR("Layer ids: settings are not available");
         return 0;
     }
-    stored_found = false;
+    stored_state = STORED_NONE;
     settings_load_subtree_direct("lalapad", read_stored_cb, NULL);
-
-    if (collect() < 0) {
-        LOG_ERR("Layer ids: cannot read ZMK Studio changes");
+    if (!valid) {
+        return 0; // 番号が使えない（重なっている）: 付け替えない（範囲外の ID は受け口で止める）
+    }
+    if (stored_state == STORED_UNREADABLE) {
+        // 覚えていた並びが読めない: 付け替えられないので、この起動では Studio の変更を使わない（次の起動で読み直す）
+        LOG_ERR("Layer ids: cannot read the saved layer order; ZMK Studio changes are not used this time");
+        block_all = true;
         return 0;
     }
 
-    const bool changed = valid && stored_found &&
-                         (stored_len != sizeof(compiled_ids) ||
-                          memcmp(stored_ids, compiled_ids, stored_len) != 0);
+    const int collected = collect();
+    const bool changed = stored_state == STORED_BROKEN ||
+                         (stored_state == STORED_OK &&
+                          (stored_len != sizeof(compiled_ids) || memcmp(stored_ids, compiled_ids, stored_len) != 0));
     if (!changed) {
-        // 並びは同じ（か、初めて・番号が使えない）。今のレイヤーの数以上の ID の変更だけを消す
-        // （名前は、ZMK が配列の外に書いてしまうため。名前は読み出しきれなくても番号は全部わかる。キーは ZMK が範囲外として
-        //  読まないので、読み出しきれなかった分は残っても害はない）
-        delete_saved(in_range);
-        if (valid && !stored_found) {
+        // 並びは同じ（か、初めて）。今のレイヤーの数以上の ID の変更を消す（読み込みは受け口でも止める）
+        if (collected >= 0) {
+            delete_saved(in_range);
+        }
+        if (stored_state == STORED_NONE) {
             save_ids();
+        }
+        return 0;
+    }
+    if (collected < 0) {
+        LOG_ERR("Layer ids: cannot read ZMK Studio changes; they are not used this time");
+        block_all = true;
+        return 0;
+    }
+
+    if (saved_overflow || stored_state == STORED_BROKEN) {
+        // 付け替えきれない・覚えていた並びが壊れている: 保存した変更を全部消す（別のレイヤーに付いたまま残さない）。
+        // 消しきれなければ、並びは覚え直さず、この起動では使わない
+        LOG_WRN("Cannot move ZMK Studio changes; resetting them");
+        if (delete_all() == 0) {
+            save_ids();
+        } else {
+            block_all = true;
         }
         return 0;
     }
@@ -512,24 +564,16 @@ static int layer_ids_init(void) {
             }
         }
     }
-
-    if (saved_overflow) {
-        // 付け替えきれない: 保存した変更を全部消す（別のレイヤーに付いたまま残さない）。消しきれなければ、並びは覚え直さない
-        LOG_WRN("Too many ZMK Studio changes to move; resetting them");
-        if (delete_all() == 0) {
-            save_ids();
-        }
-        return 0;
-    }
-
-    find_layer_behaviors();
-    // 古いものを全部消す。1 つでも消せなければやめる（並びを覚え直さないので、次に起動したときに付け替え直す）
+    classify_behaviors();
+    // 古いものを全部消す。1 つでも消せなければやめる（並びを覚え直さないので、次に起動したときに付け替え直す。
+    // この起動では、残った古いものを ZMK に読ませない）
     if (delete_saved(NULL) < 0) {
         LOG_ERR("Layer ids: cannot delete old ZMK Studio changes; will retry on next boot");
+        block_all = true;
         return 0;
     }
     if (save_ids() < 0) {
-        return 0;
+        return 0; // 古いものは消えている（Studio の変更がないだけ）
     }
     write_new();
     return 0;
@@ -538,5 +582,62 @@ static int layer_ids_init(void) {
 /* ZMK の設定の読み込み（main の settings_load）より前。APPLICATION の初期化の最後に動かす（behavior の local ID の
  * 初期化（CRC16 のとき）より後） */
 SYS_INIT(layer_ids_init, APPLICATION, 99);
+
+/* ---- ZMK の keymap の設定の受け口の手前の受け口 ---- */
+
+static const struct settings_handler_static *keymap_handler(void) {
+    static const struct settings_handler_static *found;
+    if (found == NULL) {
+        STRUCT_SECTION_FOREACH(settings_handler_static, ch) {
+            if (strcmp(ch->name, "keymap") == 0) {
+                found = ch;
+                break;
+            }
+        }
+    }
+    return found;
+}
+
+/* ZMK の受け口に渡す（key は "keymap/" の後ろ） */
+static int pass_to_keymap(const char *key, size_t len, settings_read_cb read_cb, void *cb_arg) {
+    const struct settings_handler_static *h = keymap_handler();
+    return h != NULL && h->h_set != NULL ? h->h_set(key, len, read_cb, cb_arg) : 0;
+}
+
+/* name の先頭のレイヤー ID が、今のレイヤーの数より小さいか */
+static bool layer_in_range(const char *name) {
+    char *end;
+    const unsigned long layer = name != NULL ? strtoul(name, &end, 10) : ULONG_MAX;
+    return name != NULL && end != name && (*end == '/' || *end == '\0') && layer < ZMK_KEYMAP_LAYERS_LEN;
+}
+
+static int guard_with_layer(const char *head, const char *name, size_t len, settings_read_cb read_cb,
+                            void *cb_arg) {
+    if (block_all || !layer_in_range(name)) {
+        return 0; // 読ませない
+    }
+    char key[32];
+    snprintf(key, sizeof(key), "%s/%s", head, name);
+    return pass_to_keymap(key, len, read_cb, cb_arg);
+}
+
+static int guard_bindings_set(const char *name, size_t len, settings_read_cb read_cb, void *cb_arg) {
+    return guard_with_layer("l", name, len, read_cb, cb_arg);
+}
+
+static int guard_names_set(const char *name, size_t len, settings_read_cb read_cb, void *cb_arg) {
+    return guard_with_layer("l_n", name, len, read_cb, cb_arg);
+}
+
+static int guard_order_set(const char *name, size_t len, settings_read_cb read_cb, void *cb_arg) {
+    if (block_all || name != NULL) {
+        return 0;
+    }
+    return pass_to_keymap("layer_order", len, read_cb, cb_arg);
+}
+
+SETTINGS_STATIC_HANDLER_DEFINE(lalapad_keymap_bindings, "keymap/l", NULL, guard_bindings_set, NULL, NULL);
+SETTINGS_STATIC_HANDLER_DEFINE(lalapad_keymap_names, "keymap/l_n", NULL, guard_names_set, NULL, NULL);
+SETTINGS_STATIC_HANDLER_DEFINE(lalapad_keymap_order, "keymap/layer_order", NULL, guard_order_set, NULL, NULL);
 
 #endif // IS_ENABLED(CONFIG_ZMK_LAYER_IDS_MIGRATE)
