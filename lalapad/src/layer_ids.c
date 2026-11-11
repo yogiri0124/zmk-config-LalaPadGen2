@@ -27,14 +27,23 @@
  *   引数がレイヤー ID かどうかを確かめられなかったキー（behavior が見つからない・metadata がない）も、書き直さない。
  * 付け替えきれないほど変更が多いときは、Studio の「Restore Stock Settings」と同じく、保存した変更を全部消す。
  *
- * 付け替えられなかった起動（消せなかった・覚えていた並びが読めなかった）では、その起動の間、ZMK に Studio の変更
- * （キー・名前・順番）を読ませない（キーマップの割り当てのまま動く）。ZMK の keymap の設定の受け口（"keymap"）より
+ * 付け替えられなかった起動（設定が使えない・消せなかった・覚えていた並びが読めない・新しい並びを覚えられなかった）では、
+ * その起動の間、ZMK に Studio の変更（キー・名前・順番）を読ませず（キーマップの割り当てのまま動く）、ZMK Studio を
+ * ロックする（今の ID で保存されると、次の起動で古い並びのものとして付け替えてしまうため。Studio のキーマップの操作は
+ * すべてロックの対象。CONFIG_ZMK_STUDIO_LOCKING=n でもロックは効き、キーマップに &studio_unlock がなければ、
+ * 次の起動まで解けない）。ZMK の keymap の設定の受け口（"keymap"）より
  * 細かい受け口（"keymap/l"・"keymap/l_n"・"keymap/layer_order"）をここで持ち、通してよいものだけを ZMK の受け口に
  * 渡す（Zephyr の設定は、名前がいちばん長く合う受け口に渡す）。どの起動でも、今のレイヤーの数以上の ID の変更は
  * 通さない（ZMK v0.3.0 は、範囲外の ID の名前を配列の外に書いてしまうため）。
  *
  * 初めて起動したとき（覚えている並びがない）は、今の並びを覚えるだけ（それまでの変更は、今の並びのものとみなす）。
  * 覚えている並びの長さが壊れているときは、元に戻せないので、Studio の変更を全部消してから今の並びを覚える。
+ * 覚えている並びは 2 か所（lalapad/layer_ids と lalapad/layer_ids_b）に書く（片方が壊れて消えても、初めての起動と
+ * 取り違えないように。先に書く layer_ids を正とし、読めないときだけ layer_ids_b を使う）。
+ *
+ * 設定を読み出す settings_load_subtree_direct は、Zephyr v3.5.0 では失敗を返さない（いつも 0）。NVS の読み出しでは、
+ * 名前か値が読めない項目は Zephyr が消すので（settings_nvs.c の settings_nvs_load）、読み出しに出てこない項目が、
+ * 後の起動で出てくることはない（出てこなかった古い変更が、後で別のレイヤーに付くことはない）。
  */
 
 #include <errno.h>
@@ -53,6 +62,9 @@
 #include <drivers/behavior.h>
 #include <zmk/behavior.h>
 #include <zmk/keymap.h>
+#if IS_ENABLED(CONFIG_ZMK_STUDIO)
+#include <zmk/studio/core.h>
+#endif
 
 #include "layer_ids.h"
 
@@ -124,10 +136,19 @@ struct saved_binding {
     struct binding_setting value;
 };
 
-/* 前回起動したときの並び（設定から読んだもの） */
+/* 前回起動したときの並び（設定から読んだもの。使うほう） */
+enum stored_state { STORED_NONE, STORED_OK, STORED_UNREADABLE, STORED_BROKEN };
 static uint8_t stored_ids[MAX_LAYERS];
 static size_t stored_len;
-static enum { STORED_NONE, STORED_OK, STORED_UNREADABLE, STORED_BROKEN } stored_state;
+static enum stored_state stored_state;
+
+/* 2 か所から読んだもの（0: layer_ids、1: layer_ids_b） */
+struct stored_copy {
+    enum stored_state state;
+    uint8_t ids[MAX_LAYERS];
+    size_t len;
+};
+static struct stored_copy copies[2];
 
 /* この起動の間、ZMK に Studio の変更を読ませない（付け替えられなかった） */
 static bool block_all;
@@ -164,32 +185,74 @@ static size_t behavior_kinds_len;
 static int read_stored_cb(const char *key, size_t len, settings_read_cb read_cb, void *cb_arg,
                           void *param) {
     const char *next;
+    struct stored_copy *c = NULL;
     if (settings_name_steq(key, "layer_ids", &next) && !next) {
-        if (len == 0) {
-            stored_state = STORED_NONE; // 消した印
-            return 0;
-        }
-        if (len > sizeof(stored_ids)) {
-            stored_state = STORED_BROKEN;
-            return 0;
-        }
-        const int n = read_cb(cb_arg, stored_ids, len);
-        if (n <= 0) {
-            stored_state = STORED_UNREADABLE;
-            return 0;
-        }
-        stored_len = n;
-        stored_state = STORED_OK;
+        c = &copies[0];
+    } else if (settings_name_steq(key, "layer_ids_b", &next) && !next) {
+        c = &copies[1];
     }
+    if (c == NULL) {
+        return 0;
+    }
+    if (len == 0) {
+        c->state = STORED_NONE; // 消した印
+        return 0;
+    }
+    if (len > sizeof(c->ids)) {
+        c->state = STORED_BROKEN;
+        return 0;
+    }
+    const int n = read_cb(cb_arg, c->ids, len);
+    if (n <= 0) {
+        c->state = STORED_UNREADABLE;
+        return 0;
+    }
+    c->len = n;
+    c->state = STORED_OK;
     return 0;
 }
 
+/* 2 か所のどちらを使うか（layer_ids が読めればそれ。なければ layer_ids_b） */
+static void pick_stored(void) {
+    const struct stored_copy *c = copies[0].state == STORED_OK ? &copies[0] : copies[1].state == STORED_OK ? &copies[1] : NULL;
+    if (c != NULL) {
+        memcpy(stored_ids, c->ids, c->len);
+        stored_len = c->len;
+        stored_state = STORED_OK;
+    } else if (copies[0].state == STORED_UNREADABLE || copies[1].state == STORED_UNREADABLE) {
+        stored_state = STORED_UNREADABLE;
+    } else if (copies[0].state == STORED_BROKEN || copies[1].state == STORED_BROKEN) {
+        stored_state = STORED_BROKEN;
+    } else {
+        stored_state = STORED_NONE;
+    }
+}
+
+static bool copy_is_current(const struct stored_copy *c) {
+    return c->state == STORED_OK && c->len == sizeof(compiled_ids) && memcmp(c->ids, compiled_ids, c->len) == 0;
+}
+
+/* 今の並びを覚える（先に layer_ids、次に layer_ids_b。layer_ids を書けなければ失敗） */
 static int save_ids(void) {
     const int err = settings_save_one("lalapad/layer_ids", compiled_ids, sizeof(compiled_ids));
     if (err < 0) {
         LOG_ERR("Failed to save layer ids (err %d)", err);
+        return err;
     }
-    return err;
+    const int err_b = settings_save_one("lalapad/layer_ids_b", compiled_ids, sizeof(compiled_ids));
+    if (err_b < 0) {
+        LOG_WRN("Failed to save the backup of layer ids (err %d)", err_b);
+    }
+    return 0;
+}
+
+/* この起動では、ZMK に Studio の変更を読ませず、ZMK Studio をロックする（付け替えられなかった） */
+static void block_this_boot(const char *why) {
+    LOG_ERR("Layer ids: %s; ZMK Studio changes are not used and ZMK Studio is locked until the next boot", why);
+    block_all = true;
+#if IS_ENABLED(CONFIG_ZMK_STUDIO)
+    zmk_studio_core_lock();
+#endif
 }
 
 /* keymap/ の下に ZMK Studio が保存したものを読み出す（読めなかったものも、消すために名前は覚える） */
@@ -249,7 +312,8 @@ static int collect_cb(const char *key, size_t len, settings_read_cb read_cb, voi
     return 0;
 }
 
-static int collect(void) {
+/* 読み出す（Zephyr v3.5.0 の settings_load_subtree_direct は失敗を返さないので、戻り値は見ない。先頭の説明） */
+static void collect(void) {
     saved_count = 0;
     saved_overflow = false;
     saved_name_mask = 0;
@@ -257,7 +321,7 @@ static int collect(void) {
     big_names_len = 0;
     saved_order_found = false;
     saved_order_ok = false;
-    return settings_load_subtree_direct("keymap", collect_cb, NULL);
+    settings_load_subtree_direct("keymap", collect_cb, NULL);
 }
 
 /* 消す（消した印を書く） */
@@ -302,10 +366,7 @@ static bool in_range(uint32_t layer) { return layer < ZMK_KEYMAP_LAYERS_LEN; }
 /* ZMK Studio の変更を全部消す（多すぎて付け替えきれないとき。読み出せた分ずつ、なくなるまで消し直す） */
 static int delete_all(void) {
     for (int pass = 0; pass < RESET_PASSES; pass++) {
-        const int err = collect();
-        if (err < 0) {
-            return err;
-        }
+        collect();
         if (saved_count == 0 && saved_name_mask == 0 && big_names_len == 0 && !saved_order_found &&
             !saved_overflow) {
             return 0;
@@ -508,38 +569,33 @@ static void write_new(void) {
 static int layer_ids_init(void) {
     const bool valid = check_ids();
     if (settings_subsys_init() < 0) {
-        LOG_ERR("Layer ids: settings are not available");
+        // main がもう一度初期化して読み込めると、付け替えないまま読んでしまうので、この起動では読ませない
+        block_this_boot("settings are not available");
         return 0;
     }
-    stored_state = STORED_NONE;
+    memset(copies, 0, sizeof(copies));
     settings_load_subtree_direct("lalapad", read_stored_cb, NULL);
+    pick_stored();
     if (!valid) {
         return 0; // 番号が使えない（重なっている）: 付け替えない（範囲外の ID は受け口で止める）
     }
     if (stored_state == STORED_UNREADABLE) {
-        // 覚えていた並びが読めない: 付け替えられないので、この起動では Studio の変更を使わない（次の起動で読み直す）
-        LOG_ERR("Layer ids: cannot read the saved layer order; ZMK Studio changes are not used this time");
-        block_all = true;
+        block_this_boot("cannot read the saved layer order");
         return 0;
     }
 
-    const int collected = collect();
+    collect();
     const bool changed = stored_state == STORED_BROKEN ||
                          (stored_state == STORED_OK &&
                           (stored_len != sizeof(compiled_ids) || memcmp(stored_ids, compiled_ids, stored_len) != 0));
     if (!changed) {
         // 並びは同じ（か、初めて）。今のレイヤーの数以上の ID の変更を消す（読み込みは受け口でも止める）
-        if (collected >= 0) {
-            delete_saved(in_range);
-        }
-        if (stored_state == STORED_NONE) {
+        delete_saved(in_range);
+        // 初めて・2 か所の片方が古い・ない: 今の並びを書き直す（書けなくても害はない。並びは変わっていないので、
+        // 次の起動でも、保存したものは今の並びのものとして扱う）
+        if (!copy_is_current(&copies[0]) || !copy_is_current(&copies[1])) {
             save_ids();
         }
-        return 0;
-    }
-    if (collected < 0) {
-        LOG_ERR("Layer ids: cannot read ZMK Studio changes; they are not used this time");
-        block_all = true;
         return 0;
     }
 
@@ -547,10 +603,10 @@ static int layer_ids_init(void) {
         // 付け替えきれない・覚えていた並びが壊れている: 保存した変更を全部消す（別のレイヤーに付いたまま残さない）。
         // 消しきれなければ、並びは覚え直さず、この起動では使わない
         LOG_WRN("Cannot move ZMK Studio changes; resetting them");
-        if (delete_all() == 0) {
-            save_ids();
-        } else {
-            block_all = true;
+        if (delete_all() < 0) {
+            block_this_boot("cannot delete ZMK Studio changes");
+        } else if (save_ids() < 0) {
+            block_this_boot("cannot save the layer order");
         }
         return 0;
     }
@@ -566,14 +622,15 @@ static int layer_ids_init(void) {
     }
     classify_behaviors();
     // 古いものを全部消す。1 つでも消せなければやめる（並びを覚え直さないので、次に起動したときに付け替え直す。
-    // この起動では、残った古いものを ZMK に読ませない）
+    // この起動では、残った古いものを ZMK に読ませず、Studio で今の ID のものを保存させない）
     if (delete_saved(NULL) < 0) {
-        LOG_ERR("Layer ids: cannot delete old ZMK Studio changes; will retry on next boot");
-        block_all = true;
+        block_this_boot("cannot delete old ZMK Studio changes (will retry on next boot)");
         return 0;
     }
     if (save_ids() < 0) {
-        return 0; // 古いものは消えている（Studio の変更がないだけ）
+        // 古いものは消えている（Studio の変更がないだけ）。並びが古いままなので、Studio で今の ID のものを保存させない
+        block_this_boot("cannot save the layer order");
+        return 0;
     }
     write_new();
     return 0;
