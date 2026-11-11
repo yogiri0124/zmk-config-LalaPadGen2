@@ -150,6 +150,9 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define LAYER_IDS_PER_REPORT 27
 /* レイヤーのレポートに入れる、有効なレイヤーの ID の数 */
 #define LAYER_ORDER_MAX 19
+/* レイヤーの順番が入れ替えの途中だったときに、送り直すまでの時間と、続けて送り直す回数の上限 */
+#define LAYER_ORDER_RETRY_MS 50
+#define LAYER_ORDER_RETRIES 5
 #define STREAM_KEYS BIT(0)
 #define STREAM_TRACKPAD BIT(1)
 #define STREAM_LAYERS BIT(2)
@@ -262,6 +265,9 @@ static uint32_t layers_sent;
 static uint32_t layer_ids_requested;
 static uint32_t layer_ids_sent;
 static uint8_t layer_ids_next;
+/* レイヤーの順番が入れ替えの途中だった（送り終えたら、少し後で送り直す）と、続けて送り直した回数。lock で守る */
+static bool order_unstable;
+static uint8_t order_retries;
 /* 最後に送った（または送るよう頼んだ）修飾キー。見直したときに、これと違えばレイヤーの報告を送る */
 static uint8_t mods_seen;
 /* 書き込み待ちの答え（送り待ちの回数と、送る中身）。準備（0x84）は、どちらと時刻を覚える（専用のワークキューだけで触る） */
@@ -329,6 +335,8 @@ static K_WORK_DELAYABLE_DEFINE(timeout_work, timeout_work_handler);
 static K_WORK_DELAYABLE_DEFINE(flight_work, flight_work_handler);
 static K_WORK_DEFINE(route_work, route_work_handler);
 static K_WORK_DELAYABLE_DEFINE(mods_work, mods_work_handler);
+static void order_work_handler(struct k_work *work);
+static K_WORK_DELAYABLE_DEFINE(order_work, order_work_handler);
 
 static void kick_send(k_timeout_t delay) { k_work_reschedule_for_queue(&key_stream_q, &send_work, delay); }
 
@@ -477,16 +485,38 @@ static void build_layers(uint8_t *report) {
     mods_seen = report[11];
     // 有効なレイヤーを、ZMK がキーを探す順（上から Default まで。app/src/keymap.c の zmk_keymap_position_state_changed と同じ）に並べる。
     // ビットだけでは、ZMK Studio でレイヤーの順番を入れ替えているときに、どれが上か分からないため
+    // ZMK Studio がレイヤーの順番を入れ替えている最中（Studio のスレッドが順番の表を 1 つずつ書き換えている途中。こちらの
+    // lock では止められない）に読むと、同じ ID が 2 回出て、別の ID が抜ける。順番の表は ID の並べ替えなので、表全体に同じ ID が
+    // 2 回あれば途中とみなし、順番は送らずに（件数 0。アプリはビットで見る）、少し後で送り直す
     uint8_t n = 0;
-    for (int index = ZMK_KEYMAP_LAYERS_LEN - 1; index >= 0 && n < LAYER_ORDER_MAX; index--) {
+    uint32_t seen = 0;
+    bool unstable = false;
+    bool done = false;
+    for (int index = ZMK_KEYMAP_LAYERS_LEN - 1; index >= 0; index--) {
         const zmk_keymap_layer_id_t id = zmk_keymap_layer_index_to_id(index);
-        if (id == ZMK_KEYMAP_LAYER_ID_INVAL || id >= ZMK_KEYMAP_LAYERS_LEN || !zmk_keymap_layer_active(id)) {
+        if (id == ZMK_KEYMAP_LAYER_ID_INVAL || id >= ZMK_KEYMAP_LAYERS_LEN) {
+            continue;
+        }
+        if (seen & BIT(id)) {
+            unstable = true;
+        }
+        seen |= BIT(id);
+        if (done || n == LAYER_ORDER_MAX || !zmk_keymap_layer_active(id)) {
             continue;
         }
         report[13 + n++] = id;
         if (id == zmk_keymap_layer_default()) {
-            break; // Default より下は探さない
+            done = true; // Default より下は探さない（表の残りは、途中かどうかを確かめるためだけに見る）
         }
+    }
+    if (unstable) {
+        // 途中: 順番は送らない。送り直しは LAYER_ORDER_RETRIES 回まで（その後は、次にレイヤーが変わったときに送る）
+        memset(&report[13], 0, n);
+        n = 0;
+        order_unstable = order_retries < LAYER_ORDER_RETRIES;
+    } else {
+        order_unstable = false;
+        order_retries = 0;
     }
     report[12] = n;
 }
@@ -586,6 +616,7 @@ static void send_work_handler(struct k_work *work) {
 #endif
     }
 
+    bool retry_order = false;
     key = k_spin_lock(&lock);
     if (err == 0) {
         retrying = false;
@@ -594,6 +625,12 @@ static void send_work_handler(struct k_work *work) {
             status_sent = gen;
         } else if (kind == MSG_LAYERS) {
             layers_sent = gen;
+            if (order_unstable) {
+                // 順番が入れ替えの途中だった: 少し後で送り直す
+                order_unstable = false;
+                order_retries++;
+                retry_order = true;
+            }
         } else if (kind == MSG_BOOT) {
             boot_reply_sent = gen;
         } else if (kind == MSG_LAYER_IDS) {
@@ -615,6 +652,9 @@ static void send_work_handler(struct k_work *work) {
         }
         k_spin_unlock(&lock, key);
         release_conn(conn);
+        if (retry_order) {
+            k_work_reschedule_for_queue(&key_stream_q, &order_work, K_MSEC(LAYER_ORDER_RETRY_MS));
+        }
         // 送り終わったの知らせが来なければ、時間で見切る（知らせが先に届いていれば、見切るときに番号が合わない）
         const int32_t timeout_ms = transport == KEY_STREAM_TRANSPORT_USB ? IN_FLIGHT_TIMEOUT_USB_MS
                                                                          : IN_FLIGHT_TIMEOUT_BLE_MS;
@@ -1138,6 +1178,19 @@ static int key_stream_listener(const zmk_event_t *eh) {
 /* 修飾キーを見直す（専用のワークキュー）。ZMK の hold-tap は、判定の間に預かったキーの出来事（修飾キーの押し離しを含む）を、
  * 判定の後に自分より後ろの listener にだけ出し直すので、こちらの listener には届かないことがある。そのため、キーを押している間と、
  * 修飾キーが残っている間（&sk など）は、短い間隔で修飾キーを読み、前に送ったものと違えばレイヤーの報告を送る */
+/* レイヤーの順番が入れ替えの途中だったので、レイヤーのレポートを送り直す（専用のワークキュー） */
+static void order_work_handler(struct k_work *work) {
+    k_spinlock_key_t key = k_spin_lock(&lock);
+    const bool active = streaming && (stream_mask & STREAM_LAYERS);
+    if (active) {
+        layers_requested++;
+    }
+    k_spin_unlock(&lock, key);
+    if (active) {
+        request_send();
+    }
+}
+
 static void mods_work_handler(struct k_work *work) {
     const uint8_t mods = zmk_hid_get_explicit_mods();
     k_spinlock_key_t key = k_spin_lock(&lock);
