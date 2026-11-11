@@ -99,6 +99,17 @@ static const uint8_t compiled_ids[ZMK_KEYMAP_LAYERS_LEN] = {
     COND_CODE_1(IS_ENABLED(CONFIG_ZMK_STUDIO), (DT_FOREACH_CHILD_SEP(KEYMAP_NODE, LAYER_ID_OF, (, ))),
                 (DT_FOREACH_CHILD_STATUS_OKAY_SEP(KEYMAP_NODE, LAYER_ID_OF, (, ))))};
 
+/* 1 つのレイヤーに付けられる layer_id_<番号> のラベルは 1 つだけ（devicetree は 1 つのノードにラベルをいくつも付けられる。
+ * 2 つ付けると、上の式は番号を足してしまい、ほかのレイヤーの番号と重なることがある） */
+#define LAYER_LABEL_IF_SAME(i, layer)                                                              \
+    +(COND_CODE_1(DT_NODE_EXISTS(DT_NODELABEL(layer_id_##i)),                                      \
+                  (DT_SAME_NODE(layer, DT_NODELABEL(layer_id_##i)) ? 1 : 0), (0)))
+#define CHECK_ONE_LABEL(layer)                                                                     \
+    BUILD_ASSERT((0 LISTIFY(256, LAYER_LABEL_IF_SAME, (), layer)) <= 1,                            \
+                 "layer ids: a keymap layer has two layer_id_<n>: labels (one label per layer)");
+COND_CODE_1(IS_ENABLED(CONFIG_ZMK_STUDIO), (DT_FOREACH_CHILD(KEYMAP_NODE, CHECK_ONE_LABEL)),
+            (DT_FOREACH_CHILD_STATUS_OKAY(KEYMAP_NODE, CHECK_ONE_LABEL)))
+
 /* 番号の付いたレイヤーの数。全部に付いているか、1 つも付いていないかのどちらかであること */
 #define LAYER_HAS_ID(layer) +(LAYER_ID_OF(layer) != 0)
 #define LABELED_LAYERS                                                                             \
