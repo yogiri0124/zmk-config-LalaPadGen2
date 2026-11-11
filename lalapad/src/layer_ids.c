@@ -10,14 +10,15 @@
  * 番号（1〜255）はレイヤーを作ったときに決め、名前を変えても並べ替えても変えない。ラベルはノードに付いているので、
  * 手やほかのエディタでレイヤーを並べ替えても、番号はレイヤーと一緒に動く（別の場所に並びを書く形だと、並べ替えたときに
  * 置いていかれて、気づかないまま別のレイヤーの番号になる）。同じラベルを 2 つ書くと devicetree の誤りでビルドが止まる。
- * ラベルのないレイヤーは「見分けなし」（番号 0）: 並びが同じ間は今までどおり使い、並びが変わったときは、そのレイヤーの
- * 変更を捨てる（どのレイヤーのものか確かめられないため）。どのレイヤーにもラベルがなければ、付け替えはしない。
+ * ラベルは、全部のレイヤーに付けるか、1 つも付けないかのどちらか（一部だけに付けるとビルドが止まる。ラベルのないレイヤー
+ * どうしを入れ替えても見分けられず、保存した変更が別のレイヤーに付くため）。1 つも付けていなければ、付け替えはしない
+ * （覚えていた並びは消す。ラベルのない間に保存した変更を、後で古い並びのものとして付け替えないように）。
  *
  * レイヤー ID ごとの番号の並びを、設定（lalapad/layer_ids）に覚えておく。起動したとき、ZMK が設定を
  * 読み込む前（main の settings_load の前。初期化の APPLICATION の最後。ZMK Studio のスレッドなどの静的なスレッドは、
  * 初期化が終わってから動き出すので、まだ動いていない）に、覚えていた並びと今の並びを比べ、違えば（レイヤーを
  * 並べ替え・足し・消しした）、保存した変更を番号で付け替える:
- *   - キー（l/<ID>/<位置>）は、同じ番号のレイヤーの新しい ID へ。消えたレイヤー・見分けなしのレイヤーのものは捨てる。
+ *   - キー（l/<ID>/<位置>）は、同じ番号のレイヤーの新しい ID へ。消えたレイヤーのものは捨てる。
  *     キーの引数がレイヤー ID のもの（&mo・&lt・&tog・&to・&sl など、behavior の metadata で「レイヤー ID」と
  *     書かれている引数）は、引数も新しい ID に書き直す。消えたレイヤーを指すものは捨てる（キーマップの割り当てに戻る。
  *     そのままにすると、その番号を引き継いだ別のレイヤーを指してしまうため）
@@ -86,7 +87,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 BUILD_ASSERT(ZMK_KEYMAP_LAYERS_LEN <= MAX_LAYERS, "layer ids: up to 32 layers");
 
 /* レイヤーのノード layer が、ラベル layer_id_<i> の付いたノードなら i（そうでなければ 0）を足す。
- * i = 0 のラベル（layer_id_0）は、見分けなしと同じ（番号は 1〜255） */
+ * i = 0 のラベル（layer_id_0）は、ラベルがないのと同じ（番号は 1〜255） */
 #define LAYER_ID_IF_LABELED(i, layer)                                                              \
     +(COND_CODE_1(DT_NODE_EXISTS(DT_NODELABEL(layer_id_##i)),                                      \
                   (DT_SAME_NODE(layer, DT_NODELABEL(layer_id_##i)) ? i : 0), (0)))
@@ -98,15 +99,16 @@ static const uint8_t compiled_ids[ZMK_KEYMAP_LAYERS_LEN] = {
     COND_CODE_1(IS_ENABLED(CONFIG_ZMK_STUDIO), (DT_FOREACH_CHILD_SEP(KEYMAP_NODE, LAYER_ID_OF, (, ))),
                 (DT_FOREACH_CHILD_STATUS_OKAY_SEP(KEYMAP_NODE, LAYER_ID_OF, (, ))))};
 
-/* 番号の付いたレイヤーが 1 つでもあるか（なければ、見分けの番号を使わない） */
-static bool check_ids(void) {
-    for (size_t i = 0; i < ARRAY_SIZE(compiled_ids); i++) {
-        if (compiled_ids[i] != 0) {
-            return true;
-        }
-    }
-    return false;
-}
+/* 番号の付いたレイヤーの数。全部に付いているか、1 つも付いていないかのどちらかであること */
+#define LAYER_HAS_ID(layer) +(LAYER_ID_OF(layer) != 0)
+#define LABELED_LAYERS                                                                             \
+    (0 COND_CODE_1(IS_ENABLED(CONFIG_ZMK_STUDIO), (DT_FOREACH_CHILD(KEYMAP_NODE, LAYER_HAS_ID)),   \
+                   (DT_FOREACH_CHILD_STATUS_OKAY(KEYMAP_NODE, LAYER_HAS_ID))))
+BUILD_ASSERT(LABELED_LAYERS == 0 || LABELED_LAYERS == ZMK_KEYMAP_LAYERS_LEN,
+             "layer ids: put a layer_id_<1-255>: label on every keymap layer, or on none of them");
+
+/* レイヤーに番号が付いているか（付いていなければ、見分けの番号を使わない） */
+static bool check_ids(void) { return LABELED_LAYERS != 0; }
 
 size_t lalapad_layer_ids(const uint8_t **ids) {
     if (!check_ids()) {
@@ -586,8 +588,7 @@ static void write_new(void) {
     for (size_t j = 0; j < sizeof(compiled_ids) && n < ARRAY_SIZE(order); j++) {
         bool existed = false;
         for (size_t i = 0; i < stored_len; i++) {
-            // 見分けなし（0）のレイヤーは、前にあったか確かめられないので、足したものとして扱う
-            existed = existed || (compiled_ids[j] != 0 && stored_ids[i] == compiled_ids[j]);
+            existed = existed || stored_ids[i] == compiled_ids[j];
         }
         if (!existed && !(used & BIT(j))) {
             order[n++] = j;
@@ -611,7 +612,14 @@ static int layer_ids_init(void) {
     settings_load_subtree_direct("lalapad", read_stored_cb, NULL);
     pick_stored();
     if (!valid) {
-        return 0; // どのレイヤーにも番号がない: 付け替えない（範囲外の ID は受け口で止める）
+        // レイヤーに番号がない: 付け替えない（範囲外の ID は受け口で止める）。覚えていた並びがあれば消す（番号のない間に
+        // Studio で保存した変更を、後で番号を付け直したときに、古い並びのものとして付け替えないように）。消せなければ、
+        // この起動では Studio の変更を読ませず、保存もさせない
+        if ((copies[0].state != STORED_NONE && settings_delete("lalapad/layer_ids") < 0) ||
+            (copies[1].state != STORED_NONE && settings_delete("lalapad/layer_ids_b") < 0)) {
+            block_this_boot("cannot forget the saved layer order");
+        }
+        return 0;
     }
     if (stored_state == STORED_UNREADABLE) {
         block_this_boot("cannot read the saved layer order");
@@ -649,8 +657,7 @@ static int layer_ids_init(void) {
     for (size_t i = 0; i < stored_len; i++) {
         id_map[i] = NO_LAYER;
         for (size_t j = 0; j < sizeof(compiled_ids); j++) {
-            // 見分けなし（0）どうしは、同じレイヤーとみなさない
-            if (stored_ids[i] != 0 && stored_ids[i] == compiled_ids[j]) {
+            if (stored_ids[i] == compiled_ids[j]) {
                 id_map[i] = j;
             }
         }
