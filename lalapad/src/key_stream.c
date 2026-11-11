@@ -268,6 +268,8 @@ static uint8_t layer_ids_next;
 /* レイヤーの順番が入れ替えの途中だった（送り終えたら、少し後で送り直す）と、続けて送り直した回数。lock で守る */
 static bool order_unstable;
 static uint8_t order_retries;
+/* 送り終わったら（送り終わったの知らせが来たら）、その LAYER_ORDER_RETRY_MS 後に送り直すレポートの番号（0 はなし） */
+static uint32_t order_retry_id;
 /* 最後に送った（または送るよう頼んだ）修飾キー。見直したときに、これと違えばレイヤーの報告を送る */
 static uint8_t mods_seen;
 /* 書き込み待ちの答え（送り待ちの回数と、送る中身）。準備（0x84）は、どちらと時刻を覚える（専用のワークキューだけで触る） */
@@ -380,6 +382,9 @@ static struct bt_conn *stop_locked(void) {
     layers_sent = layers_requested;
     layer_ids_sent = layer_ids_requested;
     layer_ids_next = 0;
+    order_unstable = false;
+    order_retries = 0;
+    order_retry_id = 0;
     boot_reply_sent = boot_reply_requested;
     // やめたら、準備を使えなくする（別の送り先・別の始め方に引き継がない）
     session_gen++;
@@ -616,7 +621,6 @@ static void send_work_handler(struct k_work *work) {
 #endif
     }
 
-    bool retry_order = false;
     key = k_spin_lock(&lock);
     if (err == 0) {
         retrying = false;
@@ -629,7 +633,7 @@ static void send_work_handler(struct k_work *work) {
                 // 順番が入れ替えの途中だった: 少し後で送り直す
                 order_unstable = false;
                 order_retries++;
-                retry_order = true;
+                order_retry_id = id;
             }
         } else if (kind == MSG_BOOT) {
             boot_reply_sent = gen;
@@ -652,9 +656,6 @@ static void send_work_handler(struct k_work *work) {
         }
         k_spin_unlock(&lock, key);
         release_conn(conn);
-        if (retry_order) {
-            k_work_reschedule_for_queue(&key_stream_q, &order_work, K_MSEC(LAYER_ORDER_RETRY_MS));
-        }
         // 送り終わったの知らせが来なければ、時間で見切る（知らせが先に届いていれば、見切るときに番号が合わない）
         const int32_t timeout_ms = transport == KEY_STREAM_TRANSPORT_USB ? IN_FLIGHT_TIMEOUT_USB_MS
                                                                          : IN_FLIGHT_TIMEOUT_BLE_MS;
@@ -698,10 +699,18 @@ static void send_work_handler(struct k_work *work) {
 void key_stream_sent(uint32_t id) {
     k_spinlock_key_t key = k_spin_lock(&lock);
     const bool finished = in_flight && in_flight_id == id;
+    // 順番が入れ替えの途中だったレイヤーのレポートを送り終えた: ここから数えて、少し後で送り直す
+    const bool retry_order = finished && order_retry_id == id;
     if (finished) {
         finish_in_flight_locked();
     }
+    if (retry_order) {
+        order_retry_id = 0;
+    }
     k_spin_unlock(&lock, key);
+    if (retry_order) {
+        k_work_reschedule_for_queue(&key_stream_q, &order_work, K_MSEC(LAYER_ORDER_RETRY_MS));
+    }
     if (finished) {
         kick_send(K_NO_WAIT);
     }
@@ -729,6 +738,8 @@ static void flight_work_handler(struct k_work *work) {
                 layer_ids_requested++;
                 layer_ids_next = 0;
             } else if (in_flight_kind == MSG_LAYERS) {
+                // 順番が入れ替えの途中だった分も、ここですぐ送り直す（そのときの順番を読み直す）ので、後での送り直しは要らない
+                order_retry_id = 0;
                 // 今もレイヤーを頼まれているときだけ（種類を変えて始め直した後に、前の分を送り直さない）
                 if (stream_mask & STREAM_LAYERS) {
                     layers_requested++;
