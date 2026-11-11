@@ -40,6 +40,8 @@
  *               [11] 押している修飾キー（HID の修飾キーのビット。bit0 左 Ctrl、bit1 左 Shift、bit2 左 Alt、bit3 左 GUI、
  *               bit4〜7 右の同じ順。修飾キーそのものを押しているもの（&kp LSHIFT、長押しの Shift、&sk など）だけ。
  *               LS(N1) のようにキーに付いた修飾キーは含まない）
+ *               [12] 有効なレイヤーの件数 n（1〜19）  [13..12+n] 有効なレイヤーの ID（ZMK がキーを探す順。いちばん上から
+ *               いちばん下の Default まで。ZMK Studio でレイヤーの順番を入れ替えていても、その順番どおり。20 個以上は上の 19 個）
  *               開始で bit2 を頼んだときだけ。「開始」したとき、問い合わせに答えるとき、レイヤー・修飾キーが変わったとき、
  *               送り終わったの知らせが来ないまま見切ったときに送る（そのときの状態。続けて変わったら最後のものだけ）
  *   0x06 レイヤーの見分けの番号（0x86 の答え）:  [2] このレポートの先頭のレイヤー ID  [3] レイヤーの数（番号がなければ 0）
@@ -146,6 +148,8 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define CAP_LAYER_IDS BIT(1)
 /* 1 つのレポートに入れるレイヤーの見分けの番号の数 */
 #define LAYER_IDS_PER_REPORT 27
+/* レイヤーのレポートに入れる、有効なレイヤーの ID の数 */
+#define LAYER_ORDER_MAX 19
 #define STREAM_KEYS BIT(0)
 #define STREAM_TRACKPAD BIT(1)
 #define STREAM_LAYERS BIT(2)
@@ -204,6 +208,7 @@ BUILD_ASSERT(ZMK_KEYMAP_LEN <= 255, "positions must fit in one byte");
 BUILD_ASSERT(5 + (ZMK_KEYMAP_LEN + 7) / 8 <= KEY_STREAM_REPORT_SIZE, "pressed list report too large");
 BUILD_ASSERT(ZMK_KEYMAP_LAYERS_LEN <= 32, "layers must fit in 32 bits");
 BUILD_ASSERT(5 + LAYER_IDS_PER_REPORT <= KEY_STREAM_REPORT_SIZE, "layer ids report too large");
+BUILD_ASSERT(13 + LAYER_ORDER_MAX <= KEY_STREAM_REPORT_SIZE, "layers report too large");
 
 /* ---- 状態（lock で守る。キーの出来事・PC からの命令・送り終わりの知らせ・右とのつながりの変化は、
  *      それぞれ別のスレッドから届くため） ---- */
@@ -470,6 +475,20 @@ static void build_layers(uint8_t *report) {
     sys_put_le32((uint32_t)k_uptime_get(), &report[7]);
     report[11] = zmk_hid_get_explicit_mods();
     mods_seen = report[11];
+    // 有効なレイヤーを、ZMK がキーを探す順（上から Default まで。app/src/keymap.c の zmk_keymap_position_state_changed と同じ）に並べる。
+    // ビットだけでは、ZMK Studio でレイヤーの順番を入れ替えているときに、どれが上か分からないため
+    uint8_t n = 0;
+    for (int index = ZMK_KEYMAP_LAYERS_LEN - 1; index >= 0 && n < LAYER_ORDER_MAX; index--) {
+        const zmk_keymap_layer_id_t id = zmk_keymap_layer_index_to_id(index);
+        if (id == ZMK_KEYMAP_LAYER_ID_INVAL || id >= ZMK_KEYMAP_LAYERS_LEN || !zmk_keymap_layer_active(id)) {
+            continue;
+        }
+        report[13 + n++] = id;
+        if (id == zmk_keymap_layer_default()) {
+            break; // Default より下は探さない
+        }
+    }
+    report[12] = n;
 }
 
 /* キーのレポートを作る。入れた件数を返す */
