@@ -1,12 +1,20 @@
 /*
- * レイヤーの見分けの番号（lalapad,layer-ids）と、ZMK Studio で保存した変更の付け替え。
+ * レイヤーの見分けの番号（レイヤーのノードに付けたラベル layer_id_<番号>）と、ZMK Studio で保存した変更の付け替え。
  *
  * ZMK はレイヤーを ID（keymap に書いた順番。0 から）で扱い、ZMK Studio で保存した変更も ID で覚える
  * （keymap/l/<ID>/<位置>：キー、keymap/l_n/<ID>：レイヤーの名前、keymap/layer_order：並べ替えた順番）。
  * そのため、キーマップでレイヤーを並べ替え・足し・消しして書き込むと、保存した変更が別のレイヤーに付いてしまう。
  *
- * ここでは、keymap と同じ順番に並べた「見分けの番号」（lalapad,layer-ids の ids。レイヤーを作ったときに決め、
- * 名前を変えても並べ替えても変えない）を、設定（lalapad/layer_ids）に覚えておく。起動したとき、ZMK が設定を
+ * 見分けの番号は、keymap のレイヤーのノードに付けた devicetree のラベルで書く:
+ *     layer_id_7: KANA_LAYER { display-name = "kana"; bindings = <...>; };
+ * 番号（1〜255）はレイヤーを作ったときに決め、名前を変えても並べ替えても変えない。ラベルはノードに付いているので、
+ * 手やほかのエディタでレイヤーを並べ替えても、番号はレイヤーと一緒に動く（別の場所に並びを書く形だと、並べ替えたときに
+ * 置いていかれて、気づかないまま別のレイヤーの番号になる）。同じラベルを 2 つ書くと devicetree の誤りでビルドが止まる。
+ * ラベルは、全部のレイヤーに付けるか、1 つも付けないかのどちらか（一部だけに付けるとビルドが止まる。ラベルのないレイヤー
+ * どうしを入れ替えても見分けられず、保存した変更が別のレイヤーに付くため）。1 つも付けていなければ、付け替えはしない
+ * （覚えていた並びは消す。ラベルのない間に保存した変更を、後で古い並びのものとして付け替えないように）。
+ *
+ * レイヤー ID ごとの番号の並びを、設定（lalapad/layer_ids）に覚えておく。起動したとき、ZMK が設定を
  * 読み込む前（main の settings_load の前。初期化の APPLICATION の最後。ZMK Studio のスレッドなどの静的なスレッドは、
  * 初期化が終わってから動き出すので、まだ動いていない）に、覚えていた並びと今の並びを比べ、違えば（レイヤーを
  * 並べ替え・足し・消しした）、保存した変更を番号で付け替える:
@@ -73,40 +81,45 @@
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
-#define LAYER_IDS_NODE DT_COMPAT_GET_ANY_STATUS_OKAY(lalapad_layer_ids)
 #define MAX_LAYERS 32
+#define KEYMAP_NODE DT_INST(0, zmk_keymap)
 
-BUILD_ASSERT(DT_PROP_LEN(LAYER_IDS_NODE, ids) == ZMK_KEYMAP_LAYERS_LEN,
-             "lalapad,layer-ids: ids must have one number per keymap layer");
 BUILD_ASSERT(ZMK_KEYMAP_LAYERS_LEN <= MAX_LAYERS, "layer ids: up to 32 layers");
 
-#define CHECK_ID_RANGE(node, prop, idx)                                                            \
-    BUILD_ASSERT(DT_PROP_BY_IDX(node, prop, idx) >= 1 && DT_PROP_BY_IDX(node, prop, idx) <= 255,   \
-                 "lalapad,layer-ids: each id must be 1-255");
-DT_FOREACH_PROP_ELEM(LAYER_IDS_NODE, ids, CHECK_ID_RANGE)
+/* レイヤーのノード layer が、ラベル layer_id_<i> の付いたノードなら i（そうでなければ 0）を足す。
+ * i = 0 のラベル（layer_id_0）は、ラベルがないのと同じ（番号は 1〜255） */
+#define LAYER_ID_IF_LABELED(i, layer)                                                              \
+    +(COND_CODE_1(DT_NODE_EXISTS(DT_NODELABEL(layer_id_##i)),                                      \
+                  (DT_SAME_NODE(layer, DT_NODELABEL(layer_id_##i)) ? i : 0), (0)))
+/* レイヤーのノードの見分けの番号（ラベルがなければ 0） */
+#define LAYER_ID_OF(layer) (0 LISTIFY(256, LAYER_ID_IF_LABELED, (), layer))
 
-static const uint8_t compiled_ids[] = DT_PROP(LAYER_IDS_NODE, ids);
+/* レイヤー ID（ZMK と同じ数え方: ZMK Studio が有効なら無効のものも含めた keymap の子ノードの順）ごとの番号 */
+static const uint8_t compiled_ids[ZMK_KEYMAP_LAYERS_LEN] = {
+    COND_CODE_1(IS_ENABLED(CONFIG_ZMK_STUDIO), (DT_FOREACH_CHILD_SEP(KEYMAP_NODE, LAYER_ID_OF, (, ))),
+                (DT_FOREACH_CHILD_STATUS_OKAY_SEP(KEYMAP_NODE, LAYER_ID_OF, (, ))))};
 
-/* 番号が重なっていないか（重なっていれば使わない）。初めて聞かれたときに確かめる（初期化の中が最初） */
-static int ids_state; /* 0: まだ、1: 使える、-1: 使えない */
+/* 1 つのレイヤーに付けられる layer_id_<番号> のラベルは 1 つだけ（devicetree は 1 つのノードにラベルをいくつも付けられる。
+ * 2 つ付けると、上の式は番号を足してしまい、ほかのレイヤーの番号と重なることがある） */
+#define LAYER_LABEL_IF_SAME(i, layer)                                                              \
+    +(COND_CODE_1(DT_NODE_EXISTS(DT_NODELABEL(layer_id_##i)),                                      \
+                  (DT_SAME_NODE(layer, DT_NODELABEL(layer_id_##i)) ? 1 : 0), (0)))
+#define CHECK_ONE_LABEL(layer)                                                                     \
+    BUILD_ASSERT((0 LISTIFY(256, LAYER_LABEL_IF_SAME, (), layer)) <= 1,                            \
+                 "layer ids: a keymap layer has two layer_id_<n>: labels (one label per layer)");
+COND_CODE_1(IS_ENABLED(CONFIG_ZMK_STUDIO), (DT_FOREACH_CHILD(KEYMAP_NODE, CHECK_ONE_LABEL)),
+            (DT_FOREACH_CHILD_STATUS_OKAY(KEYMAP_NODE, CHECK_ONE_LABEL)))
 
-static bool check_ids(void) {
-    if (ids_state == 0) {
-        bool ok = true;
-        for (size_t i = 0; i < ARRAY_SIZE(compiled_ids) && ok; i++) {
-            for (size_t j = 0; j < i && ok; j++) {
-                if (compiled_ids[j] == compiled_ids[i]) {
-                    ok = false;
-                }
-            }
-        }
-        if (!ok) {
-            LOG_ERR("lalapad,layer-ids: ids must be unique; layer ids are not used");
-        }
-        ids_state = ok ? 1 : -1;
-    }
-    return ids_state > 0;
-}
+/* 番号の付いたレイヤーの数。全部に付いているか、1 つも付いていないかのどちらかであること */
+#define LAYER_HAS_ID(layer) +(LAYER_ID_OF(layer) != 0)
+#define LABELED_LAYERS                                                                             \
+    (0 COND_CODE_1(IS_ENABLED(CONFIG_ZMK_STUDIO), (DT_FOREACH_CHILD(KEYMAP_NODE, LAYER_HAS_ID)),   \
+                   (DT_FOREACH_CHILD_STATUS_OKAY(KEYMAP_NODE, LAYER_HAS_ID))))
+BUILD_ASSERT(LABELED_LAYERS == 0 || LABELED_LAYERS == ZMK_KEYMAP_LAYERS_LEN,
+             "layer ids: put a layer_id_<1-255>: label on every keymap layer, or on none of them");
+
+/* レイヤーに番号が付いているか（付いていなければ、見分けの番号を使わない） */
+static bool check_ids(void) { return LABELED_LAYERS != 0; }
 
 size_t lalapad_layer_ids(const uint8_t **ids) {
     if (!check_ids()) {
@@ -610,7 +623,14 @@ static int layer_ids_init(void) {
     settings_load_subtree_direct("lalapad", read_stored_cb, NULL);
     pick_stored();
     if (!valid) {
-        return 0; // 番号が使えない（重なっている）: 付け替えない（範囲外の ID は受け口で止める）
+        // レイヤーに番号がない: 付け替えない（範囲外の ID は受け口で止める）。覚えていた並びがあれば消す（番号のない間に
+        // Studio で保存した変更を、後で番号を付け直したときに、古い並びのものとして付け替えないように）。消せなければ、
+        // この起動では Studio の変更を読ませず、保存もさせない
+        if ((copies[0].state != STORED_NONE && settings_delete("lalapad/layer_ids") < 0) ||
+            (copies[1].state != STORED_NONE && settings_delete("lalapad/layer_ids_b") < 0)) {
+            block_this_boot("cannot forget the saved layer order");
+        }
+        return 0;
     }
     if (stored_state == STORED_UNREADABLE) {
         block_this_boot("cannot read the saved layer order");
