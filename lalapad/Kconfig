@@ -66,12 +66,12 @@ config ZMK_POSITION_RELAY
       behavior の処理をシステムワークキューで行う（lalapad/src/position_relay.c）。
 
 config ZMK_LAYER_IDS
-    bool "Stable layer identities (lalapad,layer-ids)"
+    bool "Stable layer identities (node labels layer_id_<n> on the keymap layers)"
     default y
-    depends on LALAPAD_CENTRAL && DT_HAS_LALAPAD_LAYER_IDS_ENABLED
+    depends on LALAPAD_CENTRAL && DT_HAS_ZMK_KEYMAP_ENABLED
     help
-      keymap と同じ順番に並べたレイヤーの見分けの番号（lalapad,layer-ids）を使う（lalapad/src/layer_ids.c）。
-      キー位置の送信で、レイヤー ID ごとの番号をアプリに知らせる。
+      keymap のレイヤーのノードに付けたラベル（layer_id_7: KANA_LAYER { ... } の 7）を、レイヤーの見分けの番号として
+      使う（lalapad/src/layer_ids.c）。キー位置の送信で、レイヤー ID ごとの番号をアプリに知らせる。
 
 config ZMK_LAYER_IDS_MIGRATE
     bool "Move ZMK Studio's saved changes to follow layers when the keymap's layers are reordered"

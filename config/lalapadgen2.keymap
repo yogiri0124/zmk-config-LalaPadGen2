@@ -639,7 +639,11 @@
     keymap {
         compatible = "zmk,keymap";
 
-        DEFAULT_LAYER {
+        // layer_id_<番号>: は、レイヤーの見分けの番号（1〜255。ほかのレイヤーと重ねない）。レイヤーを作ったときに決め、
+        // 名前を変えても並べ替えても変えない（レイヤーと一緒に動かす）。ファームウェアはこの番号で、ZMK Studio で保存した変更を、
+        // レイヤーを並べ替え・足し・消しした後も同じレイヤーに付け替える（lalapad/src/layer_ids.c。README の「レイヤーの見分けの番号」）
+
+        layer_id_1: DEFAULT_LAYER {
             display-name = "Default";
             bindings = <
             &kp F  &kp D  &kp L  &kp W  &kp J  &kp SEMI  &kp B  &kp O  &kp U  &kp COMMA
@@ -654,7 +658,7 @@
 
         // Control レイヤー（Default の 42 を押すたびに入る／戻る）。左右に、矢印・Page Up／Down・数字・F11 を置く（上の段は左右対称、矢印の段は左右とも同じ並び）。
         // Default のすぐ上に置くので、数字・記号・マウス・かなのレイヤーは、この上に重なって今までどおり使える。
-        CONTROL_LAYER {
+        layer_id_2: CONTROL_LAYER {
             display-name = "Control";
             bindings = <
             &kp F11  &kp NUMBER_6  &kp UP  &kp NUMBER_9  &kp PAGE_UP  &kp PAGE_UP  &kp NUMBER_9  &kp UP  &kp NUMBER_6  &kp F11
@@ -667,7 +671,7 @@
             >;
         };
 
-        SECONDARY_LAYER {
+        layer_id_3: SECONDARY_LAYER {
             display-name = "secondary_layer";
             bindings = <
             &kp NUMBER_1  &kp NUMBER_2  &kp NUMBER_3  &kp NUMBER_4  &kp NUMBER_5  &none  &kp DELETE  &sym_tilde_ime  &kp HASH  &none
@@ -680,7 +684,7 @@
             >;
         };
 
-        TERTIARY_LAYER {
+        layer_id_4: TERTIARY_LAYER {
             display-name = "tertiary_layer";
             bindings = <
             &none  &kp AMPS  &pair_cquote_ime  &swap_prev  &swap_next  &kp PAGE_UP  &kp HOME  &kp UP  &kp END  &kp PRINTSCREEN
@@ -693,7 +697,7 @@
             >;
         };
 
-        SYSTEM_LAYER {
+        layer_id_5: SYSTEM_LAYER {
             display-name = "system_layer";
             bindings = <
             &kp F1  &kp F2  &kp F3  &kp F4  &kp F5  &out OUT_TOG  &bt BT_SEL 0  &bt BT_SEL 1  &bt BT_SEL 2  &bt BT_SEL 3
@@ -706,7 +710,7 @@
             >;
         };
 
-        MOUSE_LAYER {
+        layer_id_6: MOUSE_LAYER {
             display-name = "mouse_layer";
             bindings = <
             &tp_arrow  &kp LC(W)  &kp LC(LS(T))  &kp LC(A)  &none  &kp LC(LS(TAB))  &kp LC(TAB)  &none  &none  &lyr_lock
@@ -719,7 +723,7 @@
             >;
         };
 
-        KANA_LAYER {
+        layer_id_7: KANA_LAYER {
             display-name = "kana";
             bindings = <
             &kana_key KN_A  &kana_key KN_I  &kana_key KN_U  &kana_key KN_E  &kana_key KN_O  &kana_key KN_KA  &kana_key KN_KI  &kana_key KN_KU  &kana_key KN_KE  &kana_key KN_KO
@@ -732,7 +736,7 @@
             >;
         };
 
-        KANA_L_LAYER {
+        layer_id_8: KANA_L_LAYER {
             display-name = "kana_left";
             bindings = <
             &kana_key KN_MA  &kana_key KN_MI  &kana_key KN_MU  &kana_key KN_ME  &kana_key KN_MO  &kana_key KN_YA  &kana_key KN_YU  &kana_key KN_YO  &kana_key KN_WA  &kana_key KN_WO
@@ -745,7 +749,7 @@
             >;
         };
 
-        KANA_R_LAYER {
+        layer_id_9: KANA_R_LAYER {
             display-name = "kana_right";
             bindings = <
             &kana_key KN_DO  &kana_key KN_BA  &kana_key KN_BI  &kana_key KN_BU  &kana_key KN_BE  &kana_key KN_BO  &kana_key KN_PA  &kana_key KN_PI  &kana_key KN_PU  &kana_key KN_PE
@@ -759,7 +763,7 @@
         };
 
         // かな記号面（かな単打面の位置38を押している間）。記号は後で配置する。今は文字キー（0〜29）を空にしている
-        KANA_SYM_LAYER {
+        layer_id_10: KANA_SYM_LAYER {
             display-name = "kana_symbol";
             bindings = <
             &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
@@ -772,7 +776,7 @@
             >;
         };
 
-        LEFT_HAND_LAYER {
+        layer_id_11: LEFT_HAND_LAYER {
             display-name = "left_hand";
             bindings = <
             &kp Q  &kp W  &kp E  &kp R  &kp T  &none  &none  &none  &none  &none
@@ -785,7 +789,7 @@
             >;
         };
 
-        LEFT_HAND2_LAYER {
+        layer_id_12: LEFT_HAND2_LAYER {
             display-name = "left_hand_2";
             bindings = <
             &kp Y  &kp U  &kp I  &kp O  &kp P  &none  &none  &none  &none  &none
@@ -798,7 +802,7 @@
             >;
         };
 
-        LEFT_HAND3_LAYER {
+        layer_id_13: LEFT_HAND3_LAYER {
             display-name = "left_hand_3";
             bindings = <
             &kp NUMBER_1  &kp NUMBER_2  &kp NUMBER_3  &kp NUMBER_4  &kp NUMBER_5  &none  &none  &none  &none  &none
@@ -811,7 +815,7 @@
             >;
         };
 
-        LEFT_HAND4_LAYER {
+        layer_id_14: LEFT_HAND4_LAYER {
             display-name = "left_hand_4";
             bindings = <
             &kp ESCAPE  &kp HOME  &kp UP  &kp END  &kp PAGE_UP  &none  &none  &none  &none  &none
@@ -832,13 +836,5 @@
             if-layers = <SECONDARY_LAYER TERTIARY_LAYER>;
             then-layer = <SYSTEM_LAYER>;
         };
-    };
-
-    // レイヤーの見分けの番号（キーマップのエディタ Noxrix が管理する）。keymap のレイヤーと同じ順番に 1 つずつ並べる。
-    // レイヤーを作ったときに決め、名前を変えても並べ替えても変えない（ほかと重ねない。1〜255）。ファームウェアはこの番号で、
-    // ZMK Studio で保存した変更を、レイヤーを並べ替え・足し・消しした後も同じレイヤーに付け替える（lalapad/src/layer_ids.c）
-    layer_ids {
-        compatible = "lalapad,layer-ids";
-        ids = <1 2 3 4 5 6 7 8 9 10 11 12 13 14>;
     };
 };
