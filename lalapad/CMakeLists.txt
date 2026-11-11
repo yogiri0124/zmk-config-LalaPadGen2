@@ -62,6 +62,8 @@ target_sources_ifdef(CONFIG_ZMK_TP_KEYS app PRIVATE
   src/behavior_tp_keys.c
   src/behavior_tp_stroke.c
 )
+# レイヤーの見分けの番号と、ZMK Studio で保存した変更の付け替え
+target_sources_ifdef(CONFIG_ZMK_LAYER_IDS app PRIVATE src/layer_ids.c)
 target_sources_ifdef(CONFIG_ZMK_KEY_STREAM app PRIVATE src/key_stream.c)
 target_sources_ifdef(CONFIG_ZMK_KEY_STREAM_USB app PRIVATE src/key_stream_usb.c)
 target_sources_ifdef(CONFIG_ZMK_KEY_STREAM_BLE app PRIVATE src/key_stream_ble.c)

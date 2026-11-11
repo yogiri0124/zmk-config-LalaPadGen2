@@ -1,0 +1,18 @@
+# レイヤーの見分けの番号（キーマップのエディタ Noxrix が管理する）。
+# keymap のレイヤー（zmk,keymap の子ノード）と同じ順番に、レイヤーごとの番号を 1 つずつ並べる。
+# 番号はレイヤーを作ったときに決め、名前を変えても、並べ替えても変えない（ほかのレイヤーと重ねない。1〜255）。
+# ファームウェアは、この番号で
+#   - ZMK Studio で保存した変更（キー・レイヤーの名前・順番）を、キーマップでレイヤーを並べ替え・足し・消ししても、
+#     同じレイヤーに付いていくよう付け替える（lalapad/src/layer_ids.c）
+#   - キー位置の送信（docs/key-stream.md の 0x86・0x06）で、アプリにレイヤー ID ごとの番号を知らせる
+# keymap の子ノードの数（ZMK Studio が有効なら無効のものも含めたすべて）と同じ数でないとビルドが止まる。
+
+description: Stable identities of the keymap layers, in the keymap's layer order
+
+compatible: "lalapad,layer-ids"
+
+properties:
+  ids:
+    type: array
+    required: true
+    description: One number (1-255, unique) per keymap layer, in declaration order

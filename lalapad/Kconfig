@@ -65,6 +65,30 @@ config ZMK_POSITION_RELAY
       トラックパッドのタップ・ジェスチャーなど、入力スレッドから出たキー位置の出来事を預かり、キーマップと
       behavior の処理をシステムワークキューで行う（lalapad/src/position_relay.c）。
 
+config ZMK_LAYER_IDS
+    bool "Stable layer identities (lalapad,layer-ids)"
+    default y
+    depends on LALAPAD_CENTRAL && DT_HAS_LALAPAD_LAYER_IDS_ENABLED
+    help
+      keymap と同じ順番に並べたレイヤーの見分けの番号（lalapad,layer-ids）を使う（lalapad/src/layer_ids.c）。
+      キー位置の送信で、レイヤー ID ごとの番号をアプリに知らせる。
+
+config ZMK_LAYER_IDS_MIGRATE
+    bool "Move ZMK Studio's saved changes to follow layers when the keymap's layers are reordered"
+    default y
+    depends on ZMK_LAYER_IDS && ZMK_KEYMAP_SETTINGS_STORAGE
+    help
+      キーマップでレイヤーを並べ替え・足し・消しして書き込んだとき、ZMK Studio で保存した変更（キー・レイヤーの名前・
+      順番）を、見分けの番号で同じレイヤーに付け替える。
+
+config ZMK_LAYER_IDS_MIGRATE_MAX
+    int "Saved keys that can be moved at once"
+    default 256
+    depends on ZMK_LAYER_IDS_MIGRATE
+    help
+      付け替えのために読み出せる、ZMK Studio で保存したキーの数（1 件 12 バイトの RAM を使う）。超えたときは、
+      保存した変更を消す（Studio の「Restore Stock Settings」と同じ）。
+
 config ZMK_KEY_STREAM
     bool "Send key position events to the host over a vendor raw HID (USB and BLE)"
     depends on LALAPAD_CENTRAL
