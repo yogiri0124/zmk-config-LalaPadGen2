@@ -13,19 +13,19 @@
 #include <dt-bindings/lalapad/tp_positions.h>
 
 #define DEFAULT_LAYER   0
-#define CONTROL_LAYER   1
-#define SECONDARY_LAYER 2
-#define TERTIARY_LAYER  3
-#define SYSTEM_LAYER    4
-#define MOUSE_LAYER     5
-#define KANA_LAYER      6
-#define KANA_L_LAYER    7
-#define KANA_R_LAYER    8
-#define KANA_SYM_LAYER  9
-#define LEFT_HAND_LAYER  10
-#define LEFT_HAND2_LAYER 11
-#define LEFT_HAND3_LAYER 12
-#define LEFT_HAND4_LAYER 13
+#define CONTROL_LAYER   13
+#define SECONDARY_LAYER 1
+#define TERTIARY_LAYER  2
+#define SYSTEM_LAYER    3
+#define MOUSE_LAYER     4
+#define KANA_LAYER      5
+#define KANA_L_LAYER    6
+#define KANA_R_LAYER    7
+#define KANA_SYM_LAYER  8
+#define LEFT_HAND_LAYER  9
+#define LEFT_HAND2_LAYER 10
+#define LEFT_HAND3_LAYER 11
+#define LEFT_HAND4_LAYER 12
 
 // &mt・&lt: 短く押してから 200ms 以内にもう一度押し続けると、長押しにせずタップを押し続ける（Space の連続入力など）。
 // &mt は今どこにも置いていない（エディタで置いたときの既定）
@@ -664,21 +664,6 @@
             >;
         };
 
-        // Control レイヤー（Default の 42 を押すたびに入る／戻る）。左右に、矢印・Page Up／Down・数字・F11 を置く（上の段は左右対称、矢印の段は左右とも同じ並び）。
-        // Default のすぐ上に置くので、数字・記号・マウス・かなのレイヤーは、この上に重なって今までどおり使える。
-        layer_id_2: CONTROL_LAYER {
-            display-name = "Control";
-            bindings = <
-            &kp F11  &kp NUMBER_6  &kp UP  &kp NUMBER_9  &kp PAGE_UP  &kp PAGE_UP  &kp NUMBER_9  &kp UP  &kp NUMBER_6  &kp F11
-            &none  &kp LEFT  &kp DOWN  &kp RIGHT  &kp PAGE_DOWN  &kp PAGE_DOWN  &kp LEFT  &kp DOWN  &kp RIGHT  &none
-            &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
-            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
-            &tog CONTROL_LAYER  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
-            &trans  &trans  &trans  &trans  &trans  &trans
-            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
-            >;
-        };
-
         layer_id_3: SECONDARY_LAYER {
             display-name = "secondary_layer";
             bindings = <
@@ -737,7 +722,7 @@
             &kana_key KN_A  &kana_key KN_I  &kana_key KN_U  &kana_key KN_E  &kana_key KN_O  &kana_key KN_KA  &kana_key KN_KI  &kana_key KN_KU  &kana_key KN_KE  &kana_key KN_KO
             &kana_key KN_SA  &kana_key KN_SI  &kana_key KN_SU  &kana_key KN_SE  &kana_key KN_SO  &kana_key KN_TA  &kana_key KN_TI  &kana_key KN_TU  &kana_key KN_TE  &kana_key KN_TO
             &kana_key KN_NA  &kana_key KN_NI  &kana_key KN_NU  &kana_key KN_NE  &kana_key KN_NO  &kana_key KN_HA  &kana_key KN_HI  &kana_key KN_HU  &kana_key KN_HE  &kana_key KN_HO
-            &none  &none  &none  &kana_key KE_SPACE  &mo KANA_L_LAYER  &lt__mo__kana_key SECONDARY_LAYER KE_ENTER  &lt__mo__kana_key CONTROL_LAYER KE_BSPC  &mo KANA_R_LAYER  &mo KANA_SYM_LAYER  &none  &none  &none
+            &none  &none  &none  &kana_key KE_SPACE  &mo KANA_L_LAYER  &kana_key KE_ENTER  &lt__mo__kana_key CONTROL_LAYER KE_BSPC  &mo KANA_R_LAYER  &mo KANA_SYM_LAYER  &none  &none  &none
             &none  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &kana_sw KANA_SW_OFF
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
@@ -831,6 +816,21 @@
             &none  &none  &link_incognito  &kp PAUSE_BREAK  &none  &none  &none  &none  &none  &none
             &none  &none  &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
             &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
+            &trans  &trans  &trans  &trans  &trans  &trans
+            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
+            >;
+        };
+
+        // Control レイヤー（Default の 42 を押すたびに入る／戻る）。左右に、矢印・Page Up／Down・数字・F11 を置く（上の段は左右対称、矢印の段は左右とも同じ並び）。
+        // Default のすぐ上に置くので、数字・記号・マウス・かなのレイヤーは、この上に重なって今までどおり使える。
+        layer_id_2: CONTROL_LAYER {
+            display-name = "Control";
+            bindings = <
+            &kp F11  &kp NUMBER_6  &kp UP  &kp NUMBER_9  &kp PAGE_UP  &kp PAGE_UP  &kp NUMBER_9  &kp UP  &kp NUMBER_6  &kp F11
+            &none  &kp LEFT  &kp DOWN  &kp RIGHT  &kp PAGE_DOWN  &kp PAGE_DOWN  &kp LEFT  &kp DOWN  &kp RIGHT  &none
+            &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
+            &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
+            &tog CONTROL_LAYER  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
             >;
