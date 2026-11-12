@@ -737,7 +737,7 @@
             &kana_key KN_A  &kana_key KN_I  &kana_key KN_U  &kana_key KN_E  &kana_key KN_O  &kana_key KN_KA  &kana_key KN_KI  &kana_key KN_KU  &kana_key KN_KE  &kana_key KN_KO
             &kana_key KN_SA  &kana_key KN_SI  &kana_key KN_SU  &kana_key KN_SE  &kana_key KN_SO  &kana_key KN_TA  &kana_key KN_TI  &kana_key KN_TU  &kana_key KN_TE  &kana_key KN_TO
             &kana_key KN_NA  &kana_key KN_NI  &kana_key KN_NU  &kana_key KN_NE  &kana_key KN_NO  &kana_key KN_HA  &kana_key KN_HI  &kana_key KN_HU  &kana_key KN_HE  &kana_key KN_HO
-            &none  &none  &none  &kana_key KE_SPACE  &mo KANA_L_LAYER  &kana_key KE_ENTER  &lt__mo__kana_key CONTROL_LAYER KE_BSPC  &mo KANA_R_LAYER  &mo KANA_SYM_LAYER  &none  &none  &none
+            &none  &none  &none  &kana_key KE_SPACE  &mo KANA_L_LAYER  &lt__mo__kana_key SECONDARY_LAYER KE_ENTER  &lt__mo__kana_key CONTROL_LAYER KE_BSPC  &mo KANA_R_LAYER  &mo KANA_SYM_LAYER  &none  &none  &none
             &none  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &kana_sw KANA_SW_OFF
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
