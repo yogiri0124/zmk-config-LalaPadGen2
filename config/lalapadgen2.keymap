@@ -394,6 +394,1155 @@
             commit-ime;
         };
 
+        // --- kj_: 漢字 1 文字の続き（漢字の表 docs/google-ime/kanji.tsv の残りの字。Alt コード版。まだどのレイヤーにも置いていない） ---
+        // 上の 時・人・日 と同じ作り（commit-ime つき）。名前は、漢字の表の名前（KJ_AU など）を小文字にしたもの。
+        // 字 だけは、表の名前（KJ_JI）を小文字にすると上の kj_ji（時）と重なるので、kj_ji2 にしている。
+        // 日本語 Windows だけで使える（Shift_JIS の文字コードの 10 進数を、Alt を押したままテンキーで打つ）。
+        // 会（Shift_JIS 0x89EF）
+        kj_au: kj_au {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "会";
+            #binding-cells = <0>;
+            codes = <35311>;
+            commit-ime;
+        };
+        // 部（Shift_JIS 0x9594）
+        kj_bu: kj_bu {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "部";
+            #binding-cells = <0>;
+            codes = <38292>;
+            commit-ime;
+        };
+        // 分（Shift_JIS 0x95AA）
+        kj_bun: kj_bun {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "分";
+            #binding-cells = <0>;
+            codes = <38314>;
+            commit-ime;
+        };
+        // 出（Shift_JIS 0x8F6F）
+        kj_deru: kj_deru {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "出";
+            #binding-cells = <0>;
+            codes = <36719>;
+            commit-ime;
+        };
+        // 入（Shift_JIS 0x93FC）
+        kj_hairu: kj_hairu {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "入";
+            #binding-cells = <0>;
+            codes = <37884>;
+            commit-ime;
+        };
+        // 話（Shift_JIS 0x9862）
+        kj_hanasu: kj_hanasu {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "話";
+            #binding-cells = <0>;
+            codes = <39010>;
+            commit-ime;
+        };
+        // 方（Shift_JIS 0x95FB）
+        kj_hou: kj_hou {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "方";
+            #binding-cells = <0>;
+            codes = <38395>;
+            commit-ime;
+        };
+        // 意（Shift_JIS 0x88D3）
+        kj_i: kj_i {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "意";
+            #binding-cells = <0>;
+            codes = <35027>;
+            commit-ime;
+        };
+        // 言（Shift_JIS 0x8CBE）
+        kj_iu: kj_iu {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "言";
+            #binding-cells = <0>;
+            codes = <36030>;
+            commit-ime;
+        };
+        // 字（Shift_JIS 0x8E9A）
+        kj_ji2: kj_ji2 {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "字";
+            #binding-cells = <0>;
+            codes = <36506>;
+            commit-ime;
+        };
+        // 書（Shift_JIS 0x8F91）
+        kj_kaku: kj_kaku {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "書";
+            #binding-cells = <0>;
+            codes = <36753>;
+            commit-ime;
+        };
+        // 漢（Shift_JIS 0x8ABF）
+        kj_kan: kj_kan {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "漢";
+            #binding-cells = <0>;
+            codes = <35519>;
+            commit-ime;
+        };
+        // 考（Shift_JIS 0x8D6C）
+        kj_kangaeru: kj_kangaeru {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "考";
+            #binding-cells = <0>;
+            codes = <36204>;
+            commit-ime;
+        };
+        // 感（Shift_JIS 0x8AB4）
+        kj_kanjiru: kj_kanjiru {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "感";
+            #binding-cells = <0>;
+            codes = <35508>;
+            commit-ime;
+        };
+        // 風（Shift_JIS 0x9597）
+        kj_kaze: kj_kaze {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "風";
+            #binding-cells = <0>;
+            codes = <38295>;
+            commit-ime;
+        };
+        // 気（Shift_JIS 0x8B43）
+        kj_ki: kj_ki {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "気";
+            #binding-cells = <0>;
+            codes = <35651>;
+            commit-ime;
+        };
+        // 来（Shift_JIS 0x9788）
+        kj_kuru: kj_kuru {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "来";
+            #binding-cells = <0>;
+            codes = <38792>;
+            commit-ime;
+        };
+        // 見（Shift_JIS 0x8CA9）
+        kj_miru: kj_miru {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "見";
+            #binding-cells = <0>;
+            codes = <36009>;
+            commit-ime;
+        };
+        // 自（Shift_JIS 0x8EA9）
+        kj_mizukara: kj_mizukara {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "自";
+            #binding-cells = <0>;
+            codes = <36521>;
+            commit-ime;
+        };
+        // 覚（Shift_JIS 0x8A6F）
+        kj_oboeru: kj_oboeru {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "覚";
+            #binding-cells = <0>;
+            codes = <35439>;
+            commit-ime;
+        };
+        // 思（Shift_JIS 0x8E76）
+        kj_omou: kj_omou {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "思";
+            #binding-cells = <0>;
+            codes = <36470>;
+            commit-ime;
+        };
+        // 知（Shift_JIS 0x926D）
+        kj_shiru: kj_shiru {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "知";
+            #binding-cells = <0>;
+            codes = <37485>;
+            commit-ime;
+        };
+        // 的（Shift_JIS 0x9349）
+        kj_teki: kj_teki {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "的";
+            #binding-cells = <0>;
+            codes = <37705>;
+            commit-ime;
+        };
+        // 取（Shift_JIS 0x8EE6）
+        kj_toru: kj_toru {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "取";
+            #binding-cells = <0>;
+            codes = <36582>;
+            commit-ime;
+        };
+        // 打（Shift_JIS 0x91C5）
+        kj_utsu: kj_utsu {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "打";
+            #binding-cells = <0>;
+            codes = <37317>;
+            commit-ime;
+        };
+        // 良（Shift_JIS 0x97C7）
+        kj_yoi: kj_yoi {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "良";
+            #binding-cells = <0>;
+            codes = <38855>;
+            commit-ime;
+        };
+        // 全（Shift_JIS 0x9153）
+        kj_zen: kj_zen {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "全";
+            #binding-cells = <0>;
+            codes = <37203>;
+            commit-ime;
+        };
+        // 間（Shift_JIS 0x8AD4）
+        kj_aida: kj_aida {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "間";
+            #binding-cells = <0>;
+            codes = <35540>;
+            commit-ime;
+        };
+        // 味（Shift_JIS 0x96A1）
+        kj_aji: kj_aji {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "味";
+            #binding-cells = <0>;
+            codes = <38561>;
+            commit-ime;
+        };
+        // 赤（Shift_JIS 0x90D4）
+        kj_aka: kj_aka {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "赤";
+            #binding-cells = <0>;
+            codes = <37076>;
+            commit-ime;
+        };
+        // 明（Shift_JIS 0x96BE）
+        kj_akarui: kj_akarui {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "明";
+            #binding-cells = <0>;
+            codes = <38590>;
+            commit-ime;
+        };
+        // 青（Shift_JIS 0x90C2）
+        kj_ao: kj_ao {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "青";
+            #binding-cells = <0>;
+            codes = <37058>;
+            commit-ime;
+        };
+        // 場（Shift_JIS 0x8FEA）
+        kj_ba: kj_ba {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "場";
+            #binding-cells = <0>;
+            codes = <36842>;
+            commit-ime;
+        };
+        // 大（Shift_JIS 0x91E5）
+        kj_dai: kj_dai {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "大";
+            #binding-cells = <0>;
+            codes = <37349>;
+            commit-ime;
+        };
+        // 描（Shift_JIS 0x9560）
+        kj_egaku: kj_egaku {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "描";
+            #binding-cells = <0>;
+            codes = <38240>;
+            commit-ime;
+        };
+        // 深（Shift_JIS 0x905B）
+        kj_fukai: kj_fukai {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "深";
+            #binding-cells = <0>;
+            codes = <36955>;
+            commit-ime;
+        };
+        // 銀（Shift_JIS 0x8BE2）
+        kj_gin: kj_gin {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "銀";
+            #binding-cells = <0>;
+            codes = <35810>;
+            commit-ime;
+        };
+        // 合（Shift_JIS 0x8D87）
+        kj_gou: kj_gou {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "合";
+            #binding-cells = <0>;
+            codes = <36231>;
+            commit-ime;
+        };
+        // 初（Shift_JIS 0x8F89）
+        kj_hajime: kj_hajime {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "初";
+            #binding-cells = <0>;
+            codes = <36745>;
+            commit-ime;
+        };
+        // 始（Shift_JIS 0x8E6E）
+        kj_hajimeru: kj_hajimeru {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "始";
+            #binding-cells = <0>;
+            codes = <36462>;
+            commit-ime;
+        };
+        // 計（Shift_JIS 0x8C76）
+        kj_hakaru: kj_hakaru {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "計";
+            #binding-cells = <0>;
+            codes = <35958>;
+            commit-ime;
+        };
+        // 離（Shift_JIS 0x97A3）
+        kj_hanareru: kj_hanareru {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "離";
+            #binding-cells = <0>;
+            codes = <38819>;
+            commit-ime;
+        };
+        // 発（Shift_JIS 0x94AD）
+        kj_hatsu: kj_hatsu {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "発";
+            #binding-cells = <0>;
+            codes = <38061>;
+            commit-ime;
+        };
+        // 早（Shift_JIS 0x9181）
+        kj_hayai: kj_hayai {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "早";
+            #binding-cells = <0>;
+            codes = <37249>;
+            commit-ime;
+        };
+        // 変（Shift_JIS 0x95CF）
+        kj_hen: kj_hen {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "変";
+            #binding-cells = <0>;
+            codes = <38351>;
+            commit-ime;
+        };
+        // 本（Shift_JIS 0x967B）
+        kj_hon: kj_hon {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "本";
+            #binding-cells = <0>;
+            codes = <38523>;
+            commit-ime;
+        };
+        // 行（Shift_JIS 0x8D73）
+        kj_iku: kj_iku {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "行";
+            #binding-cells = <0>;
+            codes = <36211>;
+            commit-ime;
+        };
+        // 色（Shift_JIS 0x9046）
+        kj_iro: kj_iro {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "色";
+            #binding-cells = <0>;
+            codes = <36934>;
+            commit-ime;
+        };
+        // 回（Shift_JIS 0x89F1）
+        kj_kai: kj_kai {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "回";
+            #binding-cells = <0>;
+            codes = <35313>;
+            commit-ime;
+        };
+        // 体（Shift_JIS 0x91CC）
+        kj_karada: kj_karada {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "体";
+            #binding-cells = <0>;
+            codes = <37324>;
+            commit-ime;
+        };
+        // 系（Shift_JIS 0x8C6E）
+        kj_kei: kj_kei {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "系";
+            #binding-cells = <0>;
+            codes = <35950>;
+            commit-ime;
+        };
+        // 聞（Shift_JIS 0x95B7）
+        kj_kiku: kj_kiku {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "聞";
+            #binding-cells = <0>;
+            codes = <38327>;
+            commit-ime;
+        };
+        // 決（Shift_JIS 0x8C88）
+        kj_kimeru: kj_kimeru {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "決";
+            #binding-cells = <0>;
+            codes = <35976>;
+            commit-ime;
+        };
+        // 金（Shift_JIS 0x8BE0）
+        kj_kin: kj_kin {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "金";
+            #binding-cells = <0>;
+            codes = <35808>;
+            commit-ime;
+        };
+        // 個（Shift_JIS 0x8CC2）
+        kj_ko: kj_ko {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "個";
+            #binding-cells = <0>;
+            codes = <36034>;
+            commit-ime;
+        };
+        // 事（Shift_JIS 0x8E96）
+        kj_koto: kj_koto {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "事";
+            #binding-cells = <0>;
+            codes = <36502>;
+            commit-ime;
+        };
+        // 効（Shift_JIS 0x8CF8）
+        kj_kou: kj_kou {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "効";
+            #binding-cells = <0>;
+            codes = <36088>;
+            commit-ime;
+        };
+        // 暗（Shift_JIS 0x88C3）
+        kj_kurai: kj_kurai {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "暗";
+            #binding-cells = <0>;
+            codes = <35011>;
+            commit-ime;
+        };
+        // 黒（Shift_JIS 0x8D95）
+        kj_kuro: kj_kuro {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "黒";
+            #binding-cells = <0>;
+            codes = <36245>;
+            commit-ime;
+        };
+        // 面（Shift_JIS 0x96CA）
+        kj_men: kj_men {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "面";
+            #binding-cells = <0>;
+            codes = <38602>;
+            commit-ime;
+        };
+        // 難（Shift_JIS 0x93EF）
+        kj_nan: kj_nan {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "難";
+            #binding-cells = <0>;
+            codes = <37871>;
+            commit-ime;
+        };
+        // 何（Shift_JIS 0x89BD）
+        kj_nani: kj_nani {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "何";
+            #binding-cells = <0>;
+            codes = <35261>;
+            commit-ime;
+        };
+        // 慣（Shift_JIS 0x8AB5）
+        kj_nareru: kj_nareru {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "慣";
+            #binding-cells = <0>;
+            codes = <35509>;
+            commit-ime;
+        };
+        // 々（Shift_JIS 0x8158）
+        kj_noma: kj_noma {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "々";
+            #binding-cells = <0>;
+            codes = <33112>;
+            commit-ime;
+        };
+        // 起（Shift_JIS 0x8B4E）
+        kj_okiru: kj_okiru {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "起";
+            #binding-cells = <0>;
+            codes = <35662>;
+            commit-ime;
+        };
+        // 多（Shift_JIS 0x91BD）
+        kj_ooi: kj_ooi {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "多";
+            #binding-cells = <0>;
+            codes = <37309>;
+            commit-ime;
+        };
+        // 定（Shift_JIS 0x92E8）
+        kj_sadameru: kj_sadameru {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "定";
+            #binding-cells = <0>;
+            codes = <37608>;
+            commit-ime;
+        };
+        // 撮（Shift_JIS 0x8E42）
+        kj_satsu: kj_satsu {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "撮";
+            #binding-cells = <0>;
+            codes = <36418>;
+            commit-ime;
+        };
+        // 線（Shift_JIS 0x90FC）
+        kj_senbun: kj_senbun {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "線";
+            #binding-cells = <0>;
+            codes = <37116>;
+            commit-ime;
+        };
+        // 者（Shift_JIS 0x8ED2）
+        kj_sha: kj_sha {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "者";
+            #binding-cells = <0>;
+            codes = <36562>;
+            commit-ime;
+        };
+        // 白（Shift_JIS 0x9492）
+        kj_shiro: kj_shiro {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "白";
+            #binding-cells = <0>;
+            codes = <38034>;
+            commit-ime;
+        };
+        // 速（Shift_JIS 0x91AC）
+        kj_soku: kj_soku {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "速";
+            #binding-cells = <0>;
+            codes = <37292>;
+            commit-ime;
+        };
+        // 対（Shift_JIS 0x91CE）
+        kj_tai: kj_tai {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "対";
+            #binding-cells = <0>;
+            codes = <37326>;
+            commit-ime;
+        };
+        // 手（Shift_JIS 0x8EE8）
+        kj_te: kj_te {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "手";
+            #binding-cells = <0>;
+            codes = <36584>;
+            commit-ime;
+        };
+        // 点（Shift_JIS 0x935F）
+        kj_ten: kj_ten {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "点";
+            #binding-cells = <0>;
+            codes = <37727>;
+            commit-ime;
+        };
+        // 所（Shift_JIS 0x8F8A）
+        kj_tokoro: kj_tokoro {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "所";
+            #binding-cells = <0>;
+            codes = <36746>;
+            commit-ime;
+        };
+        // 解（Shift_JIS 0x89F0）
+        kj_toku: kj_toku {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "解";
+            #binding-cells = <0>;
+            codes = <35312>;
+            commit-ime;
+        };
+        // 使（Shift_JIS 0x8E67）
+        kj_tsukau: kj_tsukau {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "使";
+            #binding-cells = <0>;
+            codes = <36455>;
+            commit-ime;
+        };
+        // 詰（Shift_JIS 0x8B6C）
+        kj_tsumeru: kj_tsumeru {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "詰";
+            #binding-cells = <0>;
+            codes = <35692>;
+            commit-ime;
+        };
+        // 動（Shift_JIS 0x93AE）
+        kj_ugoku: kj_ugoku {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "動";
+            #binding-cells = <0>;
+            codes = <37806>;
+            commit-ime;
+        };
+        // 運（Shift_JIS 0x895E）
+        kj_un: kj_un {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "運";
+            #binding-cells = <0>;
+            codes = <35166>;
+            commit-ime;
+        };
+        // 笑（Shift_JIS 0x8FCE）
+        kj_warau: kj_warau {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "笑";
+            #binding-cells = <0>;
+            codes = <36814>;
+            commit-ime;
+        };
+        // 悪（Shift_JIS 0x88AB）
+        kj_warui: kj_warui {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "悪";
+            #binding-cells = <0>;
+            codes = <34987>;
+            commit-ime;
+        };
+        // 用（Shift_JIS 0x9770）
+        kj_you: kj_you {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "用";
+            #binding-cells = <0>;
+            codes = <38768>;
+            commit-ime;
+        };
+        // 外（Shift_JIS 0x8A4F）
+        kj_soto: kj_soto {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "外";
+            #binding-cells = <0>;
+            codes = <35407>;
+            commit-ime;
+        };
+        // 昇（Shift_JIS 0x8FB8）
+        kj_noboru: kj_noboru {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "昇";
+            #binding-cells = <0>;
+            codes = <36792>;
+            commit-ime;
+        };
+        // 上（Shift_JIS 0x8FE3）
+        kj_ue: kj_ue {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "上";
+            #binding-cells = <0>;
+            codes = <36835>;
+            commit-ime;
+        };
+        // 前（Shift_JIS 0x914F）
+        kj_mae: kj_mae {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "前";
+            #binding-cells = <0>;
+            codes = <37199>;
+            commit-ime;
+        };
+        // 内（Shift_JIS 0x93E0）
+        kj_uchi: kj_uchi {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "内";
+            #binding-cells = <0>;
+            codes = <37856>;
+            commit-ime;
+        };
+        // 数（Shift_JIS 0x9094）
+        kj_kazu: kj_kazu {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "数";
+            #binding-cells = <0>;
+            codes = <37012>;
+            commit-ime;
+        };
+        // 年（Shift_JIS 0x944E）
+        kj_nen: kj_nen {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "年";
+            #binding-cells = <0>;
+            codes = <37966>;
+            commit-ime;
+        };
+        // 終（Shift_JIS 0x8F49）
+        kj_owaru: kj_owaru {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "終";
+            #binding-cells = <0>;
+            codes = <36681>;
+            commit-ime;
+        };
+        // 左（Shift_JIS 0x8DB6）
+        kj_hidari: kj_hidari {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "左";
+            #binding-cells = <0>;
+            codes = <36278>;
+            commit-ime;
+        };
+        // 以（Shift_JIS 0x88C8）
+        kj_motte: kj_motte {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "以";
+            #binding-cells = <0>;
+            codes = <35016>;
+            commit-ime;
+        };
+        // 右（Shift_JIS 0x8945）
+        kj_migi: kj_migi {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "右";
+            #binding-cells = <0>;
+            codes = <35141>;
+            commit-ime;
+        };
+        // 今（Shift_JIS 0x8DA1）
+        kj_ima: kj_ima {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "今";
+            #binding-cells = <0>;
+            codes = <36257>;
+            commit-ime;
+        };
+        // 歳（Shift_JIS 0x8DCE）
+        kj_sai: kj_sai {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "歳";
+            #binding-cells = <0>;
+            codes = <36302>;
+            commit-ime;
+        };
+        // 月（Shift_JIS 0x8C8E）
+        kj_tsuki: kj_tsuki {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "月";
+            #binding-cells = <0>;
+            codes = <35982>;
+            commit-ime;
+        };
+        // 次（Shift_JIS 0x8E9F）
+        kj_tsugi: kj_tsugi {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "次";
+            #binding-cells = <0>;
+            codes = <36511>;
+            commit-ime;
+        };
+        // 降（Shift_JIS 0x8D7E）
+        kj_oriru: kj_oriru {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "降";
+            #binding-cells = <0>;
+            codes = <36222>;
+            commit-ime;
+        };
+        // 下（Shift_JIS 0x89BA）
+        kj_shita: kj_shita {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "下";
+            #binding-cells = <0>;
+            codes = <35258>;
+            commit-ime;
+        };
+        // 後（Shift_JIS 0x8CE3）
+        kj_ato: kj_ato {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "後";
+            #binding-cells = <0>;
+            codes = <36067>;
+            commit-ime;
+        };
+        // 先（Shift_JIS 0x90E6）
+        kj_saki: kj_saki {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "先";
+            #binding-cells = <0>;
+            codes = <37094>;
+            commit-ime;
+        };
+        // ０（Shift_JIS 0x824F）
+        kj_num0: kj_num0 {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "０";
+            #binding-cells = <0>;
+            codes = <33359>;
+            commit-ime;
+        };
+        // １（Shift_JIS 0x8250）
+        kj_num1: kj_num1 {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "１";
+            #binding-cells = <0>;
+            codes = <33360>;
+            commit-ime;
+        };
+        // ２（Shift_JIS 0x8251）
+        kj_num2: kj_num2 {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "２";
+            #binding-cells = <0>;
+            codes = <33361>;
+            commit-ime;
+        };
+        // ３（Shift_JIS 0x8252）
+        kj_num3: kj_num3 {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "３";
+            #binding-cells = <0>;
+            codes = <33362>;
+            commit-ime;
+        };
+        // ４（Shift_JIS 0x8253）
+        kj_num4: kj_num4 {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "４";
+            #binding-cells = <0>;
+            codes = <33363>;
+            commit-ime;
+        };
+        // ５（Shift_JIS 0x8254）
+        kj_num5: kj_num5 {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "５";
+            #binding-cells = <0>;
+            codes = <33364>;
+            commit-ime;
+        };
+        // ６（Shift_JIS 0x8255）
+        kj_num6: kj_num6 {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "６";
+            #binding-cells = <0>;
+            codes = <33365>;
+            commit-ime;
+        };
+        // ７（Shift_JIS 0x8256）
+        kj_num7: kj_num7 {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "７";
+            #binding-cells = <0>;
+            codes = <33366>;
+            commit-ime;
+        };
+        // ８（Shift_JIS 0x8257）
+        kj_num8: kj_num8 {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "８";
+            #binding-cells = <0>;
+            codes = <33367>;
+            commit-ime;
+        };
+        // ９（Shift_JIS 0x8258）
+        kj_num9: kj_num9 {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "９";
+            #binding-cells = <0>;
+            codes = <33368>;
+            commit-ime;
+        };
+        // 進（Shift_JIS 0x9069）
+        kj_susumu: kj_susumu {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "進";
+            #binding-cells = <0>;
+            codes = <36969>;
+            commit-ime;
+        };
+        // 遠（Shift_JIS 0x8993）
+        kj_tooi: kj_tooi {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "遠";
+            #binding-cells = <0>;
+            codes = <35219>;
+            commit-ime;
+        };
+        // 止（Shift_JIS 0x8E7E）
+        kj_tomaru: kj_tomaru {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "止";
+            #binding-cells = <0>;
+            codes = <36478>;
+            commit-ime;
+        };
+        // 同（Shift_JIS 0x93AF）
+        kj_onaji: kj_onaji {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "同";
+            #binding-cells = <0>;
+            codes = <37807>;
+            commit-ime;
+        };
+        // 高（Shift_JIS 0x8D82）
+        kj_takai: kj_takai {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "高";
+            #binding-cells = <0>;
+            codes = <36226>;
+            commit-ime;
+        };
+        // 低（Shift_JIS 0x92E1）
+        kj_hikui: kj_hikui {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "低";
+            #binding-cells = <0>;
+            codes = <37601>;
+            commit-ime;
+        };
+        // 停（Shift_JIS 0x92E2）
+        kj_tei: kj_tei {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "停";
+            #binding-cells = <0>;
+            codes = <37602>;
+            commit-ime;
+        };
+        // 小（Shift_JIS 0x8FAC）
+        kj_chiisai: kj_chiisai {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "小";
+            #binding-cells = <0>;
+            codes = <36780>;
+            commit-ime;
+        };
+        // 中（Shift_JIS 0x9286）
+        kj_naka: kj_naka {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "中";
+            #binding-cells = <0>;
+            codes = <37510>;
+            commit-ime;
+        };
+        // 最（Shift_JIS 0x8DC5）
+        kj_mottomo: kj_mottomo {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "最";
+            #binding-cells = <0>;
+            codes = <36293>;
+            commit-ime;
+        };
+        // 異（Shift_JIS 0x88D9）
+        kj_kotonaru: kj_kotonaru {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "異";
+            #binding-cells = <0>;
+            codes = <35033>;
+            commit-ime;
+        };
+        // 退（Shift_JIS 0x91DE）
+        kj_shirizoku: kj_shirizoku {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "退";
+            #binding-cells = <0>;
+            codes = <37342>;
+            commit-ime;
+        };
+        // 近（Shift_JIS 0x8BDF）
+        kj_chikai: kj_chikai {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "近";
+            #binding-cells = <0>;
+            codes = <35807>;
+            commit-ime;
+        };
+        // 心（Shift_JIS 0x9053）
+        kj_kokoro: kj_kokoro {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "心";
+            #binding-cells = <0>;
+            codes = <36947>;
+            commit-ime;
+        };
+        // 違（Shift_JIS 0x88E1）
+        kj_chigau: kj_chigau {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "違";
+            #binding-cells = <0>;
+            codes = <35041>;
+            commit-ime;
+        };
+        // 〇（Shift_JIS 0x815A）
+        kj_rei: kj_rei {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "〇";
+            #binding-cells = <0>;
+            codes = <33114>;
+            commit-ime;
+        };
+        // 一（Shift_JIS 0x88EA）
+        kj_ichi: kj_ichi {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "一";
+            #binding-cells = <0>;
+            codes = <35050>;
+            commit-ime;
+        };
+        // 二（Shift_JIS 0x93F1）
+        kj_ni: kj_ni {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "二";
+            #binding-cells = <0>;
+            codes = <37873>;
+            commit-ime;
+        };
+        // 三（Shift_JIS 0x8E4F）
+        kj_san: kj_san {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "三";
+            #binding-cells = <0>;
+            codes = <36431>;
+            commit-ime;
+        };
+        // 四（Shift_JIS 0x8E6C）
+        kj_yon: kj_yon {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "四";
+            #binding-cells = <0>;
+            codes = <36460>;
+            commit-ime;
+        };
+        // 五（Shift_JIS 0x8CDC）
+        kj_go: kj_go {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "五";
+            #binding-cells = <0>;
+            codes = <36060>;
+            commit-ime;
+        };
+        // 六（Shift_JIS 0x985A）
+        kj_roku: kj_roku {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "六";
+            #binding-cells = <0>;
+            codes = <39002>;
+            commit-ime;
+        };
+        // 七（Shift_JIS 0x8EB5）
+        kj_nana: kj_nana {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "七";
+            #binding-cells = <0>;
+            codes = <36533>;
+            commit-ime;
+        };
+        // 八（Shift_JIS 0x94AA）
+        kj_hachi: kj_hachi {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "八";
+            #binding-cells = <0>;
+            codes = <38058>;
+            commit-ime;
+        };
+        // 九（Shift_JIS 0x8BE3）
+        kj_kyuu: kj_kyuu {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "九";
+            #binding-cells = <0>;
+            codes = <35811>;
+            commit-ime;
+        };
+        // 十（Shift_JIS 0x8F5C）
+        kj_juu: kj_juu {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "十";
+            #binding-cells = <0>;
+            codes = <36700>;
+            commit-ime;
+        };
+        // 百（Shift_JIS 0x9553）
+        kj_hyaku: kj_hyaku {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "百";
+            #binding-cells = <0>;
+            codes = <38227>;
+            commit-ime;
+        };
+        // 千（Shift_JIS 0x90E7）
+        kj_sen: kj_sen {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "千";
+            #binding-cells = <0>;
+            codes = <37095>;
+            commit-ime;
+        };
+        // 万（Shift_JIS 0x969C）
+        kj_man: kj_man {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "万";
+            #binding-cells = <0>;
+            codes = <38556>;
+            commit-ime;
+        };
+        // 億（Shift_JIS 0x89AD）
+        kj_oku: kj_oku {
+            compatible = "zmk,behavior-alt-code";
+            display-name = "億";
+            #binding-cells = <0>;
+            codes = <35245>;
+            commit-ime;
+        };
+
         // --- かな入力（自作モジュール lalapad/）。Keymap Editor が認識できるよう、定義はこのファイルに置く ---
         // かな・編集用のキーを送る（&kana_key KN_A など。ID は lalapad/include/dt-bindings/kana/kana.h。
         // KN_ = かな、KE_ = スペース・エンター・バックスペース・Esc・Tab）。記号は、下の zmk,behavior-kana-seq のキーで送る
