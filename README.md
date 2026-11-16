@@ -525,7 +525,6 @@ layer_id_7: KANA_LAYER {
 | `clk_` | `clk_lock_l` `clk_lock_m` `clk_lock_r` | 左・中・右クリックを押しっぱなしにする（もう一度押すか、同じボタンのクリック、接続先の切り替えで解除。接続先を切り替えたときは、切り替え前の PC でボタンが押されたままに見えることがあるが、その PC に戻ってクリックすれば直る） |
 | `cur_` | `cur_slow_hold` `cur_slow_toggle` `cur_slow_once` | カーソルを 1/3 の速さにする（押している間／押すたびに切り替え／次のキーまで） |
 | `mod_` | `mod_lock_alt` `mod_lock_ctrl` `mod_lock_shift` `mod_lock_win` | 修飾キーを押しっぱなしにする（もう一度押すか、接続先の切り替えで解除） |
-| | `mod_once_ctrl` `mod_once_shift` `mod_once_alt` `mod_once_win` | 修飾キーを次の 1 キーだけにかける（押して離してから次のキーを押すと、Ctrl＋そのキーなどになる。1 秒たつと取り消し。押したまま別のキーを押せば、ふつうの修飾キー） |
 | `swap_` | `swap_next` `swap_prev` | ウィンドウの切り替え（Alt+Tab ／ Alt+Shift+Tab）。最初に押したときから Alt を押したままにし、押し始めたレイヤーを離すか、ほかのキー（文字・記号・修飾キーなど。クリックやレイヤーのキーでは離さない）を押すと Alt を離す（2 つで Alt を共有するので、途中で入れ替えてもよい。接続先の切り替えでも離す） |
 | `scr_` | `scr_snap_hold` | 押している間だけ、スクロールを縦か横にそろえる |
 | `lyr_` | `lyr_lock` | 置いたレイヤーを固定する／固定をやめる（Layer Lock。固定している間は、&mo のキーを離しても、オートマウスレイヤーの時間切れでも切れない。Default とシステムレイヤー以外のどのレイヤーにも置ける。かなのレイヤーの固定は、かなモードを抜けるとやめる。同時押し・マクロ・長押しのキーの中に置くと何もしない） |
@@ -541,7 +540,7 @@ layer_id_7: KANA_LAYER {
 | | `mt2` | 押すとキー、長押し（350ms）で別のキー。`&mt2 長押しのキー 押したときのキー` |
 
 - `ks_`・`pair_`・`sym_` のキーは、かなのレイヤーにも、ほかのレイヤーにも置けます。Alt コード版（`sym_hbar` `sym_tilde` `pair_cquote`）と `kj_` は、上の表の行のとおりに動きます。それ以外は、打つ前に IME をオンにします（かなモードでないときは `pair_paren` を除いて毎回。かなモード中は、しばらく打っていなかったときと、接続先の切り替えやトラックパッドのクリック・ジェスチャーの後だけ）。押している Shift・Ctrl は、これらのキーとかなには、かかりません（Alt・Win はそのままかかります。送っている短い間に、ほかのキーを Shift・Ctrl といっしょに押すと、そのキーにも Shift・Ctrl がかからないことがあります。Alt コード版を送っている間に打ったかなは、送り終えてから入力されるので、Shift・Ctrl がかかることがあります）。
-- まだどのレイヤーにも置いていないキーもあります（`clk_lock_m`・`clk_lock_r`、`cur_slow_hold`・`cur_slow_once`、`mod_lock_alt`・`mod_lock_ctrl`・`mod_lock_win`、`mod_once_shift`・`mod_once_alt`・`mod_once_win`、Alt コード版の 3 つ）。エディタで好きな位置に置けます。
+- まだどのレイヤーにも置いていないキーもあります（`clk_lock_m`・`clk_lock_r`、`cur_slow_hold`・`cur_slow_once`、`mod_lock_alt`・`mod_lock_ctrl`・`mod_lock_win`、Alt コード版の 3 つ）。エディタで好きな位置に置けます。
 
 ### 記号のキーを足す
 

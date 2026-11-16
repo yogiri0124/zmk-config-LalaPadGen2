@@ -200,62 +200,6 @@
             keycode = <LGUI>;
         };
 
-        // --- mod_: 修飾キーを次の1キーだけにかける（ZMK 標準の &sk。押してから離し、次のキーを押すとそのキーと一緒に送られる。
-        // 押したまま別のキーを押せば、ふつうの修飾キーとして働く） ---
-        // &sk は引数でキーを受け取るので、名前付きのキーにするためマクロで包む（押したとき &sk を押し、離したとき離す）。
-        // Left Ctrl を次の1キーだけ
-        mod_once_ctrl: mod_once_ctrl {
-            compatible = "zmk,behavior-macro";
-            #binding-cells = <0>;
-            wait-ms = <0>;
-            tap-ms = <0>;
-            bindings
-                = <&macro_press &sk LCTRL>
-                , <&macro_pause_for_release>
-                , <&macro_release &sk LCTRL>
-                ;
-            display-name = "Ctrl Once";
-        };
-        // Left Shift を次の1キーだけ
-        mod_once_shift: mod_once_shift {
-            compatible = "zmk,behavior-macro";
-            #binding-cells = <0>;
-            wait-ms = <0>;
-            tap-ms = <0>;
-            bindings
-                = <&macro_press &sk LSHIFT>
-                , <&macro_pause_for_release>
-                , <&macro_release &sk LSHIFT>
-                ;
-            display-name = "Shft Once";
-        };
-        // Left Alt を次の1キーだけ
-        mod_once_alt: mod_once_alt {
-            compatible = "zmk,behavior-macro";
-            #binding-cells = <0>;
-            wait-ms = <0>;
-            tap-ms = <0>;
-            bindings
-                = <&macro_press &sk LALT>
-                , <&macro_pause_for_release>
-                , <&macro_release &sk LALT>
-                ;
-            display-name = "Alt Once";
-        };
-        // Left GUI（Win）を次の1キーだけ
-        mod_once_win: mod_once_win {
-            compatible = "zmk,behavior-macro";
-            #binding-cells = <0>;
-            wait-ms = <0>;
-            tap-ms = <0>;
-            bindings
-                = <&macro_press &sk LGUI>
-                , <&macro_pause_for_release>
-                , <&macro_release &sk LGUI>
-                ;
-            display-name = "Win Once";
-        };
-
         // --- swap_: ウィンドウの切り替え（Alt+Tab。自作モジュール lalapad/ の zmk,behavior-alt-tab） ---
         // 最初に押したときに Alt を押したままにして、押すたびに Tab（swap_prev は Shift+Tab）を送る。
         // 押し始めたときのレイヤーを離す（&mo のキーを離す）か、ほかのキー（キーコードを送るもの。クリックやレイヤーのキーは除く）を押すと
@@ -657,7 +601,7 @@
             &kp F  &kp D  &kp L  &kp W  &kp J  &kp SEMI  &kp B  &kp O  &kp U  &kp COMMA
             &kp S  &kp T  &kp H  &kp C  &kp Y  &kp Q  &kp N  &kp A  &kp E  &kp I
             &mt2 LEFT_SHIFT X  &kp K  &kp M  &kp G  &kp V  &kp Z  &kp P  &kp SQT  &kp SLASH  &kp PERIOD
-            &kp LEFT_CONTROL  &kp LWIN  &kp LEFT_ALT  &num_mo SECONDARY_LAYER SECONDARY_LAYER  &mt2 LEFT_SHIFT R  &kp ENTER  &kp BACKSPACE  &mt2 RIGHT_CONTROL SPACE  &mo TERTIARY_LAYER  &none  &kp K_APP  &mod_once_ctrl
+            &kp LEFT_CONTROL  &kp LWIN  &kp LEFT_ALT  &num_mo SECONDARY_LAYER SECONDARY_LAYER  &mt2 LEFT_SHIFT R  &kp ENTER  &kp BACKSPACE  &mt2 RIGHT_CONTROL SPACE  &mo TERTIARY_LAYER  &none  &kp K_APP  &sk LCTRL
             &tog CONTROL_LAYER  &kp RIGHT  &kp DOWN  &kp LEFT  &kp UP  &kp UP  &kp LEFT  &kp DOWN  &kp RIGHT  &kana_sw KANA_SW_ON
             &mkp LCLK  &mkp RCLK  &mkp MCLK  &mkp LCLK  &mkp RCLK  &mkp MCLK
             &mkp MB4  &mkp MB5  &kp LG(TAB)  &kp LG(D)  &kp LEFT_CONTROL  &mkp MB4  &mkp MB5  &kp LG(TAB)  &kp LG(D)  &kp LEFT_CONTROL
@@ -722,7 +666,7 @@
             &kana_key KN_A  &kana_key KN_I  &kana_key KN_U  &kana_key KN_E  &kana_key KN_O  &kana_key KN_KA  &kana_key KN_KI  &kana_key KN_KU  &kana_key KN_KE  &kana_key KN_KO
             &kana_key KN_SA  &kana_key KN_SI  &kana_key KN_SU  &kana_key KN_SE  &kana_key KN_SO  &kana_key KN_TA  &kana_key KN_TI  &kana_key KN_TU  &kana_key KN_TE  &kana_key KN_TO
             &kana_key KN_NA  &kana_key KN_NI  &kana_key KN_NU  &kana_key KN_NE  &kana_key KN_NO  &kana_key KN_HA  &kana_key KN_HI  &kana_key KN_HU  &kana_key KN_HE  &kana_key KN_HO
-            &none  &none  &none  &kana_key KE_SPACE  &mo KANA_L_LAYER  &kana_key KE_ENTER  &lt__mo__kana_key CONTROL_LAYER KE_BSPC  &mo KANA_R_LAYER  &mo KANA_SYM_LAYER  &none  &none  &none
+            &none  &none  &none  &kana_key KE_SPACE  &mo KANA_L_LAYER  &kana_key KE_ENTER  &kana_key KE_BSPC  &mo KANA_R_LAYER  &mo KANA_SYM_LAYER  &none  &none  &none
             &none  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &kana_sw KANA_SW_OFF
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
@@ -800,7 +744,7 @@
             bindings = <
             &kp NUMBER_1  &kp NUMBER_2  &kp NUMBER_3  &kp NUMBER_4  &kp NUMBER_5  &none  &none  &none  &none  &none
             &kp NUMBER_6  &kp NUMBER_7  &kp NUMBER_8  &kp NUMBER_9  &kp NUMBER_0  &none  &none  &none  &none  &none
-            &sym_hbar_ime  &mod_once_ctrl  &mod_lock_shift  &pair_cquote_ime  &pair_kagi  &none  &none  &none  &none  &none
+            &sym_hbar_ime  &sk LCTRL  &mod_lock_shift  &pair_cquote_ime  &pair_kagi  &none  &none  &none  &none  &none
             &none  &none  &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
             &none  &none  &none  &none  &none  &none  &none  &none  &none  &none
             &trans  &trans  &trans  &trans  &trans  &trans
