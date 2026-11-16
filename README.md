@@ -536,11 +536,12 @@ layer_id_7: KANA_LAYER {
 | `sym_` | `sym_ellipsis` `sym_hbar_ime` `sym_tilde_ime` | … ―― ～ を入力する（―― は 1 回押すと ― が 2 つ入る） |
 | | `sym_hbar` `sym_tilde` `pair_cquote` | ―― ～ “” を Windows の Alt コードで入力する予備（ローマ字テーブルを読み込んでいない PC 用。先に打ったかなを送り終えてから送り、送っている間に押したキーは、送り終えてから入力されます（トラックパッドのクリックは預からないので、送っている間にクリックすると Alt+クリックになります）。Alt か Win を押している間は送りません。Shift・Ctrl を押していても、隠して送ります（Alt・Win は隠しません）。かなモードを抜けている途中は送りません） |
 | `kj_` | `kj_ji` `kj_hito` `kj_hi` | 時・人・日（数字レイヤーの 22・21・20）を Windows の Alt コードで入力する（ミニ漢直。確定した文字で入る。先に IME オフで確定前の文字を確定させ、送り終えると IME オンにする。押すと Num Word を終える。Alt コード版と同じく、送っている間に押したキーは送り終えてから入力されます） |
+| | `kj_au` `kj_bu` … `kj_oku`（143 個） | 漢字の表（`docs/google-ime/kanji.tsv`）の残りの字を、同じく Alt コードで入力するキー（1 文字ずつ。名前は表の名前を小文字にしたもの。字 だけは `kj_ji2`）。どのレイヤーにも置いていないので、エディタで好きな位置に置く。動きは上の 3 つと同じ（Num Word も終える）。日本語の Windows だけ |
 | `kana_` | `kana_key` `kana_sw` | かなと Space・Enter・Backspace・Esc・Tab を送る／かなモードのオン・オフ |
 | | `mt2` | 押すとキー、長押し（350ms）で別のキー。`&mt2 長押しのキー 押したときのキー` |
 
 - `ks_`・`pair_`・`sym_` のキーは、かなのレイヤーにも、ほかのレイヤーにも置けます。Alt コード版（`sym_hbar` `sym_tilde` `pair_cquote`）と `kj_` は、上の表の行のとおりに動きます。それ以外は、打つ前に IME をオンにします（かなモードでないときは `pair_paren` を除いて毎回。かなモード中は、しばらく打っていなかったときと、接続先の切り替えやトラックパッドのクリック・ジェスチャーの後だけ）。押している Shift・Ctrl は、これらのキーとかなには、かかりません（Alt・Win はそのままかかります。送っている短い間に、ほかのキーを Shift・Ctrl といっしょに押すと、そのキーにも Shift・Ctrl がかからないことがあります。Alt コード版を送っている間に打ったかなは、送り終えてから入力されるので、Shift・Ctrl がかかることがあります）。
-- まだどのレイヤーにも置いていないキーもあります（`clk_lock_m`・`clk_lock_r`、`cur_slow_hold`・`cur_slow_once`、`mod_lock_alt`・`mod_lock_ctrl`・`mod_lock_win`、Alt コード版の 3 つ）。エディタで好きな位置に置けます。
+- まだどのレイヤーにも置いていないキーもあります（`clk_lock_m`・`clk_lock_r`、`cur_slow_hold`・`cur_slow_once`、`mod_lock_alt`・`mod_lock_ctrl`・`mod_lock_win`、Alt コード版の 3 つ、漢字 1 文字の `kj_` の残り 143 個）。エディタで好きな位置に置けます。
 
 ### 記号のキーを足す
 
