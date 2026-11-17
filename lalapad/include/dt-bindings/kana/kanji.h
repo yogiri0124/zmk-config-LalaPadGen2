@@ -12,7 +12,7 @@
 /* 番号の上限（符号が英字 2 文字なので 26 × 26 - 1。0 は使わない） */
 #define KJ_MAX_ID 675
 
-#define KJ_AU 1 /* 会（;ab） 単打面 あう・かい */
+#define KJ_AU 1 /* 会（;ab） 同時押し あ+う 単打面 あう・かい */
 #define KJ_BU 2 /* 部（;ac） 単打面 ぶ */
 #define KJ_BUN 3 /* 分（;ad） 単打面 ぶん */
 #define KJ_DERU 4 /* 出（;ae） 単打面 でる */
@@ -312,5 +312,6 @@
 
 /* かなキーの同時押しの数と一覧（lalapad/src/kanji_chord.c が使う。Noxrix も読む）。
  * CHORD(漢字の名前, かなの数, かな 1, かな 2, かな 3)。かなは ID の小さい順、使わない分は 0 */
-#define KJ_CHORD_COUNT 0
-#define KANJI_CHORDS(CHORD)
+#define KJ_CHORD_COUNT 1
+#define KANJI_CHORDS(CHORD) \
+    CHORD(KJ_AU, 2, KN_A, KN_U, 0)

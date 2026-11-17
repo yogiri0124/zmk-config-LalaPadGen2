@@ -1739,10 +1739,10 @@
         layer_id_1: DEFAULT_LAYER {
             display-name = "Default";
             bindings = <
-            &kp F  &kp D  &kp L  &kp W  &kp J  &kp SEMI  &kp B  &kp O  &kp U  &kp COMMA
+            &kp F  &kp D  &kp L  &kp W  &kp J  &kp SEMI  &kp P  &kp O  &kp U  &kp COMMA
             &kp S  &kp T  &kp H  &kp C  &kp Y  &kp Q  &kp N  &kp A  &kp E  &kp I
-            &mt2 LEFT_SHIFT X  &kp K  &kp M  &kp G  &kp V  &kp Z  &kp P  &kp SQT  &kp SLASH  &kp PERIOD
-            &kp LEFT_CONTROL  &kp LWIN  &kp LEFT_ALT  &num_mo SECONDARY_LAYER SECONDARY_LAYER  &mt2 LEFT_SHIFT R  &kp ENTER  &kp BACKSPACE  &mt2 RIGHT_CONTROL SPACE  &mo TERTIARY_LAYER  &none  &kp K_APP  &sk LCTRL
+            &mt2 LEFT_SHIFT X  &kp K  &kp M  &kp G  &kp V  &kp Z  &kp B  &kp SQT  &kp SLASH  &kp PERIOD
+            &none  &none  &kp LEFT_ALT  &num_mo SECONDARY_LAYER SECONDARY_LAYER  &mt2 LEFT_SHIFT R  &kp ENTER  &kp BACKSPACE  &mt2 RIGHT_CONTROL SPACE  &mo TERTIARY_LAYER  &kp LWIN  &none  &none
             &tog CONTROL_LAYER  &kp RIGHT  &kp DOWN  &kp LEFT  &kp UP  &kp UP  &kp LEFT  &kp DOWN  &kp RIGHT  &kana_sw KANA_SW_ON
             &mkp LCLK  &mkp RCLK  &mkp MCLK  &mkp LCLK  &mkp RCLK  &mkp MCLK
             &mkp MB4  &mkp MB5  &kp LG(TAB)  &kp LG(D)  &kp LEFT_CONTROL  &mkp MB4  &mkp MB5  &kp LG(TAB)  &kp LG(D)  &kp LEFT_CONTROL
@@ -1794,7 +1794,7 @@
             &tp_arrow  &kp LC(W)  &kp LC(LS(T))  &kp LC(A)  &none  &kp LC(LS(TAB))  &kp LC(TAB)  &none  &none  &lyr_lock
             &none  &mkp MCLK  &mkp RCLK  &mkp LCLK  &clk_lock_l  &kp RIGHT_CONTROL  &kp RIGHT_SHIFT  &link_incognito  &tp_draw  &tp_dial
             &kp LC(Z)  &kp LC(X)  &kp LC(C)  &kp LC(V)  &none  &none  &none  &kp RIGHT_ALT  &none  &none
-            &none  &none  &none  &trans  &scr_snap_hold  &cur_slow_toggle  &trans  &trans  &trans  &none  &none  &none
+            &none  &none  &trans  &trans  &scr_snap_hold  &trans  &trans  &trans  &trans  &trans  &none  &none
             &trans  &kp RS(RIGHT)  &trans  &kp LS(LEFT)  &kp LC(LS(C))  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans
             &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans  &trans
