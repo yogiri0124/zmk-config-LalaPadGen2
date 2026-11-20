@@ -585,7 +585,7 @@ ks_touten: ks_touten {
 | `config/*.conf`、`config/boards/shields/lalapadgen2/` | ファームウェアとトラックパッドの設定、シールドの定義 |
 | `lalapad/` | 自作モジュール（かな入力、記号キー、オートマウスレイヤー、レイヤーの固定、Num Word、カーソル低速、クリック・修飾キーの押しっぱなし、ウィンドウの切り替え、スクロールスナップの切り替え、トラックパッドでキー操作、Alt コード入力、キー位置の送信、トラックパッドのキー位置の出来事の中継） |
 | `docs/google-ime/` | Google 日本語入力のローマ字テーブルと、読み込みの手順 |
-| `docs/key-stream.md`、`docs/key-stream-layout.json`、`docs/tools/` | キー位置の送信の決まりごと、キーの実際の配置、確認用のページ |
+| `docs/key-stream.md`、`docs/key-stream-spec.md`、`docs/key-stream-layout.json`、`docs/tools/` | キー位置の送信の決まりごと、キーボード側の作りも含めた仕様、キーの実際の配置、確認用のページ |
 | `docs/reference/` | キーコードや設定項目の資料 |
 | `AGENTS.md`、`CLAUDE.md` | AI エージェント（Claude Code・Codex）で編集するときの運用ルール |
 
