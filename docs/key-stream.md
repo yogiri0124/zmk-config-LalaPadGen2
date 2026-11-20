@@ -3,6 +3,7 @@
 キーが押された／離されたときに、その**位置番号**と**押した／離した**を、PC のアプリ（桜雪など）に送る仕組みです。
 ファームウェアの実装は [lalapad/src/key_stream.c](../lalapad/src/key_stream.c)（送り道は `key_stream_usb.c`・`key_stream_ble.c`）。
 確認用のページは [docs/tools/key-stream-viewer.html](tools/key-stream-viewer.html) です（Chrome か Edge で開くだけで使えます）。
+キーボード側の作りも含めた仕様（ほかのキーボード・ファームウェアに移すとき用）は [docs/key-stream-spec.md](key-stream-spec.md) です。
 
 ## しくみ
 
