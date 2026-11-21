@@ -1640,6 +1640,13 @@
             #binding-cells = <0>;
             keys = <LPAR RPAR LEFT>;
         };
+        // "" を入力してカーソルを中に。先に IME オフ（LANGUAGE_2）を送って半角の "" にする（IME はオフのまま）
+        pair_dquote: pair_dquote {
+            compatible = "zmk,behavior-kana-seq";
+            display-name = "\"\"";
+            #binding-cells = <0>;
+            keys = <LANGUAGE_2 DOUBLE_QUOTES DOUBLE_QUOTES LEFT>;
+        };
 
         // --- sym_: 記号（Google 日本語入力のローマ字テーブル経由） ---
         // … を入力。Google 日本語入力の z. で … にする
